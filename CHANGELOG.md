@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.0 — 2026-11-05
+
+### Age retention (`keepForDays`)
+- Tray → **Keep for** submenu: keep forever (default, unchanged 1.0 behavior) or only the last
+  7 / 30 / 90 days. Expired cards leave the line; Hangline-owned screenshots in
+  `%LOCALAPPDATA%\Hangline\Screenshots` are recycled (undoable), while watched-folder files,
+  system screenshots and recordings are only taken off the line and never deleted.
+- The sweep runs once at startup, hourly while the app runs, and immediately after the setting
+  changes (shortening the window takes effect at once). `settings.json` gains `keepForDays`
+  (`"forever"` or 7/30/90); configs written before this change keep cards forever.
+
 ## 1.0.0 — 2026-11-05
 
 First source release of Hangline (晾图绳), a Windows screenshot clothesline.

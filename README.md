@@ -11,7 +11,7 @@ Tauri 2 (Rust) + React 19 + TypeScript + Vite. Windows x64.
 
 Repository: <https://github.com/devin2255/hangline>
 
-> **Status: Hangline 1.0.0 source release (P1 core + P2 visual + P3 markup/recording + P4 multi-monitor/settings + P5 packaging).**
+> **Status: Hangline 1.1.0 release (P1 core + P2 visual + P3 markup/recording + P4 multi-monitor/settings + P5 packaging + age retention).**
 > The public source repository is <https://github.com/devin2255/hangline>; a GitHub Release is produced by the
 > `v*` tag workflow when signing secrets are configured, and the installer/portable ZIP can always be built locally.
 > The installer is unsigned (SmartScreen may warn). Manual acceptance is documented in
@@ -45,17 +45,17 @@ P4 multi-monitor placement under 100%/150% scaling (app UI only, neutral synthet
 More P4 evidence: [`docs/experiments/P4-multimon-settings.md`](docs/experiments/P4-multimon-settings.md),
 [`docs/acceptance/P4-core.md`](docs/acceptance/P4-core.md).
 
-## Install (1.0.0 source release)
+## Install (1.1.0 release)
 
 Windows 10 22H2 or Windows 11, x64. Download the GitHub Release artifacts for the latest tag when available,
 or build the installer locally (see [Building](#building-from-source)) with
 `node scripts/release/build-release.mjs --sign`.
 
-- `Hangline_1.0.0_x64-setup.exe` — per-user install to `%LOCALAPPDATA%\Programs\Hangline` (no admin),
+- `Hangline_1.1.0_x64-setup.exe` — per-user install to `%LOCALAPPDATA%\Programs\Hangline` (no admin),
   Start-menu shortcut (desktop shortcut optional), HKCU uninstall entry, embedded WebView2
   bootstrapper (network needed only on a machine without WebView2). Uninstall asks whether to keep or delete your Hangline data
   (default: keep).
-- `Hangline_1.0.0_x64-portable.zip` — unpack anywhere and run `Hangline.exe`; data still lives in
+- `Hangline_1.1.0_x64-portable.zip` — unpack anywhere and run `Hangline.exe`; data still lives in
   `%LOCALAPPDATA%\Hangline` (a true portable mode is post-V1).
 - **Unsigned:** Windows SmartScreen shows an unknown publisher; verify the SHA-256 in
   `SHA256SUMS.txt`. Code signing is planned post-V1.
@@ -98,9 +98,14 @@ Release/update/signing/privacy runbook: [`docs/RELEASE.md`](docs/RELEASE.md).
   card — a failed export leaves the original untouched and offers “Open in
   default player”. Trims are capped at 2 GB / 60 min.
 - **Browsable when you keep more.** With a 25/50/100 retention limit, the line keeps only the newest N cards (older cards leave the line, their files stay on disk) and the mouse wheel (or a touchpad) scrolls back through them; the newest card is always on the right. 100 cards measured at 60 fps.
+- **Automatic cleanup by age (optional).** Tray → **Keep for** keeps cards forever (the default),
+  or for the last 7/30/90 days. Expired cards leave the line; Hangline-owned screenshots under
+  `%LOCALAPPDATA%\Hangline\Screenshots` are moved to the Recycle Bin (undoable), while files in
+  folders you watch, system screenshots and recordings are never deleted. The sweep runs at
+  startup, hourly while the app runs, and immediately after you change the window.
 - **Out of the way when you are gaming.** Full-screen apps, presentations and busy states hide the line automatically and it returns within a second; “Over full-screen apps” only applies when you have pinned the line.
 - **Tray settings.** Watch switches, extra watched folders (up to 3), keep
-  count, card size (small/medium/large), shortcuts with conflict rollback,
+  count and keep-for window, card size (small/medium/large), shortcuts with conflict rollback,
   sounds, open at login, language (English / 简体中文 / follow system), quit.
 - **Multi-monitor and per-monitor DPI.** The line follows the pointer across monitors (500 ms dwell), re-scales its cards for 100%/125%/150% screens, and re-places itself when displays change or the taskbar moves.
 - **Settings that stick.** Remap both global hotkeys with conflict detection and rollback, start at login through the standard Run key (quoted, path-with-spaces safe), sounds, card size, theme and language.
@@ -162,7 +167,8 @@ cargo check --manifest-path src-tauri/Cargo.toml --all-targets # 0 warnings
 | Drag a card out | Native file drag: drop it on an app to copy, on a folder to move, on the Recycle Bin to delete. The card updates after the drop. |
 | × on a card | Take it down. Photos from Hangline's own screenshot folder go to the Recycle Bin; watched-folder files are only removed from the line. |
 | Mouse wheel / touchpad | Browse earlier cards when the retention limit is 25/50/100. |
-| Tray icon | Left click toggles the line; right click opens settings: sources, folders, keep count, size, shortcuts, sounds, autostart, check for updates, language, quit. |
+| Tray → Keep for | Age cleanup: keep forever (default) or the last 7/30/90 days. Expired Hangline-owned screenshots go to the Recycle Bin; watched-folder, system-screenshot and recording files are never deleted. |
+| Tray icon | Left click toggles the line; right click opens settings: sources, folders, keep count, keep-for window, size, shortcuts, sounds, autostart, check for updates, language, quit. |
 
 Shortcuts can be changed in **Tray → Shortcut**; a shortcut that is already
 taken is rejected and the previous one is restored. Extra watched folders are
@@ -172,7 +178,9 @@ The line shows `max(3, min(12, floor((logical panel width - 200) / card spacing)
 "fit" mode (9 cards on a 1920-logical-px panel at medium size; a 1920 physical
 screen at 150% is 1280 logical px, so it fits 6) and keeps the newest
 ones; set 25/50/100 to keep more and scroll. Card size can be small, medium or
-large.
+large. Cards can also expire by age: **Tray → Keep for** defaults to keeping them
+forever; a 7/30/90-day window drops older cards and recycles expired Hangline-owned
+screenshots (the other sources' files are only taken off the line).
 
 Data lives under `%LOCALAPPDATA%\Hangline\` (`settings.json`,
 `state.json`, `Screenshots\`); logs are under
@@ -194,6 +202,10 @@ Data lives under `%LOCALAPPDATA%\Hangline\` (`settings.json`,
 - Screenshots and recordings stay on your disk. Hangline copies clipboard images
   and new files from the folders you explicitly watch into
   `%LOCALAPPDATA%\Hangline\Screenshots\`; it does not upload them anywhere.
+- **Age cleanup is local and undoable.** When a Keep-for window is set, expired
+  Hangline-owned screenshots are moved to the Windows Recycle Bin; files in the
+  folders you watch, system screenshots and recordings are never deleted, only
+  taken off the line.
 - Clipboard capture only accepts pure images and skips copies that look private
   (passwords/text, `ExcludeClipboardContentFromMonitorProcessing`,
   `CanIncludeInClipboardHistory=0`, `org.nspasteboard.ConcealedType`, files).
@@ -202,7 +214,7 @@ Data lives under `%LOCALAPPDATA%\Hangline\` (`settings.json`,
 
 ## Known limitations
 
-Hangline 1.0.0 is a source release; the functional milestones P1–P5 are implemented and the
+Hangline 1.1.0 is a release build; the functional milestones P1–P5 are implemented and the
 remaining items are manual/deferred checks (the acceptance documents track them in detail):
 
 - **Manual acceptance is pending.** The following still need a real person on an
@@ -211,10 +223,9 @@ remaining items are manual/deferred checks (the acceptance documents track them 
   (WeChat/QQ/browser), real wheel/touchpad scrolling, real pointer cross-screen
   following, and the folder picker. They are marked `MANUAL-PENDING` — not
   "passed" — in [`docs/acceptance/P1-core.md`](docs/acceptance/P1-core.md).
-- **Unsigned, no public release.** The 1.0.0 installer/portable ZIP build locally; there is no
-  Authenticode signature (SmartScreen warns) and no GitHub Release is published from this checkout.
-  Auto-update is wired and signature-verified; the release endpoint stays a placeholder until the
-  operator publishes a repository (see `docs/RELEASE.md`).
+- **Unsigned.** The 1.1.0 installer/portable ZIP are built by the tag workflow and published on
+  GitHub Releases; there is no Authenticode signature (SmartScreen warns). Auto-update is wired and
+  signature-verified against the updater public key in `tauri.conf.json` (see `docs/RELEASE.md`).
 - **Card right-click menu** is not implemented (V1.1). Today the card actions are
   click / double-click / drag / ×.
 - **Annotation/recording trim and full-screen suppression** are implemented in

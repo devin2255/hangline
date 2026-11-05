@@ -32,7 +32,7 @@ use crate::hotkeys::{self, HotkeyFailure, Target};
 use crate::i18n::{self, Lang, TrayStrings};
 use crate::panel;
 use crate::reveal::{self, RevealReason};
-use crate::settings::{CardSize, KeepOnLine, Settings, MAX_EXTRA_FOLDERS};
+use crate::settings::{CardSize, KeepForDays, KeepOnLine, Settings, MAX_EXTRA_FOLDERS};
 
 /// Stable tray icon id (looked up by tests/`tray_by_id`).
 pub const TRAY_ID: &str = "hangline-tray";
@@ -65,6 +65,14 @@ pub const ID_KEEP_25: &str = "tray.keep.25";
 pub const ID_KEEP_50: &str = "tray.keep.50";
 /// "Keep on line ▸ 100".
 pub const ID_KEEP_100: &str = "tray.keep.100";
+/// "Keep for ▸ Keep forever" (`keepForDays = "forever"`).
+pub const ID_KEEP_FOREVER: &str = "tray.keep_for.forever";
+/// "Keep for ▸ Keep last 7 days".
+pub const ID_KEEP_FOR_7: &str = "tray.keep_for.7";
+/// "Keep for ▸ Keep last 30 days".
+pub const ID_KEEP_FOR_30: &str = "tray.keep_for.30";
+/// "Keep for ▸ Keep last 90 days".
+pub const ID_KEEP_FOR_90: &str = "tray.keep_for.90";
 /// "Size ▸ Small".
 pub const ID_SIZE_SMALL: &str = "tray.size.small";
 /// "Size ▸ Medium".
@@ -128,6 +136,8 @@ pub enum TrayAction {
     StopWatching(usize),
     /// Set `keepOnLine`.
     SetKeepOnLine(KeepOnLine),
+    /// Set `keepForDays` (age retention; `forever` or 7/30/90 days).
+    SetKeepForDays(KeepForDays),
     /// Set `cardSize`.
     SetCardSize(CardSize),
     /// Show the change-shortcut window for a target.
@@ -163,6 +173,7 @@ impl TrayAction {
             Self::AddFolder => "add folder",
             Self::StopWatching(_) => "stop watching",
             Self::SetKeepOnLine(_) => "set keep on line",
+            Self::SetKeepForDays(_) => "set keep for days",
             Self::SetCardSize(_) => "set card size",
             Self::ChangeShortcut(_) => "change shortcut",
             Self::OpenScreenshotsFolder => "open screenshots folder",
@@ -205,6 +216,10 @@ pub fn action_for(id: &str) -> Option<TrayAction> {
         ID_KEEP_25 => TrayAction::SetKeepOnLine(KeepOnLine::Limit(25)),
         ID_KEEP_50 => TrayAction::SetKeepOnLine(KeepOnLine::Limit(50)),
         ID_KEEP_100 => TrayAction::SetKeepOnLine(KeepOnLine::Limit(100)),
+        ID_KEEP_FOREVER => TrayAction::SetKeepForDays(KeepForDays::Forever),
+        ID_KEEP_FOR_7 => TrayAction::SetKeepForDays(KeepForDays::Days(7)),
+        ID_KEEP_FOR_30 => TrayAction::SetKeepForDays(KeepForDays::Days(30)),
+        ID_KEEP_FOR_90 => TrayAction::SetKeepForDays(KeepForDays::Days(90)),
         ID_SIZE_SMALL => TrayAction::SetCardSize(CardSize::Small),
         ID_SIZE_MEDIUM => TrayAction::SetCardSize(CardSize::Medium),
         ID_SIZE_LARGE => TrayAction::SetCardSize(CardSize::Large),
@@ -268,6 +283,8 @@ pub struct MenuState {
     pub add_folder_enabled: bool,
     /// Kept-on-line limit.
     pub keep_on_line: KeepOnLine,
+    /// Age-retention policy.
+    pub keep_for_days: KeepForDays,
     /// Card size.
     pub card_size: CardSize,
     /// First hotkey registration failure, shown as a disabled hint row + tooltip suffix.
@@ -311,6 +328,7 @@ pub fn menu_state(
         extra_folders: settings.extra_folders.clone(),
         add_folder_enabled: settings.extra_folders.len() < MAX_EXTRA_FOLDERS,
         keep_on_line: settings.keep_on_line,
+        keep_for_days: settings.keep_for_days,
         card_size: settings.card_size,
         hotkey_error,
         sound: settings.sound,
@@ -376,6 +394,10 @@ struct Items {
     keep_25: CheckMenuItem<Wry>,
     keep_50: CheckMenuItem<Wry>,
     keep_100: CheckMenuItem<Wry>,
+    keep_forever: CheckMenuItem<Wry>,
+    keep_for_7: CheckMenuItem<Wry>,
+    keep_for_30: CheckMenuItem<Wry>,
+    keep_for_90: CheckMenuItem<Wry>,
     size_small: CheckMenuItem<Wry>,
     size_medium: CheckMenuItem<Wry>,
     size_large: CheckMenuItem<Wry>,
@@ -658,6 +680,45 @@ fn build_menu(
         &[&keep_fit, &keep_25, &keep_50, &keep_100],
     )?;
 
+    let keep_forever = CheckMenuItem::with_id(
+        app,
+        ID_KEEP_FOREVER,
+        strings.keep_forever,
+        true,
+        state.keep_for_days == KeepForDays::Forever,
+        None::<&str>,
+    )?;
+    let keep_for_7 = CheckMenuItem::with_id(
+        app,
+        ID_KEEP_FOR_7,
+        strings.keep_for_7,
+        true,
+        state.keep_for_days == KeepForDays::Days(7),
+        None::<&str>,
+    )?;
+    let keep_for_30 = CheckMenuItem::with_id(
+        app,
+        ID_KEEP_FOR_30,
+        strings.keep_for_30,
+        true,
+        state.keep_for_days == KeepForDays::Days(30),
+        None::<&str>,
+    )?;
+    let keep_for_90 = CheckMenuItem::with_id(
+        app,
+        ID_KEEP_FOR_90,
+        strings.keep_for_90,
+        true,
+        state.keep_for_days == KeepForDays::Days(90),
+        None::<&str>,
+    )?;
+    let keep_for_menu = Submenu::with_items(
+        app,
+        strings.keep_for_menu,
+        true,
+        &[&keep_forever, &keep_for_7, &keep_for_30, &keep_for_90],
+    )?;
+
     let size_small = CheckMenuItem::with_id(
         app,
         ID_SIZE_SMALL,
@@ -802,6 +863,10 @@ fn build_menu(
         keep_25,
         keep_50,
         keep_100,
+        keep_forever,
+        keep_for_7,
+        keep_for_30,
+        keep_for_90,
         size_small,
         size_medium,
         size_large,
@@ -832,6 +897,7 @@ fn build_menu(
             &reveal_menu,
             &items.folders_menu,
             &keep_menu,
+            &keep_for_menu,
             &size_menu,
             &shortcut_menu,
             &items.open_screenshots,
@@ -950,6 +1016,23 @@ fn apply_state(
     items
         .keep_100
         .set_checked(state.keep_on_line == KeepOnLine::Limit(100))?;
+
+    items.keep_forever.set_text(strings.keep_forever)?;
+    items.keep_for_7.set_text(strings.keep_for_7)?;
+    items.keep_for_30.set_text(strings.keep_for_30)?;
+    items.keep_for_90.set_text(strings.keep_for_90)?;
+    items
+        .keep_forever
+        .set_checked(state.keep_for_days == KeepForDays::Forever)?;
+    items
+        .keep_for_7
+        .set_checked(state.keep_for_days == KeepForDays::Days(7))?;
+    items
+        .keep_for_30
+        .set_checked(state.keep_for_days == KeepForDays::Days(30))?;
+    items
+        .keep_for_90
+        .set_checked(state.keep_for_days == KeepForDays::Days(90))?;
 
     items.size_small.set_text(strings.size_small)?;
     items.size_medium.set_text(strings.size_medium)?;
@@ -1111,6 +1194,7 @@ fn apply_menu_action(app: &AppHandle, action: TrayAction) {
             Some(("startAtLogin", serde_json::json!(target)))
         }
         TrayAction::SetKeepOnLine(keep) => Some(("keepOnLine", serde_json::json!(keep))),
+        TrayAction::SetKeepForDays(policy) => Some(("keepForDays", serde_json::json!(policy))),
         TrayAction::SetCardSize(size) => Some(("cardSize", serde_json::json!(size))),
         TrayAction::SetLanguage(None) => Some(("language", serde_json::json!("system"))),
         TrayAction::SetLanguage(Some(lang)) => Some(("language", serde_json::json!(lang.tag()))),
@@ -1159,7 +1243,7 @@ fn handle_icon_event(app: &AppHandle, event: &TrayIconEvent) {
 mod tests {
     use super::*;
 
-    use crate::settings::Theme;
+    use crate::settings::{KeepForDays, Theme};
 
     /// Plan Step 1 from the task brief: the menu model follows the panel visibility and settings.
     #[test]
@@ -1169,6 +1253,7 @@ mod tests {
         assert_eq!(visible.toggle_label, "Hide line");
         assert!(visible.handle_screenshots);
         assert_eq!(visible.keep_on_line, KeepOnLine::Fit);
+        assert_eq!(visible.keep_for_days, KeepForDays::Forever);
 
         let hidden = menu_state(&settings, false, 0, None, false, Lang::En);
         assert_eq!(hidden.toggle_label, "Show line");
@@ -1198,6 +1283,7 @@ mod tests {
         settings.sound = false;
         settings.start_at_login = true;
         settings.keep_on_line = KeepOnLine::Limit(50);
+        settings.keep_for_days = KeepForDays::Days(30);
         settings.card_size = CardSize::Large;
         settings.extra_folders = vec![r"C:\Shots".to_string()];
         let state = menu_state(&settings, false, 1, None, true, Lang::En);
@@ -1210,6 +1296,7 @@ mod tests {
         assert!(!state.sound);
         assert!(state.start_at_login);
         assert_eq!(state.keep_on_line, KeepOnLine::Limit(50));
+        assert_eq!(state.keep_for_days, KeepForDays::Days(30));
         assert_eq!(state.card_size, CardSize::Large);
         assert_eq!(state.extra_folders, vec![r"C:\Shots".to_string()]);
         assert!(state.add_folder_enabled);
@@ -1302,6 +1389,22 @@ mod tests {
         assert_eq!(
             action_for(ID_KEEP_100),
             Some(TrayAction::SetKeepOnLine(KeepOnLine::Limit(100)))
+        );
+        assert_eq!(
+            action_for(ID_KEEP_FOREVER),
+            Some(TrayAction::SetKeepForDays(KeepForDays::Forever))
+        );
+        assert_eq!(
+            action_for(ID_KEEP_FOR_7),
+            Some(TrayAction::SetKeepForDays(KeepForDays::Days(7)))
+        );
+        assert_eq!(
+            action_for(ID_KEEP_FOR_30),
+            Some(TrayAction::SetKeepForDays(KeepForDays::Days(30)))
+        );
+        assert_eq!(
+            action_for(ID_KEEP_FOR_90),
+            Some(TrayAction::SetKeepForDays(KeepForDays::Days(90)))
         );
         assert_eq!(
             action_for(ID_SIZE_SMALL),

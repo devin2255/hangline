@@ -10,8 +10,7 @@ or trim a recording, and click × to take it down.
 - License: MIT (app), see `LICENSE` and `THIRD_PARTY_NOTICES.md`; inspired by Tendedero (MIT with
   name/icon restriction), independent Windows implementation, original name/icon/art.
 - Price: free / open source.
-- Status: 1.0.0 source release; unsigned installer (SmartScreen may warn), no public download
-  unless the operator publishes a GitHub Release.
+- Status: 1.1.0 release; unsigned installer (SmartScreen may warn), published on GitHub Releases.
 
 ## Assets
 

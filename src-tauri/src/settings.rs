@@ -3,8 +3,9 @@
 //!
 //! # Schema
 //!
-//! The 18 keys are serialized in camelCase (`captureHotkey`, `keepOnLine`, ...) so the JSON file
-//! and the IPC payloads share the same names as the TypeScript `Settings` interface. Unknown keys
+//! The 18 design-spec keys are serialized in camelCase (`captureHotkey`, `keepOnLine`, ...) so the
+//! JSON file and the IPC payloads share the same names as the TypeScript `Settings` interface; the
+//! `keepForDays` age-retention extension follows the same rule. Unknown keys
 //! in an existing file are ignored and missing keys fall back to [`Settings::default`]
 //! (`#[serde(default)]`), which is the migration path for files written by older builds.
 //!
@@ -132,7 +133,64 @@ impl<'de> Deserialize<'de> for KeepOnLine {
     }
 }
 
-/// The 18 user settings from design spec 3.6.
+/// How long cards may stay on the line before the age sweep takes them down (`keepForDays`).
+///
+/// [`KeepForDays::Forever`] is the default and the pre-existing (1.0) behavior: cards only leave
+/// the line through the keep-count cap, a manual take-down or a missing file. [`KeepForDays::Days`]
+/// is a fixed 7/30/90-day window; it is an extension over the 18 design-spec settings, owned by the
+/// tray "Keep for" submenu. Expiry is evaluated by `AppState::trim_expired` (state) and
+/// `retention::sweep` (lifecycle + Recycle Bin cleanup).
+///
+/// On the wire this is the string `"forever"` or the numbers `7`/`30`/`90`; the manual
+/// `Serialize`/`Deserialize` implementations below produce and accept exactly those forms.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum KeepForDays {
+    /// Never expire cards (default).
+    Forever,
+    /// Drop cards older than this many days; only 7/30/90 are valid.
+    Days(u16),
+}
+
+impl Default for KeepForDays {
+    fn default() -> Self {
+        Self::Forever
+    }
+}
+
+/// Helper for the two accepted JSON shapes of [`KeepForDays`].
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum KeepForDaysRepr {
+    Word(String),
+    Count(u16),
+}
+
+impl Serialize for KeepForDays {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Forever => serializer.serialize_str("forever"),
+            Self::Days(days) => serializer.serialize_u16(*days),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for KeepForDays {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        match KeepForDaysRepr::deserialize(deserializer)? {
+            KeepForDaysRepr::Word(word) if word == "forever" => Ok(Self::Forever),
+            KeepForDaysRepr::Count(days) if matches!(days, 7 | 30 | 90) => Ok(Self::Days(days)),
+            other => Err(serde::de::Error::custom(format!(
+                "keepForDays must be \"forever\" or one of 7, 30, 90; got {}",
+                match other {
+                    KeepForDaysRepr::Word(word) => format!("\"{word}\""),
+                    KeepForDaysRepr::Count(days) => days.to_string(),
+                }
+            ))),
+        }
+    }
+}
+
+/// The 18 design-spec user settings plus the `keepForDays` age-retention extension.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Settings {
@@ -158,6 +216,8 @@ pub struct Settings {
     pub show_over_full_screen: bool,
     /// Maximum number of cards to keep.
     pub keep_on_line: KeepOnLine,
+    /// Age-retention policy (`"forever"` or 7/30/90 days; design extension).
+    pub keep_for_days: KeepForDays,
     /// Card scale.
     pub card_size: CardSize,
     /// Play copy/discard sounds.
@@ -188,6 +248,7 @@ impl Default for Settings {
             top_edge_reveal: false,
             show_over_full_screen: false,
             keep_on_line: KeepOnLine::Fit,
+            keep_for_days: KeepForDays::Forever,
             card_size: CardSize::Medium,
             sound: true,
             start_at_login: false,
@@ -246,6 +307,7 @@ impl Settings {
             "topEdgeReveal" => self.top_edge_reveal = expected_bool(key, &value)?,
             "showOverFullScreen" => self.show_over_full_screen = expected_bool(key, &value)?,
             "keepOnLine" => self.keep_on_line = expected_enum(key, &value)?,
+            "keepForDays" => self.keep_for_days = expected_enum(key, &value)?,
             "cardSize" => self.card_size = expected_enum(key, &value)?,
             "sound" => self.sound = expected_bool(key, &value)?,
             "startAtLogin" => self.start_at_login = expected_bool(key, &value)?,
@@ -485,7 +547,8 @@ fn expected_str<'v>(key: &str, value: &'v Value) -> Result<&'v str, SettingsErro
         .ok_or_else(|| invalid(key, "expected a string"))
 }
 
-/// Deserializes a string enum (`CardSize`, `Theme`, `KeepOnLine`), rejecting unknown values.
+/// Deserializes a string enum (`CardSize`, `Theme`, `KeepOnLine`, `KeepForDays`), rejecting
+/// unknown values.
 fn expected_enum<T: DeserializeOwned>(key: &str, value: &Value) -> Result<T, SettingsError> {
     serde_json::from_value(value.clone()).map_err(|err| invalid(key, err.to_string()))
 }
@@ -662,7 +725,7 @@ mod tests {
     #[test]
     fn defaults_match_spec() {
         let s = Settings::default();
-        // All 18 keys from design spec 3.6, in table order.
+        // All 18 design-spec keys (spec 3.6) plus the age-retention extension, in table order.
         assert_eq!(s.capture_hotkey, "Ctrl+Alt+S");
         assert_eq!(s.toggle_hotkey, "Ctrl+Alt+T");
         assert!(s.watch_system_screenshots);
@@ -674,6 +737,7 @@ mod tests {
         assert!(!s.top_edge_reveal);
         assert!(!s.show_over_full_screen);
         assert_eq!(s.keep_on_line, KeepOnLine::Fit);
+        assert_eq!(s.keep_for_days, KeepForDays::Forever);
         assert_eq!(s.card_size, CardSize::Medium);
         assert!(s.sound);
         assert!(!s.start_at_login);
@@ -684,10 +748,14 @@ mod tests {
     }
 
     #[test]
-    fn default_json_has_exactly_the_eighteen_camel_case_keys() {
+    fn default_json_has_exactly_the_nineteen_camel_case_keys() {
         let value = serde_json::to_value(Settings::default()).expect("serialize defaults");
         let object = value.as_object().expect("settings must be a JSON object");
-        assert_eq!(object.len(), 18, "spec 3.6 defines exactly 18 keys");
+        assert_eq!(
+            object.len(),
+            19,
+            "18 design-spec keys plus the keepForDays extension"
+        );
         for key in [
             "captureHotkey",
             "toggleHotkey",
@@ -700,6 +768,7 @@ mod tests {
             "topEdgeReveal",
             "showOverFullScreen",
             "keepOnLine",
+            "keepForDays",
             "cardSize",
             "sound",
             "startAtLogin",
@@ -712,6 +781,7 @@ mod tests {
         }
         assert_eq!(object["captureHotkey"], json!("Ctrl+Alt+S"));
         assert_eq!(object["keepOnLine"], json!("fit"));
+        assert_eq!(object["keepForDays"], json!("forever"));
         assert_eq!(object["cardSize"], json!("medium"));
         assert_eq!(object["theme"], json!("system"));
         assert_eq!(object["revealPeekMs"], json!(2500));
@@ -761,6 +831,11 @@ mod tests {
             ("keepOnLine", json!(7)),
             ("keepOnLine", json!("25")),
             ("keepOnLine", json!(null)),
+            ("keepForDays", json!(0)),
+            ("keepForDays", json!(1)),
+            ("keepForDays", json!("7")),
+            ("keepForDays", json!("always")),
+            ("keepForDays", json!(null)),
         ] {
             assert!(
                 s.set_json(key, value.clone()).is_err(),
@@ -777,6 +852,10 @@ mod tests {
         assert_eq!(s.keep_on_line, KeepOnLine::Limit(50));
         s.set_json("keepOnLine", json!("fit")).unwrap();
         assert_eq!(s.keep_on_line, KeepOnLine::Fit);
+        s.set_json("keepForDays", json!(30)).unwrap();
+        assert_eq!(s.keep_for_days, KeepForDays::Days(30));
+        s.set_json("keepForDays", json!("forever")).unwrap();
+        assert_eq!(s.keep_for_days, KeepForDays::Forever);
         s.set_json("watchClipboard", json!(false)).unwrap();
         assert!(!s.watch_clipboard);
     }
@@ -949,6 +1028,11 @@ mod tests {
         assert_eq!(loaded.capture_hotkey, "Ctrl+Alt+S");
         assert_eq!(loaded.reveal_peek_ms, 2500);
         assert!(loaded.reveal_on_new);
+        assert_eq!(
+            loaded.keep_for_days,
+            KeepForDays::Forever,
+            "a settings file written before keepForDays existed must keep cards forever"
+        );
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -966,6 +1050,37 @@ mod tests {
         for rejected in [json!(0), json!(7), json!("25"), json!("all"), json!(-25)] {
             assert!(
                 serde_json::from_value::<KeepOnLine>(rejected.clone()).is_err(),
+                "{rejected} must be rejected"
+            );
+        }
+    }
+
+    /// The age-retention policy serializes as `"forever"` or one of 7/30/90 (design extension);
+    /// any other number/word would let a hand-edited settings.json bypass the fixed menu values.
+    #[test]
+    fn keep_for_days_serializes_as_forever_or_the_fixed_windows() {
+        assert_eq!(
+            serde_json::to_value(KeepForDays::Forever).unwrap(),
+            json!("forever")
+        );
+        assert_eq!(
+            serde_json::to_value(KeepForDays::Days(7)).unwrap(),
+            json!(7)
+        );
+        for accepted in [json!("forever"), json!(7), json!(30), json!(90)] {
+            let parsed: KeepForDays = serde_json::from_value(accepted.clone()).unwrap();
+            assert_eq!(serde_json::to_value(parsed).unwrap(), accepted);
+        }
+        for rejected in [
+            json!(0),
+            json!(1),
+            json!(60),
+            json!("7"),
+            json!("all"),
+            json!(-7),
+        ] {
+            assert!(
+                serde_json::from_value::<KeepForDays>(rejected.clone()).is_err(),
                 "{rejected} must be rejected"
             );
         }

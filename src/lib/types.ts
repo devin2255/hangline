@@ -72,6 +72,9 @@ export type ItemKind =
 /** How many cards stay on the line (spec 3.6: `"fit"` or 25/50/100). */
 export type KeepOnLine = "fit" | 25 | 50 | 100;
 
+/** Age-retention policy (design extension `keepForDays`): `"forever"` or 7/30/90 days. */
+export type KeepForDays = "forever" | 7 | 30 | 90;
+
 /** Card scale (spec 3.6 `cardSize`). */
 export type CardSize = "small" | "medium" | "large";
 
@@ -114,7 +117,7 @@ export interface Item {
   updatedAt?: number;
 }
 
-/** The 18 user settings from design spec 3.6 (Rust `Settings`). */
+/** The 18 design-spec user settings plus the `keepForDays` age-retention extension (Rust `Settings`). */
 export interface Settings {
   /** Global capture accelerator, normalized (`Ctrl+Alt+S`). */
   captureHotkey: string;
@@ -131,6 +134,8 @@ export interface Settings {
   topEdgeReveal: boolean;
   showOverFullScreen: boolean;
   keepOnLine: KeepOnLine;
+  /** Age retention: `"forever"` (default) or keep the last 7/30/90 days. */
+  keepForDays: KeepForDays;
   cardSize: CardSize;
   sound: boolean;
   startAtLogin: boolean;

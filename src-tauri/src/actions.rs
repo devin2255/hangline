@@ -48,6 +48,8 @@ pub enum SettingAction {
     DisableAutostart,
     /// Rebuild the tray menu in the newly selected language.
     RebuildTray,
+    /// Run one age-retention sweep immediately (`keepForDays` changed).
+    SweepRetention,
 }
 
 impl SettingAction {
@@ -62,6 +64,7 @@ impl SettingAction {
             Self::EnableAutostart => "enable autostart",
             Self::DisableAutostart => "disable autostart",
             Self::RebuildTray => "rebuild tray",
+            Self::SweepRetention => "sweep age retention",
         }
     }
 
@@ -130,6 +133,11 @@ pub fn actions_for_change(key: &str, old: &Settings, new: &Settings) -> Vec<Sett
         "language" if old.language != new.language => {
             actions.push(SettingAction::RebuildTray);
         }
+        // A shorter (or newly enabled) age window must take effect now, not at the next hourly tick.
+        // The sweep itself is soft: it reports failures through logs and never rolls the setting back.
+        "keepForDays" if old.keep_for_days != new.keep_for_days => {
+            actions.push(SettingAction::SweepRetention);
+        }
         _ => {}
     }
     actions
@@ -152,7 +160,8 @@ pub fn hotkey_target_for_key(key: &str) -> Option<hotkeys::Target> {
 /// Order of operations:
 /// 1. validate + persist the new value (`AppState::set_json`; a rejected value never reaches here);
 /// 2. run the planned side effects — hard failures restore the previous settings and return the
-///    error, soft failures only log;
+///    error, soft failures only log (a `keepForDays` change also starts the immediate age sweep,
+///    which runs on its own thread and reports any problem through the logs);
 /// 3. re-apply the panel geometry for the size/limit keys (single geometry owner, Task 14);
 /// 4. broadcast the new full state and refresh the tray.
 ///
@@ -254,6 +263,12 @@ fn run_actions(
                 // The language changed; every label has to be re-rendered. A failure here is
                 // cosmetic (the next `sync_state` retries), never a rollback reason.
                 tray::rebuild(app);
+                Ok(())
+            }
+            SettingAction::SweepRetention => {
+                // Runs after the value was persisted; the worker trims the state, broadcasts the
+                // trimmed snapshot and recycles the expired owned screenshots on its own thread.
+                crate::retention::sweep_async(app);
                 Ok(())
             }
         };
@@ -550,7 +565,7 @@ mod tests {
 
     use serde_json::json;
 
-    use crate::settings::{CardSize, KeepOnLine};
+    use crate::settings::{CardSize, KeepForDays, KeepOnLine};
 
     /// Scratch directory under `target/` (git-ignored); never touches `%LOCALAPPDATA%`.
     fn test_dir(tag: &str) -> PathBuf {
@@ -710,6 +725,20 @@ mod tests {
             actions("language", json!("zh-Hans")),
             vec![SettingAction::RebuildTray]
         );
+        // Age retention: changing the window must run the sweep immediately (soft action).
+        assert_eq!(
+            actions("keepForDays", json!(7)),
+            vec![SettingAction::SweepRetention]
+        );
+        // Turning the policy off again is a change too: sweep once with the new (forever) policy.
+        let mut old = Settings::default();
+        old.keep_for_days = KeepForDays::Days(30);
+        let mut new = old.clone();
+        new.keep_for_days = KeepForDays::Forever;
+        assert_eq!(
+            actions_for_change("keepForDays", &old, &new),
+            vec![SettingAction::SweepRetention]
+        );
     }
 
     /// Palette/theme/size-like keys are frontend-only or handled by the geometry path: they must
@@ -750,6 +779,7 @@ mod tests {
             "watchClipboard",
             "extraFolders",
             "language",
+            "keepForDays",
         ] {
             assert!(
                 actions_for_change(key, &old, &new).is_empty(),
@@ -791,6 +821,7 @@ mod tests {
             SettingAction::StartClipboardListener,
             SettingAction::StopClipboardListener,
             SettingAction::RebuildTray,
+            SettingAction::SweepRetention,
         ] {
             assert!(
                 !action.is_hard(),

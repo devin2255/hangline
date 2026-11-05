@@ -8,7 +8,7 @@ Hangline 是一个 Windows 桌面应用：它把一条细绳挂在屏幕顶部�
 
 仓库：<https://github.com/devin2255/hangline>
 
-> **状态：Hangline 1.0.0 源码发布（P1 核心 + P2 视觉 + P3 标注/录屏 + P4 多屏设置 + P5 打包）。**
+> **状态：Hangline 1.1.0 发布（P1 核心 + P2 视觉 + P3 标注/录屏 + P4 多屏设置 + P5 打包 + 按时间保留）。**
 > 公开源码仓库为 <https://github.com/devin2255/hangline>；配置签名 secrets 后，`v*` tag 工作流会生成 GitHub Release，也可随时在本地构建安装包与 portable ZIP。安装包未签名（SmartScreen 可能提示未知发布者）。人工验收记录见 [`docs/acceptance/P1-core.md`](docs/acceptance/P1-core.md) … [`P5-core.md`](docs/acceptance/P5-core.md)。
 
 ![晾在绳上的玻璃卡片](docs/experiments/P1-panel-ui-100pct-3cards.png)
@@ -34,12 +34,12 @@ P4 多屏 100%/150% 缩放放置（仅应用 UI，中性合成卡片；面板截
 
 更多 P4 证据：[`docs/experiments/P4-multimon-settings.md`](docs/experiments/P4-multimon-settings.md)、[`docs/acceptance/P4-core.md`](docs/acceptance/P4-core.md)。
 
-## 安装（1.0.0 源码发布）
+## 安装（1.1.0 发布）
 
 Windows 10 22H2 或 Windows 11，x64。可从 GitHub Release（配置后由 tag 工作流生成）下载，或按下方“从源码构建”用 `node scripts/release/build-release.mjs --sign` 在本地构建发布产物。
 
-- `Hangline_1.0.0_x64-setup.exe` —— 当前用户安装到 `%LOCALAPPDATA%\Programs\Hangline`（无需管理员），开始菜单快捷方式（桌面快捷方式可选）、HKCU 卸载项、内置 WebView2 引导（仅在没有 WebView2 的机器上需要联网）。卸载时会询问保留或删除 Hangline 数据（默认保留）。
-- `Hangline_1.0.0_x64-portable.zip` —— 解压即用；数据仍在 `%LOCALAPPDATA%\Hangline`（真正的便携模式属 V1.1）。
+- `Hangline_1.1.0_x64-setup.exe` —— 当前用户安装到 `%LOCALAPPDATA%\Programs\Hangline`（无需管理员），开始菜单快捷方式（桌面快捷方式可选）、HKCU 卸载项、内置 WebView2 引导（仅在没有 WebView2 的机器上需要联网）。卸载时会询问保留或删除 Hangline 数据（默认保留）。
+- `Hangline_1.1.0_x64-portable.zip` —— 解压即用；数据仍在 `%LOCALAPPDATA%\Hangline`（真正的便携模式尚未支持）。
 - **未签名：** SmartScreen 会提示未知发布者；请用 `SHA256SUMS.txt` 校验。代码签名计划在 V1 之后。
 - **网络：** 应用保持本地；**唯一**网络请求是更新检查（`autoCheckUpdates` 开启时每日一次，或托盘手动检查），更新包会先验签再安装。发布端点/仓库目前是占位，需运营者创建 GitHub 仓库后替换。
 
@@ -59,8 +59,9 @@ Windows 10 22H2 或 Windows 11，x64。可从 GitHub Release（配置后由 tag 
 - **长按标注。** 长按截图 0.45 s 打开无边框编辑器：画笔（3 粗细/6 色）、矩形、箭头、多行文字、裁剪、≥20 步撤销；保存时合成全分辨率 PNG、原子替换原文件、刷新缩略图，卡片立即换新。监听目录里的文件只读（保存禁用）。
 - **长按裁剪录屏。** Game Bar 录屏显示首帧 + 播放角标；长按打开裁剪窗口（双滑块 + `<video>` 预览）。导出走 Windows Media Composition，保留音频轨，原子替换原文件并刷新卡片；失败时原文件不动，并提供“用默认播放器打开”。上限 2 GB / 60 分钟。
 - **留得多时可翻阅。** 保留数量设为 25/50/100 后，线上只保留最新 N 张（旧卡片下线，**文件仍留在截图目录**），滚轮（或触控板）可翻阅；最新一张始终在右侧。100 张实测 60 fps。
+- **按时间自动清理（可选）。** 托盘 → **保留策略**：永久保留（默认）或只保留最近 7 / 30 / 90 天。到期的卡片自动下线；`%LOCALAPPDATA%\Hangline\Screenshots` 里的自有截图进回收站（可还原），而监听目录、系统截图与录屏的原文件永不删除。启动时、运行中每小时、以及每次修改保留策略后都会立即检查一次。
 - **全屏时不打扰。** 全屏游戏/演示/忙状态会自动隐藏线，退出后 1 秒内恢复；「全屏应用上」只在手动固定线时生效。
-- **托盘设置。** 监听开关、额外监听目录（最多 3 个）、保留数量、卡片尺寸（小/中/大）、快捷键（含冲突回滚）、声音、开机启动、语言（English / 简体中文 / 跟随系统）、退出。
+- **托盘设置。** 监听开关、额外监听目录（最多 3 个）、保留数量、保留策略、卡片尺寸（小/中/大）、快捷键（含冲突回滚）、声音、开机启动、语言（English / 简体中文 / 跟随系统）、退出。
 - **多显示器与逐显示器 DPI。** 线跟随鼠标指针跨屏（停留 500 ms 后迁移），按 100%/125%/150% 缩放重排卡片，并在显示器变化/任务栏移动后重新贴边。
 - **设置可持久。** 两个全局热键可改键（冲突检测+回滚），开机启动走标准 Run 键（带引号、支持含空格路径），声音、尺寸、主题、语言均可设置。
 - **本地、安静。** 没有账号、遥测、统计或云同步；唯一的网络请求是带签名的更新检查（开启时每日一次，或托盘手动检查）。
@@ -113,11 +114,12 @@ cargo check --manifest-path src-tauri/Cargo.toml --all-targets # 0 warnings
 | 拖出卡片 | 原生文件拖拽：拖到应用＝复制，拖到文件夹＝移动，拖到回收站＝删除；卡片随结果更新。 |
 | 卡片上的 × | 取下线。Hangline 自有截图目录中的图片进回收站；监听目录中的文件只下线、不删除。 |
 | 鼠标滚轮 / 触控板 | 保留数量为 25/50/100 时翻阅更早的卡片。 |
-| 托盘图标 | 左键切换线的显示；右键打开设置：来源开关、监听目录、保留数量、尺寸、快捷键、声音、开机启动、检查更新、语言、退出。 |
+| 托盘 → 保留策略 | 按时间清理：永久保留（默认）或只保留最近 7 / 30 / 90 天。到期的自有截图进回收站；监听目录/系统截图/录屏原文件永不删除，只下线。 |
+| 托盘图标 | 左键切换线的显示；右键打开设置：来源开关、监听目录、保留数量、保留策略、尺寸、快捷键、声音、开机启动、检查更新、语言、退出。 |
 
 快捷键可在 **托盘 → 快捷键** 中修改；新键若已被占用会被拒绝并恢复旧键。额外监听目录通过 **托盘 → 也监听文件夹 → 添加文件夹…** 添加（最多 3 个）。
 
-「放得下多少」模式下，每屏显示 `max(3, min(12, floor((逻辑面板宽度 - 200) / 卡片间距)))` 张卡片（1920 逻辑像素宽、中号尺寸时为 9 张；1920 物理屏在 150% 缩放下逻辑宽 1280，因此为 6 张），保留最新的若干张；设为 25/50/100 可保留更多并滚动查看。卡片尺寸可选小 / 中 / 大。
+「放得下多少」模式下，每屏显示 `max(3, min(12, floor((逻辑面板宽度 - 200) / 卡片间距)))` 张卡片（1920 逻辑像素宽、中号尺寸时为 9 张；1920 物理屏在 150% 缩放下逻辑宽 1280，因此为 6 张），保留最新的若干张；设为 25/50/100 可保留更多并滚动查看。卡片尺寸可选小 / 中 / 大。卡片也可以按时间过期：**托盘 → 保留策略** 默认为永久保留；选 7/30/90 天后，更旧的卡片下线、自有截图进回收站（其它来源的文件只下线、不删除）。
 
 数据位于 `%LOCALAPPDATA%\Hangline\`（`settings.json`、`state.json`、`Screenshots\`）；日志位于 `%LOCALAPPDATA%\app.hangline.Hangline\logs\`。
 
@@ -130,15 +132,16 @@ cargo check --manifest-path src-tauri/Cargo.toml --all-targets # 0 warnings
 - **唯一的网络请求是更新检查。** `autoCheckUpdates` 开启时每日一次，或从托盘手动检查；更新端点是唯一访问的主机。没有统计、遥测、账号、云同步或崩溃上报。
 - 只有在用户主动选择时才会用默认浏览器打开链接（例如文档或更新提示里的 release 页面）；「打开截图文件夹」只是本地打开资源管理器。更新端点是公开仓库 `devin2255/hangline` 的 GitHub Releases 地址。
 - 截图与录屏留在你的磁盘上。Hangline 只会把剪贴板图片、以及你显式监听目录中的新文件复制到 `%LOCALAPPDATA%\Hangline\Screenshots\`，不会上传到任何地方。
+- **按时间清理是本地的、可撤销的。** 设置「保留策略」窗口后，到期的自有截图会移入 Windows 回收站；监听目录中的文件、系统截图与录屏永远不会被删除，只会从线上取下。
 - 剪贴板采集只接受纯图片，并跳过看起来隐私的复制（密码/文本、`ExcludeClipboardContentFromMonitorProcessing`、`CanIncludeInClipboardHistory=0`、`org.nspasteboard.ConcealedType`、文件）。
 - 本地日志与状态文件可能包含本地文件路径和事件元数据，但不包含图像内容，且只留在本机。
 
 ## 已知限制
 
-Hangline 1.0.0 已作为源码发布；P1–P5 功能里程碑已实现，剩余为需人工/延后验证的项目（详见验收文档）：
+Hangline 1.1.0 已发布；P1–P5 功能里程碑已实现，剩余为需人工/延后验证的项目（详见验收文档）：
 
 - **人工验收待执行。** 以下项目仍需真人在解锁桌面上确认：真实物理 `Ctrl+Alt+S`/`Ctrl+Alt+T`、真实托盘点击、真实拖拽目标（微信/Figma、文件夹移动、回收站）、真实应用粘贴（微信/QQ/浏览器）、真实滚轮/触控板滚动、真人鼠标跨屏跟随、系统文件夹选择器。它们在 [`docs/acceptance/P1-core.md`](docs/acceptance/P1-core.md) 中标记为 `MANUAL-PENDING`，不是「已通过」。
-- **未签名、无公开发布。** 1.0.0 安装包/portable ZIP 可本地构建；没有 Authenticode 签名（SmartScreen 会提示未知发布者），本仓库也不发布 GitHub Release。自动更新已接入并验签；发布端点仍是占位，需运营者创建仓库后替换（见 `docs/RELEASE.md`）。
+- **未签名。** 1.1.0 安装包/portable ZIP 由 tag 工作流构建并发布到 GitHub Releases；没有 Authenticode 签名（SmartScreen 会提示未知发布者）。自动更新已接入并按 `tauri.conf.json` 中的更新公钥验签（见 `docs/RELEASE.md`）。
 - **卡片右键菜单**未实现（V1.1）。目前卡片操作是单击 / 双击 / 拖出 / ×。
 - **标注/录屏裁剪与全屏抑制**已在源码实现（P3/P4）；人工验收见 P3/P4 验收记录。
 - **语言：** 目前只内置英文与简体中文（更多语言属后续版本）；少数原生错误对话框尚未本地化（有的仅英文，有的仅中文）。
@@ -163,7 +166,7 @@ Hangline 1.0.0 已作为源码发布；P1–P5 功能里程碑已实现，剩余
 
 ## 许可与归属
 
-Hangline 以 [MIT License](LICENSE) 授权（1.0.0 源码发布）。第三方声明与依赖许可见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
+Hangline 以 [MIT License](LICENSE) 授权（1.1.0 发布）。第三方声明与依赖许可见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
 
 Hangline 的形态**灵感来自 [Tendedero](https://github.com/alejandrobujan/tendedero)**（MIT 附加名称/图标限制条款，© 2026 Alejandro Buján），一个 macOS 截图晾衣绳应用。Hangline 是独立的 Windows 实现：没有复制 Tendedero 的源代码、美术或翻译文本；Hangline 的名称、图标与界面美术均为本项目原创。Hangline 与 Tendedero 项目无隶属或背书关系。
 

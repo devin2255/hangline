@@ -37,7 +37,9 @@ pub fn get_app_state(state: State<'_, AppState>) -> PublicState {
 ///   on a conflict (design spec §3.11);
 /// - `startAtLogin` registers/unregisters the Windows login item;
 /// - `language` rebuilds the tray menu;
-/// - `cardSize`/`keepOnLine` re-apply the panel window geometry (Task 14).
+/// - `cardSize`/`keepOnLine` re-apply the panel window geometry (Task 14);
+/// - `keepForDays` starts the immediate age-retention sweep (expired cards leave the line, expired
+///   Hangline-owned screenshots are recycled; watched/system/recording files are never deleted).
 #[tauri::command]
 pub fn set_setting(
     key: String,

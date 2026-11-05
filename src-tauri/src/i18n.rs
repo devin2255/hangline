@@ -237,6 +237,16 @@ pub struct TrayStrings {
     pub keep_menu: &'static str,
     /// Keep as many cards as fit.
     pub keep_fit: &'static str,
+    /// Age-retention submenu title.
+    pub keep_for_menu: &'static str,
+    /// Keep every card forever (age retention off, the default).
+    pub keep_forever: &'static str,
+    /// Keep the last 7 days (expired Hangline-owned screenshots are recycled).
+    pub keep_for_7: &'static str,
+    /// Keep the last 30 days.
+    pub keep_for_30: &'static str,
+    /// Keep the last 90 days.
+    pub keep_for_90: &'static str,
     /// Card-size submenu title.
     pub size_menu: &'static str,
     /// Small cards.
@@ -302,6 +312,11 @@ pub const EN: TrayStrings = TrayStrings {
     stop_watching_menu: "Stop watching",
     keep_menu: "Keep on line",
     keep_fit: "As many as fit",
+    keep_for_menu: "Keep for",
+    keep_forever: "Keep forever",
+    keep_for_7: "Keep last 7 days",
+    keep_for_30: "Keep last 30 days",
+    keep_for_90: "Keep last 90 days",
     size_menu: "Size",
     size_small: "Small",
     size_medium: "Medium",
@@ -346,6 +361,11 @@ pub const ZH_HANS: TrayStrings = TrayStrings {
     stop_watching_menu: "停止监听",
     keep_menu: "保留数量",
     keep_fit: "放得下多少",
+    keep_for_menu: "保留策略",
+    keep_forever: "永久保留",
+    keep_for_7: "保留最近 7 天",
+    keep_for_30: "保留最近 30 天",
+    keep_for_90: "保留最近 90 天",
     size_menu: "尺寸",
     size_small: "小",
     size_medium: "中",
@@ -405,6 +425,11 @@ impl TrayStrings {
             ("stop_watching_menu", self.stop_watching_menu),
             ("keep_menu", self.keep_menu),
             ("keep_fit", self.keep_fit),
+            ("keep_for_menu", self.keep_for_menu),
+            ("keep_forever", self.keep_forever),
+            ("keep_for_7", self.keep_for_7),
+            ("keep_for_30", self.keep_for_30),
+            ("keep_for_90", self.keep_for_90),
             ("size_menu", self.size_menu),
             ("size_small", self.size_small),
             ("size_medium", self.size_medium),
@@ -462,6 +487,11 @@ mod tests {
         // The tray toggle labels are distinct in both languages (the label follows panel state).
         assert_ne!(EN.show_line, EN.hide_line);
         assert_ne!(ZH_HANS.show_line, ZH_HANS.hide_line);
+        // Age retention (keepForDays) belongs to the same frozen tray table in both languages.
+        assert_eq!(EN.keep_for_menu, "Keep for");
+        assert_eq!(ZH_HANS.keep_for_menu, "保留策略");
+        assert_eq!(EN.keep_forever, "Keep forever");
+        assert_eq!(ZH_HANS.keep_forever, "永久保留");
     }
 
     #[test]

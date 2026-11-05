@@ -22,6 +22,7 @@ mod i18n;
 mod ipc;
 mod item;
 mod panel;
+mod retention;
 mod reveal;
 mod settings;
 mod shortcut_window;
@@ -926,6 +927,12 @@ pub fn run() {
             // emit goes through the single serialized broadcast choke point (which also refreshes
             // the tray state).
             let _ = app_state::emit_state(&handle);
+
+            // Age retention (keepForDays): one immediate sweep at startup, then hourly. Started
+            // after the initial emit so the startup sweep cannot bump the revision first and make
+            // that emit non-deterministic (the broadcast gate drops an equal-revision re-emit).
+            // The thread is the only owner of the Recycle Bin cleanup for expired owned screenshots.
+            retention::spawn(&handle);
             Ok(())
         })
         .build(tauri::generate_context!())

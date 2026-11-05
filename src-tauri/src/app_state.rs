@@ -22,8 +22,20 @@
 //!
 //! Trimming **never deletes files**: retained-out cards only leave the state, while their source
 //! files and other metadata stay on disk (design spec §4.8 narrowed by the P4 global constraint:
-//! there is no "keep files" setting yet, so retention is state-only). Their cached thumbnails are
-//! left to the existing id-based orphan sweep (cache only), so retention adds no file-deletion path.
+//! there is no "keep files" setting yet, so count retention is state-only). Their cached thumbnails
+//! are left to the existing id-based orphan sweep (cache only), so the count cap adds no
+//! file-deletion path. The age cap below is the one explicit exception: it recycles Hangline-owned
+//! screenshots *after* the lock, through the same decision table as a manual take-down.
+//!
+//! # Age retention (design extension: `keepForDays`)
+//!
+//! `keepForDays` is a second, independent cap: [`AppState::trim_expired`] drops cards whose
+//! `added_at` is older than the chosen 7/30/90-day window (or never, for the default
+//! [`KeepForDays::Forever`]). The in-memory trim and one revision bump happen under the lock, and
+//! the trimmed list is persisted under it like every other mutation; source-file recycling and
+//! thumbnail removal happen after the lock (the caller — `retention::sweep` — also broadcasts the
+//! snapshot and recycles the expired Hangline-owned screenshots). The two caps compose: a card
+//! leaves the line when either one says so.
 
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
@@ -37,7 +49,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::geometry::PhysicalRect;
 use crate::item::Item;
-use crate::settings::{self, KeepOnLine, Settings};
+use crate::settings::{self, KeepForDays, KeepOnLine, Settings};
 use crate::store;
 
 /// How long a capture selection rect stays available for its fly-in (P2-5).
@@ -71,7 +83,7 @@ struct CaptureOrigin {
 pub struct PublicState {
     /// Items hung on the line, ordered by `added_at` ascending.
     pub items: Vec<Item>,
-    /// The 18 user settings from design spec 3.6.
+    /// The 18 design-spec user settings plus the `keepForDays` retention extension.
     pub settings: Settings,
     /// Application version (Cargo/package version).
     pub version: String,
@@ -133,6 +145,22 @@ impl Inner {
             .retain(|origin| now.saturating_duration_since(origin.at) <= CAPTURE_ORIGIN_TTL);
     }
 
+    /// Applies the age-retention policy to the in-memory list and logs when cards left.
+    ///
+    /// Runs under the state lock but performs no I/O (the caller persists), and it never touches
+    /// files or thumbnails: recycling is the lifecycle half in `retention::sweep`.
+    fn enforce_age_retention(&mut self, now_ms: i64) -> Vec<Item> {
+        let expired = drop_expired(&mut self.items, self.settings.keep_for_days, now_ms);
+        if !expired.is_empty() {
+            log::info!(
+                "age retention: dropped {} oldest card(s); keepForDays = {:?}; files handled by the sweep",
+                expired.len(),
+                self.settings.keep_for_days
+            );
+        }
+        expired
+    }
+
     /// Applies the retention cap to the in-memory list and logs one info line when cards left.
     ///
     /// Runs under the state lock but performs no I/O (the caller persists the trimmed list), and it
@@ -173,6 +201,42 @@ fn drop_oldest(items: &mut Vec<Item>, limit: KeepOnLine) -> usize {
         items.drain(..dropped);
     }
     dropped
+}
+
+/// Milliseconds in one day (age retention is day-granularity; no calendar/DST arithmetic).
+const DAY_MS: i64 = 86_400_000;
+
+/// The oldest `added_at` that may stay on the line for `policy` at `now_ms`.
+///
+/// [`KeepForDays::Forever`] yields `None` (no card ever expires). A card is expired when
+/// `added_at < cutoff`, so a card exactly `N` days old is still inside "the last N days"; the
+/// saturating arithmetic keeps a nonsensical clock from panicking.
+pub fn cutoff_ms(policy: KeepForDays, now_ms: i64) -> Option<i64> {
+    match policy {
+        KeepForDays::Forever => None,
+        KeepForDays::Days(days) => Some(now_ms.saturating_sub(i64::from(days) * DAY_MS)),
+    }
+}
+
+/// Removes every card older than `policy` allows; returns the removed rows oldest first.
+///
+/// `items` must be sorted by `added_at` ascending (the invariant of every mutator), so the returned
+/// rows are exactly the line's oldest prefix. Pure: no file, thumbnail or watched path is touched.
+fn drop_expired(items: &mut Vec<Item>, policy: KeepForDays, now_ms: i64) -> Vec<Item> {
+    let Some(cutoff) = cutoff_ms(policy, now_ms) else {
+        return Vec::new();
+    };
+    let mut expired = Vec::new();
+    let mut kept = Vec::with_capacity(items.len());
+    for item in items.drain(..) {
+        if item.added_at < cutoff {
+            expired.push(item);
+        } else {
+            kept.push(item);
+        }
+    }
+    *items = kept;
+    expired
 }
 
 /// The snapshot+emit gate behind [`AppState::broadcast`].
@@ -374,6 +438,31 @@ impl AppState {
         Ok(inner.snapshot())
     }
 
+    /// Removes the cards older than the `keepForDays` window, persists, returns them oldest first.
+    ///
+    /// The state half of the age sweep (`retention::sweep` owns the lifecycle): the removed rows'
+    /// files are deliberately left on disk, so the caller can recycle the Hangline-owned ones after
+    /// the lock is released. One sweep that removed something is one revision; an empty sweep is a
+    /// no-op that neither rewrites `state.json` nor bumps the revision.
+    pub fn trim_expired(&self, now_ms: i64) -> anyhow::Result<Vec<Item>> {
+        let expired = {
+            let mut inner = self.lock();
+            let expired = inner.enforce_age_retention(now_ms);
+            if expired.is_empty() {
+                return Ok(expired);
+            }
+            inner.bump();
+            store::save_atomic(&inner.dir, &inner.items)
+                .context("failed to persist the age-trimmed item list")?;
+            expired
+        };
+        // P2-7 parity with `prune`/`remove`: the cache files of rows that left the line go too.
+        for item in &expired {
+            crate::thumbnails::remove_for_id(&item.id);
+        }
+        Ok(expired)
+    }
+
     /// Applies thumbnail results from the P2-7 startup backfill (by id) and persists when changed.
     ///
     /// Only `thumb_path` and the repaired `width`/`height` are copied: another thread may have
@@ -545,7 +634,7 @@ mod tests {
 
     use serde_json::json;
 
-    use crate::settings::{CardSize, KeepOnLine, Settings, Theme};
+    use crate::settings::{CardSize, KeepForDays, KeepOnLine, Settings, Theme};
 
     /// Scratch directory under `target/` (git-ignored); never touches `%LOCALAPPDATA%`.
     fn test_dir(tag: &str) -> PathBuf {
@@ -797,6 +886,113 @@ mod tests {
         assert_eq!(retained_len(KeepOnLine::Limit(25), 30), 25);
         assert_eq!(retained_len(KeepOnLine::Limit(25), 25), 25);
         assert_eq!(retained_len(KeepOnLine::Limit(25), 10), 10);
+    }
+
+    /// Age retention is a pure, day-granularity policy: `Forever` has no cutoff, and 7/30/90 days
+    /// subtract exact 24 h days from the sweep clock (no calendar/DST dependency).
+    #[test]
+    fn age_retention_cutoff_only_applies_to_fixed_windows() {
+        let now = 1_000_000_000_000_i64;
+        assert_eq!(cutoff_ms(KeepForDays::Forever, now), None);
+        assert_eq!(
+            cutoff_ms(KeepForDays::Days(7), now),
+            Some(now - 7 * 86_400_000)
+        );
+        assert_eq!(
+            cutoff_ms(KeepForDays::Days(30), now),
+            Some(now - 30 * 86_400_000)
+        );
+        assert_eq!(
+            cutoff_ms(KeepForDays::Days(90), now),
+            Some(now - 90 * 86_400_000)
+        );
+    }
+
+    /// A card exactly N days old is still inside "the last N days" and stays; one millisecond older
+    /// has expired. `Forever` never removes anything.
+    #[test]
+    fn drop_expired_uses_the_adding_time_and_keeps_the_boundary() {
+        let dir = test_dir("age-drop");
+        let now = 1_000_000_000_000_i64;
+        let cutoff = now - 7 * 86_400_000;
+        let mut items = vec![
+            item("old", &existing_file(&dir, "old.png"), cutoff - 1),
+            item("boundary", &existing_file(&dir, "boundary.png"), cutoff),
+            item("fresh", &existing_file(&dir, "fresh.png"), cutoff + 1),
+        ];
+        let expired = drop_expired(&mut items, KeepForDays::Days(7), now);
+        let expired_ids: Vec<&str> = expired.iter().map(|row| row.id.as_str()).collect();
+        assert_eq!(expired_ids, vec!["old"]);
+        let kept_ids: Vec<&str> = items.iter().map(|row| row.id.as_str()).collect();
+        assert_eq!(kept_ids, vec!["boundary", "fresh"]);
+
+        let mut untouched = items.clone();
+        assert!(drop_expired(&mut untouched, KeepForDays::Forever, now).is_empty());
+        assert_eq!(untouched, items, "Forever must not drop anything");
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// `trim_expired` is the state half of the age sweep: it drops the expired rows, persists the
+    /// list and bumps the revision once. Files are untouched — recycling runs after the lock is
+    /// released and is the caller's job (`retention::sweep`).
+    #[test]
+    fn trim_expired_removes_persists_and_keeps_the_files() {
+        let dir = test_dir("age-trim");
+        let state = AppState::load(dir.clone());
+        let now = 1_000_000_000_000_i64;
+        let cutoff = now - 7 * 86_400_000;
+        let old = item("old", &existing_file(&dir, "old.png"), cutoff - 1);
+        let boundary = item("boundary", &existing_file(&dir, "boundary.png"), cutoff);
+        state.add_item(old.clone()).expect("add the old item");
+        state.add_item(boundary.clone()).expect("add the boundary item");
+        let before = state.set_json("keepForDays", json!(7)).expect("7 days");
+        assert_eq!(
+            before.items.len(),
+            2,
+            "the setting write alone must not trim; the sweep does"
+        );
+
+        let expired = state.trim_expired(now).expect("trim");
+        assert_eq!(expired, vec![old.clone()]);
+        let after = state.snapshot();
+        assert_eq!(
+            after.revision,
+            before.revision + 1,
+            "one sweep, one revision"
+        );
+        assert_eq!(after.items, vec![boundary.clone()]);
+        assert_eq!(
+            store::load(&dir),
+            vec![boundary.clone()],
+            "the trimmed list is persisted before the sweep returns"
+        );
+        assert!(old.path.exists(), "trim_expired only edits the state");
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// A sweep with nothing to drop is a no-op: no revision bump, no rewrite; `Forever` (the
+    /// default) can never expire a card no matter how old it is.
+    #[test]
+    fn trim_expired_no_op_does_not_bump_the_revision() {
+        let dir = test_dir("age-noop");
+        let state = AppState::load(dir.clone());
+        let now = 1_000_000_000_000_i64;
+        state
+            .add_item(item("fresh", &existing_file(&dir, "fresh.png"), now))
+            .expect("add a fresh item");
+        let before = state.set_json("keepForDays", json!(7)).expect("7 days");
+        assert!(state.trim_expired(now).expect("trim").is_empty());
+        assert_eq!(state.snapshot().revision, before.revision);
+
+        let forever = state
+            .set_json("keepForDays", json!("forever"))
+            .expect("forever");
+        assert!(state.trim_expired(i64::MAX).expect("trim forever").is_empty());
+        assert_eq!(state.snapshot().revision, forever.revision);
+
+        let _ = fs::remove_dir_all(dir);
     }
 
     /// M14: the 101st card with `keepOnLine: 100` drops only the oldest row; the newest hangs on
