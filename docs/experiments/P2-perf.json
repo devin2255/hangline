@@ -1,0 +1,57 @@
+{
+  "generatedAt": "2026-11-02T21:01:33.036Z",
+  "method": "CDP rAF frame ring in the panel webview; debug build + vite dev; isolated LOCALAPPDATA",
+  "environment": {
+    "cards": 12,
+    "visibleCards": 9,
+    "theme": "dark",
+    "cardSize": "medium",
+    "keep": "fit",
+    "window": "panel",
+    "build": "debug + vite dev",
+    "themeCoverage": "dark theme only (light theme not measured in this round)"
+  },
+  "window": {
+    "samples": 600,
+    "minSamples": 590,
+    "revealed": true,
+    "hiddenSamples": false,
+    "revealSamples": 240
+  },
+  "idle": {
+    "fpsMean": 60.00060000600005,
+    "fpsP5": 59.17159763314374,
+    "worstMs": 17,
+    "longFrames": 0,
+    "samples": 600
+  },
+  "panelDuringFly": {
+    "available": true,
+    "fpsMean": 60.01043659766919,
+    "fpsP5": 59.523809523799216,
+    "worstMs": 17,
+    "longFrames": 0,
+    "samples": 69
+  },
+  "breeze": {
+    "observed": true,
+    "fpsMean": 59.994725738396504,
+    "fpsP5": 59.523809523799216,
+    "worstMs": 16.900000000001455,
+    "longFrames": 0,
+    "samples": 91
+  },
+  "limits": {
+    "avgFps": 58,
+    "frameP95Ms": 20,
+    "worstMs": 50,
+    "minSamples": 590
+  },
+  "verdict": {
+    "avgFps": "PASS",
+    "p95Frame": "PASS",
+    "worstFrame": "PASS",
+    "samples": "PASS",
+    "stayedRevealed": "PASS"
+  }
+}

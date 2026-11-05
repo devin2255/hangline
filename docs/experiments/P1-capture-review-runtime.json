@@ -1,0 +1,320 @@
+{
+  "startedAt": "2026-11-02T04:49:57.143Z",
+  "steps": [
+    {
+      "name": "initial-state",
+      "at": "2026-11-02T04:49:59.203Z",
+      "revision": 0,
+      "items": [],
+      "session": [
+        {
+          "title": "Windows 默认锁屏界面",
+          "found": true,
+          "hwnd": 1837952,
+          "visible": true,
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "w": 1920,
+            "h": 1080
+          },
+          "client": {
+            "x": 0,
+            "y": 0,
+            "w": 1920,
+            "h": 1080
+          },
+          "framed": false,
+          "style": {
+            "raw": 2483027968,
+            "hasCaptionBits": false
+          },
+          "exStyle": {
+            "raw": 2097160,
+            "topmost": true,
+            "noActivate": false
+          }
+        },
+        {
+          "title": "Hangline",
+          "found": true,
+          "hwnd": 2100132,
+          "visible": false,
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "w": 1920,
+            "h": 210
+          },
+          "client": {
+            "x": 0,
+            "y": 0,
+            "w": 1920,
+            "h": 210
+          },
+          "framed": false,
+          "style": {
+            "raw": 80412672,
+            "hasCaptionBits": true
+          },
+          "exStyle": {
+            "raw": 135004472,
+            "topmost": true,
+            "noActivate": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "line-shown",
+      "at": "2026-11-02T04:50:02.616Z",
+      "panelWindows": [
+        {
+          "title": "Hangline",
+          "found": true,
+          "hwnd": 2100132,
+          "visible": true,
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "w": 1920,
+            "h": 210
+          },
+          "client": {
+            "x": 0,
+            "y": 0,
+            "w": 1920,
+            "h": 210
+          },
+          "framed": false,
+          "style": {
+            "raw": 348848128,
+            "hasCaptionBits": true
+          },
+          "exStyle": {
+            "raw": 135004472,
+            "topmost": true,
+            "noActivate": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "hotkey-delivery",
+      "at": "2026-11-02T04:50:04.600Z",
+      "injection": "hwnd=1837926 pid=30524 process=hangline posted=true"
+    },
+    {
+      "name": "hotkey-capture-overlay",
+      "at": "2026-11-02T04:50:08.947Z",
+      "hotkeyReadyMs": 4422,
+      "pageGeometry": {
+        "dpr": 1,
+        "innerWidth": 2560,
+        "cssScale": "1.5000",
+        "innerHeight": 720,
+        "screenX": -1280,
+        "screenY": 0,
+        "outerWidth": 3840,
+        "outerHeight": 1080,
+        "img": {
+          "naturalWidth": 3840,
+          "naturalHeight": 1080,
+          "clientWidth": 2560,
+          "clientHeight": 720
+        }
+      },
+      "windows": [
+        {
+          "title": "Hangline capture",
+          "found": true,
+          "hwnd": 1313850,
+          "visible": true,
+          "rect": {
+            "x": -1920,
+            "y": 0,
+            "w": 3840,
+            "h": 1080
+          },
+          "client": {
+            "x": -1920,
+            "y": 0,
+            "w": 3840,
+            "h": 1080
+          },
+          "framed": false,
+          "style": {
+            "raw": 348848128,
+            "hasCaptionBits": true
+          },
+          "exStyle": {
+            "raw": 262424,
+            "topmost": true,
+            "noActivate": false
+          }
+        },
+        {
+          "title": "Hangline",
+          "found": true,
+          "hwnd": 2100132,
+          "visible": false,
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "w": 1920,
+            "h": 210
+          },
+          "client": {
+            "x": 0,
+            "y": 0,
+            "w": 1920,
+            "h": 210
+          },
+          "framed": false,
+          "style": {
+            "raw": 80412672,
+            "hasCaptionBits": true
+          },
+          "exStyle": {
+            "raw": 135004472,
+            "topmost": true,
+            "noActivate": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "reveal-suppressed-during-overlay",
+      "at": "2026-11-02T04:50:13.706Z",
+      "watcherPng": "%USERPROFILE%\\AppData\\Local\\Hangline\\Screenshots\\Hangline review suspend 2026-11-02 12.50.10.png",
+      "itemCount": 1,
+      "revision": 1,
+      "panelVisible": false,
+      "overlayWindows": [
+        {
+          "title": "Hangline capture",
+          "found": true,
+          "hwnd": 1313850,
+          "visible": true,
+          "rect": {
+            "x": -1920,
+            "y": 0,
+            "w": 3840,
+            "h": 1080
+          },
+          "client": {
+            "x": -1920,
+            "y": 0,
+            "w": 3840,
+            "h": 1080
+          },
+          "framed": false,
+          "style": {
+            "raw": 348848128,
+            "hasCaptionBits": true
+          },
+          "exStyle": {
+            "raw": 262424,
+            "topmost": true,
+            "noActivate": false
+          }
+        },
+        {
+          "title": "Hangline",
+          "found": true,
+          "hwnd": 2100132,
+          "visible": false,
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "w": 1920,
+            "h": 210
+          },
+          "client": {
+            "x": 0,
+            "y": 0,
+            "w": 1920,
+            "h": 210
+          },
+          "framed": false,
+          "style": {
+            "raw": 80412672,
+            "hasCaptionBits": true
+          },
+          "exStyle": {
+            "raw": 135004472,
+            "topmost": true,
+            "noActivate": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "cancel-result",
+      "at": "2026-11-02T04:50:19.655Z",
+      "revisionBefore": 1,
+      "revisionAfter": 1,
+      "itemCount": 1,
+      "tempExists": false,
+      "panelVisibleAfterCancel": true,
+      "windows": [
+        {
+          "title": "Hangline",
+          "found": true,
+          "hwnd": 2100132,
+          "visible": true,
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "w": 1920,
+            "h": 210
+          },
+          "client": {
+            "x": 0,
+            "y": 0,
+            "w": 1920,
+            "h": 210
+          },
+          "framed": false,
+          "style": {
+            "raw": 348848128,
+            "hasCaptionBits": true
+          },
+          "exStyle": {
+            "raw": 135004472,
+            "topmost": true,
+            "noActivate": true
+          }
+        },
+        {
+          "title": "Hangline capture",
+          "found": false
+        }
+      ]
+    }
+  ],
+  "logLines": [
+    "[2026-11-02][04:49:38][hangline_lib::panel][DEBUG] panel: shown",
+    "[2026-11-02][04:49:38][hangline_lib::reveal][INFO] reveal: tuck (PointerLeave) at +737 ms (busy=false, pointer outside Some(521) ms); hiding in 300 ms",
+    "[2026-11-02][04:49:38][hangline_lib::panel][DEBUG] panel: hidden",
+    "[2026-11-02][04:49:59][hangline_lib::panel][DEBUG] panel: shown",
+    "[2026-11-02][04:49:59][hangline_lib::reveal][INFO] reveal: shown (reason SecondInstance, peek=false, items=0) at +21518 ms",
+    "[2026-11-02][04:50:04][hangline_lib::hotkeys][INFO] hotkeys: capture requested (dispatching to the capture worker thread)",
+    "[2026-11-02][04:50:04][hangline_lib::panel][DEBUG] panel: hidden",
+    "[2026-11-02][04:50:04][hangline_lib::reveal][INFO] reveal: capture suspend at +26446 ms (was_visible=true, pending hide deadline None); line hidden, other reveal paths suppressed",
+    "[2026-11-02][04:50:04][hangline_lib::capture][INFO] capture: suspended the line before the freeze (CAPTUREBLT would include it, was_visible=true)",
+    "[2026-11-02][04:50:06][hangline_lib::capture][INFO] capture: froze 3840x1080 px at (-1920, 0) into %USERPROFILE%\\AppData\\Local\\Hangline\\capture-tmp.png",
+    "[2026-11-02][04:50:06][hangline_lib::capture][INFO] capture: overlay shown at (-1920, 0) 3840x1080 px (scale 1.500)",
+    "[2026-11-02][04:50:06][hangline_lib::capture][INFO] capture: capture-ready (3840x1080 px frozen frame, scale 1.500)",
+    "[2026-11-02][04:50:10][hangline_lib::reveal][INFO] reveal: new-item request deferred while the capture overlay is open (+32686 ms)",
+    "[2026-11-02][04:50:13][hangline_lib::capture][DEBUG] capture: removed the frozen frame %USERPROFILE%\\AppData\\Local\\Hangline\\capture-tmp.png",
+    "[2026-11-02][04:50:13][hangline_lib::capture][INFO] capture: cancelled; no item or file was created",
+    "[2026-11-02][04:50:13][hangline_lib::reveal][INFO] reveal: capture ended at +35841 ms (was_visible=true, pending hide deadline None, deferred_new_item=true, request_new_item=false)",
+    "[2026-11-02][04:50:13][hangline_lib::panel][DEBUG] panel: shown",
+    "[2026-11-02][04:50:13][hangline_lib::capture][DEBUG] capture: overlay window destroyed after the session was already handled"
+  ],
+  "summary": {
+    "ok": true,
+    "reviewPng": "%USERPROFILE%\\AppData\\Local\\Hangline\\Screenshots\\Hangline review suspend 2026-11-02 12.50.10.png"
+  }
+}

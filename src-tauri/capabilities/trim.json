@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "trim",
+  "description": "trim window: scoped window permissions (the page closes through close_trim; allow-destroy covers a future in-page close path)",
+  "windows": ["trim"],
+  "permissions": ["core:default", "core:window:allow-destroy"]
+}

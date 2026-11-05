@@ -1,0 +1,422 @@
+/* Markup editor window (P3-2): borderless dark chrome, image stage, canvas overlay and crop UI. */
+
+html[data-window="annotate"],
+html[data-window="annotate"] body {
+  background: var(--annotate-window-bg);
+}
+
+/* Theme tokens: dark default (the editor is a photo tool, so the stage stays dark in both themes;
+   only the chrome follows the app theme). */
+html[data-window="annotate"] {
+  --annotate-window-bg: #121518;
+  --annotate-chrome-bg: #1a1e23;
+  --annotate-chrome-line: #2d3339;
+  --annotate-text: #eef1f5;
+  --annotate-muted: #9aa3ad;
+  --annotate-stage-bg: #0b0d10;
+  --annotate-button-bg: rgba(255, 255, 255, 0.05);
+  --annotate-button-hover: rgba(255, 255, 255, 0.12);
+  --annotate-button-active: #2f6fb5;
+  --annotate-button-active-border: #4c8dd8;
+  --annotate-primary: #2f6fb5;
+  --annotate-primary-border: #4c8dd8;
+  --annotate-primary-hover: #2f6cae;
+  --annotate-primary-text: #f7fafc;
+  --annotate-error: #e08b84;
+  --annotate-frame-ring: rgba(255, 255, 255, 0.12);
+}
+
+html[data-window="annotate"][data-theme="light"] {
+  --annotate-window-bg: #e8edf2;
+  --annotate-chrome-bg: #f4f7fa;
+  --annotate-chrome-line: #c4ced8;
+  --annotate-text: #182028;
+  --annotate-muted: #55606b;
+  --annotate-button-bg: rgba(24, 32, 40, 0.06);
+  --annotate-button-hover: rgba(24, 32, 40, 0.14);
+  --annotate-primary: #2f6fb5;
+  --annotate-primary-border: #2f6fb5;
+  --annotate-primary-hover: #2f6cae;
+  --annotate-primary-text: #f7fafc;
+  --annotate-error: #a33a32;
+  --annotate-frame-ring: rgba(0, 0, 0, 0.16);
+  color-scheme: light;
+}
+
+.annotate {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  margin: 0;
+  color: var(--annotate-text);
+  font-size: 12px;
+  user-select: none;
+  cursor: default;
+  overflow: hidden;
+}
+
+/* --- custom titlebar ------------------------------------------------------- */
+
+.annotate__titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 36px;
+  flex: 0 0 auto;
+  padding: 0 6px 0 14px;
+  background: var(--annotate-chrome-bg);
+  border-bottom: 1px solid var(--annotate-chrome-line);
+}
+
+.annotate__title {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.annotate__filename {
+  color: var(--annotate-muted);
+  font-weight: 400;
+}
+
+.annotate__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 26px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--annotate-muted);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.annotate__close:hover {
+  background: #c42b1c;
+  color: #ffffff;
+}
+
+/* --- toolbar --------------------------------------------------------------- */
+
+.annotate__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  background: var(--annotate-chrome-bg);
+  border-bottom: 1px solid var(--annotate-chrome-line);
+}
+
+.annotate__group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 8px;
+  border-right: 1px solid var(--annotate-chrome-line);
+}
+
+.annotate__group:last-child {
+  padding-right: 0;
+  border-right: 0;
+}
+
+.annotate__spacer {
+  flex: 1 1 0;
+  min-width: 4px;
+}
+
+.annotate__button {
+  min-width: 34px;
+  padding: 5px 9px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: var(--annotate-button-bg);
+  color: var(--annotate-text);
+  font: inherit;
+  cursor: pointer;
+  transition:
+    background 110ms ease,
+    border-color 110ms ease;
+}
+
+.annotate__button:hover:not(:disabled) {
+  background: var(--annotate-button-hover);
+}
+
+.annotate__button[data-active="true"] {
+  border-color: var(--annotate-button-active-border);
+  background: var(--annotate-button-active);
+  color: #ffffff;
+}
+
+.annotate__button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.annotate__button--primary {
+  border-color: var(--annotate-primary-border);
+  background: var(--annotate-primary);
+  color: var(--annotate-primary-text);
+  font-weight: 600;
+}
+
+.annotate__button--primary:hover:not(:disabled) {
+  background: var(--annotate-primary-hover);
+}
+
+.annotate__swatch {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 50%;
+  cursor: pointer;
+  transition:
+    transform 100ms ease,
+    border-color 100ms ease;
+}
+
+.annotate__swatch:hover:not(:disabled) {
+  transform: scale(1.12);
+}
+
+.annotate__swatch[data-active="true"] {
+  border-color: #ffffff;
+  box-shadow: 0 0 0 2px var(--annotate-button-active);
+}
+
+.annotate__swatch:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.annotate__width {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: var(--annotate-button-bg);
+  cursor: pointer;
+}
+
+.annotate__width span {
+  display: block;
+  border-radius: 50%;
+  background: var(--annotate-text);
+}
+
+.annotate__width[data-active="true"] {
+  border-color: var(--annotate-button-active-border);
+  background: var(--annotate-button-active);
+}
+
+.annotate__width[data-active="true"] span {
+  background: #ffffff;
+}
+
+.annotate__width:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* --- stage / image --------------------------------------------------------- */
+
+.annotate__stage {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 16px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.04), transparent 60%),
+    var(--annotate-stage-bg);
+}
+
+.annotate__frame {
+  position: relative;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border-radius: 4px;
+  box-shadow:
+    0 0 0 1px var(--annotate-frame-ring),
+    0 18px 48px rgba(0, 0, 0, 0.55);
+}
+
+.annotate__image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.annotate__canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.annotate__canvas[data-tool="text"] {
+  cursor: text;
+}
+
+.annotate__canvas[data-tool="crop"] {
+  cursor: crosshair;
+}
+
+/* --- crop overlay ---------------------------------------------------------- */
+
+.annotate__crop {
+  position: absolute;
+  border: 1px dashed rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55);
+  cursor: move;
+}
+
+.annotate__crop-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border: 1px solid rgba(0, 0, 0, 0.6);
+  border-radius: 2px;
+  background: #ffffff;
+}
+
+.annotate__crop-handle--nw {
+  left: 0;
+  top: 0;
+  cursor: nwse-resize;
+}
+.annotate__crop-handle--n {
+  left: 50%;
+  top: 0;
+  cursor: ns-resize;
+}
+.annotate__crop-handle--ne {
+  left: 100%;
+  top: 0;
+  cursor: nesw-resize;
+}
+.annotate__crop-handle--e {
+  left: 100%;
+  top: 50%;
+  cursor: ew-resize;
+}
+.annotate__crop-handle--se {
+  left: 100%;
+  top: 100%;
+  cursor: nwse-resize;
+}
+.annotate__crop-handle--s {
+  left: 50%;
+  top: 100%;
+  cursor: ns-resize;
+}
+.annotate__crop-handle--sw {
+  left: 0;
+  top: 100%;
+  cursor: nesw-resize;
+}
+.annotate__crop-handle--w {
+  left: 0;
+  top: 50%;
+  cursor: ew-resize;
+}
+
+/* --- text entry ------------------------------------------------------------ */
+
+.annotate__text-input {
+  position: absolute;
+  z-index: 4;
+  min-width: 120px;
+  max-width: min(420px, 80%);
+  /* Two visible lines by default; the component grows the height to `scrollHeight` while typing. */
+  min-height: 2.8em;
+  padding: 0;
+  border: 1px dashed rgba(255, 255, 255, 0.75);
+  border-radius: 3px;
+  outline: none;
+  background: rgba(0, 0, 0, 0.35);
+  font-family: "Segoe UI", system-ui, sans-serif;
+  line-height: 1.25;
+  resize: none;
+  overflow: hidden;
+  white-space: pre;
+}
+
+/* --- overlays / status ----------------------------------------------------- */
+
+.annotate__overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  color: var(--annotate-muted);
+  text-align: center;
+  pointer-events: none;
+}
+
+.annotate__overlay--error {
+  color: var(--annotate-error);
+}
+
+.annotate__path {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  color: var(--annotate-muted);
+  font-size: 11px;
+}
+
+.annotate__status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 0 12px;
+  background: var(--annotate-chrome-bg);
+  border-top: 1px solid var(--annotate-chrome-line);
+  color: var(--annotate-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.annotate__readonly {
+  color: var(--annotate-text);
+}
+
+.annotate__error {
+  color: var(--annotate-error);
+}
+
+.annotate__hint {
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

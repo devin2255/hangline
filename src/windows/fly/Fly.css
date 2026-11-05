@@ -1,0 +1,143 @@
+/*
+ * The screen-wide fly-in / fall overlay (`?window=fly`, P2-5).
+ *
+ * The window is transparent and always click-through: nothing here may catch a pointer, so the
+ * whole page is `pointer-events: none`. The glass material mirrors the panel card (same tokens as
+ * `Panel.css`, resolved light/dark) so the 0.16 s handoff only fades between two identical-looking
+ * cards. The photo is a **sibling layer that is always opaque**: the reference (CaptureFlight.swift
+ * `update(_:)`) fades only the glass/edge/clip in, never the captured image.
+ */
+
+html[data-window="fly"],
+html[data-window="fly"] body {
+  background: transparent;
+}
+
+html[data-window="fly"] {
+  /* Dark theme (default); light overrides below, matching `Panel.css` exactly. */
+  --glass-fill-top: rgba(255, 255, 255, 0.32);
+  --glass-fill-bottom: rgba(255, 255, 255, 0.08);
+  --glass-tint: rgba(150, 170, 190, 0.14);
+  --glass-border: rgba(255, 255, 255, 0.34);
+  --glass-shadow:
+    0 5px 10px rgba(0, 0, 0, 0.18),
+    inset 0 0.75px 0 rgba(255, 255, 255, 0.55),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.22),
+    inset 0 0 0 0.5px var(--glass-border);
+  --photo-bg: rgba(10, 14, 19, 0.55);
+  overflow: hidden;
+  cursor: default;
+}
+
+html[data-window="fly"][data-fly-theme="light"] {
+  --glass-fill-top: rgba(255, 255, 255, 0.7);
+  --glass-fill-bottom: rgba(255, 255, 255, 0.38);
+  --glass-tint: rgba(255, 255, 255, 0.22);
+  --glass-border: rgba(255, 255, 255, 0.9);
+  --glass-shadow:
+    0 5px 10px rgba(20, 28, 38, 0.18),
+    inset 0 0.75px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -1px 0 rgba(20, 28, 38, 0.08),
+    inset 0 0 0 0.5px var(--glass-border);
+  --photo-bg: rgba(255, 255, 255, 0.5);
+}
+
+.fly-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* One animated copy; the component drives left/top/width/height/transform per rAF. */
+.fly-card {
+  position: absolute;
+  transform-origin: 50% 0;
+  pointer-events: none;
+  will-change: left, top, width, height, transform;
+  opacity: 1;
+}
+
+.fly-card--handoff {
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+
+/* Glass surface only: the photo is a sibling and never inherits this opacity. */
+.fly-card__glass {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: var(--fly-chrome, 1);
+  background:
+    linear-gradient(
+      157deg,
+      var(--glass-fill-top) 0%,
+      var(--glass-fill-bottom) 52%,
+      var(--glass-fill-top) 100%
+    ),
+    linear-gradient(180deg, var(--glass-tint), rgba(8, 12, 17, 0.12));
+  box-shadow: var(--glass-shadow);
+  /* Same progressive material as the panel card (P2-8); harmless when unsupported. */
+  backdrop-filter: blur(18px) saturate(1.2);
+}
+
+/*
+ * The panel card's diagonal sheen, mirrored so the 160 ms handoff fades between identical
+ * surfaces instead of dropping the highlight. It must be a **sibling after the photo**: the glass
+ * layer forms its own stacking context below the opaque photo, so a pseudo-element there can never
+ * paint on top (P2-8 review). Chrome opacity ties it to the glass fade.
+ */
+.fly-card__sheen {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border-radius: inherit;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0) 32%);
+  opacity: var(--fly-chrome, 1);
+  pointer-events: none;
+}
+
+/*
+ * The captured photo's clipping content box: full-bleed at k = 0, inset 4 dp at k = 1. The wrapper
+ * owns `overflow: hidden` so the image can never paint outside the card (same recipe as the panel
+ * card); the glass background/shadow/pin stay outside it so the outer shadow is not clipped.
+ */
+.fly-card__photo {
+  position: absolute;
+  inset: var(--fly-inset, 0px);
+  overflow: hidden;
+  border-radius: var(--fly-photo-radius, 0px);
+  background: var(--photo-bg);
+  /* Photo inset ring, same as `.glass-card__photo`: keeps the 4 dp frame visible during handoff. */
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.18);
+}
+
+/* Never intrinsic size: always fill the wrapper and crop with `object-fit: cover`. */
+.fly-card__image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* 9×26 aluminium clip at the top edge, overlapping the card by 12 dp; dp scaled by chromeScale. */
+.fly-card__pin {
+  position: absolute;
+  /* The sheen layer sits at z-index 3; the clip must stay above it (P2-8 review). */
+  z-index: 4;
+  top: calc(-14px * var(--fly-chrome-scale, 1));
+  left: 50%;
+  line-height: 0;
+  pointer-events: none;
+  opacity: var(--fly-chrome, 1);
+  transform: translateX(-50%) scale(var(--fly-chrome-scale, 1));
+  transform-origin: top center;
+  filter: drop-shadow(0 1.5px 2px rgba(0, 0, 0, 0.3));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fly-card--handoff {
+    transition: none;
+  }
+}

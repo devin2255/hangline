@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "annotate",
+  "description": "markup editor window: lets the Tauri close-request guard finish a confirmed close",
+  "windows": ["annotate"],
+  "permissions": ["core:default", "core:window:allow-destroy"]
+}

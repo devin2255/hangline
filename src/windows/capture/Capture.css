@@ -1,0 +1,119 @@
+/*
+ * Freeze-frame capture overlay (Task 16): one window covering the whole virtual desktop.
+ *
+ * The base theme paints an opaque dark surface; the overlay renders the frozen frame on top, so
+ * the window must never be transparent (that would flash the desktop through while loading).
+ */
+
+html[data-window="capture"],
+html[data-window="capture"] body {
+  background: #000;
+  cursor: crosshair;
+}
+
+/* P2-8 theme tokens: the overlay must read on both a dark and a bright frozen frame. */
+html[data-window="capture"] {
+  --capture-mask: rgb(0 0 0 / 45%);
+  --capture-selection: rgb(255 255 255 / 95%);
+  --capture-selection-halo: rgb(0 0 0 / 55%);
+  --capture-label-bg: rgb(20 23 27 / 88%);
+  --capture-label-text: #eef1f5;
+  --capture-spinner: rgb(255 255 255 / 25%);
+  --capture-spinner-active: rgb(255 255 255 / 85%);
+}
+
+html[data-window="capture"][data-theme="light"] {
+  --capture-mask: rgb(0 0 0 / 32%);
+  --capture-selection: rgb(24 32 40 / 95%);
+  --capture-selection-halo: rgb(255 255 255 / 75%);
+  --capture-label-bg: rgb(255 255 255 / 92%);
+  --capture-label-text: #182028;
+  /* The pre-ready base is always black, so the spinner stays light-on-dark in both themes. */
+  --capture-spinner: rgb(255 255 255 / 45%);
+  --capture-spinner-active: rgb(255 255 255 / 90%);
+  color-scheme: light;
+}
+
+.capture {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  cursor: crosshair;
+  user-select: none;
+  touch-action: none;
+}
+
+/* The frozen frame: physical pixels ÷ devicePixelRatio, set inline by the component. */
+.capture__frame {
+  position: absolute;
+  top: 0;
+  left: 0;
+  max-width: none;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* Full-screen dimming before the first drag. The selection itself dims the rest via box-shadow. */
+.capture__mask {
+  position: absolute;
+  inset: 0;
+  background: var(--capture-mask);
+  pointer-events: none;
+}
+
+.capture__selection {
+  position: absolute;
+  border: 1px solid var(--capture-selection);
+  box-shadow:
+    0 0 0 1px var(--capture-selection-halo),
+    0 0 0 100vmax var(--capture-mask);
+  pointer-events: none;
+}
+
+.capture__size {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 2px 7px;
+  border-radius: 0 0 5px;
+  background: var(--capture-label-bg);
+  color: var(--capture-label-text);
+  font: 600 12px/1.35 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  transform: translateY(-100%);
+}
+
+/* A selection at the very top of the screen shows its label inside instead of off-screen. */
+.capture__size--inside {
+  border-radius: 0 5px 5px;
+  transform: none;
+}
+
+/* Handshake still in flight: a small neutral pulse so the window never looks frozen. */
+.capture__loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  border: 2px solid var(--capture-spinner);
+  border-top-color: var(--capture-spinner-active);
+  border-radius: 50%;
+  animation: capture-spin 0.8s linear infinite;
+}
+
+@keyframes capture-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .capture__loading {
+    animation-duration: 2.4s;
+  }
+}

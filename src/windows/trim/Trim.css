@@ -1,0 +1,361 @@
+/* Trim window (P3-6): borderless dark chrome, video stage, dual-range selection and export bar. */
+
+html[data-window="trim"],
+html[data-window="trim"] body {
+  background: var(--trim-window-bg);
+}
+
+/* Theme tokens: the video stage stays dark in both themes (like the markup editor); only the
+   chrome follows the app theme. */
+html[data-window="trim"] {
+  --trim-window-bg: #121518;
+  --trim-chrome-bg: #1a1e23;
+  --trim-chrome-line: #2d3339;
+  --trim-text: #eef1f5;
+  --trim-muted: #9aa3ad;
+  --trim-stage-bg: #0b0d10;
+  --trim-track: rgba(255, 255, 255, 0.16);
+  --trim-selection: #4c8dd8;
+  --trim-button-bg: rgba(255, 255, 255, 0.05);
+  --trim-button-hover: rgba(255, 255, 255, 0.12);
+  --trim-primary: #2f6fb5;
+  --trim-primary-border: #4c8dd8;
+  --trim-primary-hover: #2f6cae;
+  --trim-primary-text: #f7fafc;
+  --trim-warning: #e0b15c;
+  --trim-error: #e08b84;
+  color-scheme: dark;
+}
+
+html[data-window="trim"][data-theme="light"] {
+  --trim-window-bg: #e8edf2;
+  --trim-chrome-bg: #f4f7fa;
+  --trim-chrome-line: #c4ced8;
+  --trim-text: #182028;
+  --trim-muted: #55606b;
+  --trim-track: rgba(24, 32, 40, 0.18);
+  --trim-button-bg: rgba(24, 32, 40, 0.06);
+  --trim-button-hover: rgba(24, 32, 40, 0.14);
+  --trim-warning: #8a5a00;
+  --trim-error: #a33a32;
+  color-scheme: light;
+}
+
+.trim {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  margin: 0;
+  color: var(--trim-text);
+  font-size: 12px;
+  user-select: none;
+  cursor: default;
+  overflow: hidden;
+}
+
+/* --- custom titlebar ------------------------------------------------------- */
+
+.trim__titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 36px;
+  flex: 0 0 auto;
+  padding: 0 6px 0 14px;
+  background: var(--trim-chrome-bg);
+  border-bottom: 1px solid var(--trim-chrome-line);
+}
+
+.trim__title {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.trim__filename {
+  color: var(--trim-muted);
+  font-weight: 400;
+}
+
+.trim__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 26px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--trim-muted);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.trim__close:hover:not(:disabled) {
+  background: #c42b1c;
+  color: #ffffff;
+}
+
+/* An export owns the original; closing mid-render is refused by Rust and visibly disabled here. */
+.trim__close:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+/* --- video stage ----------------------------------------------------------- */
+
+.trim__stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--trim-stage-bg);
+}
+
+.trim__video {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  background: #000000;
+}
+
+.trim__overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 16px;
+  color: var(--trim-muted);
+  text-align: center;
+  background: rgba(11, 13, 16, 0.72);
+}
+
+.trim__overlay--error {
+  color: var(--trim-error);
+}
+
+.trim__path {
+  max-width: 90%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--trim-muted);
+  font-size: 11px;
+}
+
+/* --- selection controls ---------------------------------------------------- */
+
+.trim__controls {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 16px 8px;
+  background: var(--trim-chrome-bg);
+  border-top: 1px solid var(--trim-chrome-line);
+}
+
+.trim__timeline {
+  position: relative;
+  height: 6px;
+  margin: 0 74px 0 56px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--trim-track);
+}
+
+.trim__selection-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 3px;
+  background: var(--trim-selection);
+}
+
+.trim__slider-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 24px;
+}
+
+.trim__slider-label {
+  flex: 0 0 46px;
+  color: var(--trim-muted);
+}
+
+.trim__slider {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 18px;
+  margin: 0;
+  background: transparent;
+  accent-color: var(--trim-selection);
+  cursor: pointer;
+}
+
+.trim__slider:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.trim__slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--trim-track);
+}
+
+.trim__slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border: 2px solid var(--trim-chrome-bg);
+  border-radius: 50%;
+  background: var(--trim-selection);
+}
+
+.trim__slider:focus-visible {
+  outline: 2px solid var(--trim-primary-border);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.trim__time {
+  flex: 0 0 64px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.trim__summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding-left: 56px;
+  padding-right: 74px;
+  color: var(--trim-muted);
+}
+
+.trim__summary-item strong {
+  color: var(--trim-text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.trim__summary-item--muted {
+  font-variant-numeric: tabular-nums;
+}
+
+.trim__refusal {
+  margin: 0;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(224, 177, 92, 0.12);
+  color: var(--trim-warning);
+}
+
+.trim__error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: rgba(224, 139, 132, 0.12);
+  color: var(--trim-error);
+}
+
+.trim__progress {
+  position: relative;
+  height: 18px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--trim-track);
+}
+
+.trim__progress-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--trim-selection);
+  transition: width 160ms ease;
+}
+
+.trim__progress-label {
+  position: relative;
+  display: block;
+  line-height: 18px;
+  text-align: center;
+  color: #f7fafc;
+  font-size: 11px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+/* --- footer / buttons ------------------------------------------------------ */
+
+.trim__footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  background: var(--trim-chrome-bg);
+  border-top: 1px solid var(--trim-chrome-line);
+}
+
+.trim__hint {
+  flex: 1 1 auto;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--trim-muted);
+}
+
+.trim__button {
+  padding: 5px 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: var(--trim-button-bg);
+  color: var(--trim-text);
+  font: inherit;
+  cursor: pointer;
+  transition:
+    background 110ms ease,
+    border-color 110ms ease;
+}
+
+.trim__button:hover:not(:disabled) {
+  background: var(--trim-button-hover);
+}
+
+.trim__button:focus-visible {
+  outline: 2px solid var(--trim-primary-border);
+  outline-offset: 1px;
+}
+
+.trim__button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.trim__button--primary {
+  border-color: var(--trim-primary-border);
+  background: var(--trim-primary);
+  color: var(--trim-primary-text);
+}
+
+.trim__button--primary:hover:not(:disabled) {
+  background: var(--trim-primary-hover);
+}

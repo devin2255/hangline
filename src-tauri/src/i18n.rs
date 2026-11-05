@@ -1,0 +1,549 @@
+//! Rust-side UI strings for the tray menu (design spec §3.5/§3.10).
+//!
+//! The tray/menu tree is built in Rust, so it cannot read the frontend's `src/i18n/*.json`
+//! tables. This module owns the Rust half of the i18n contract:
+//!
+//! - [`resolve_language`] maps the persisted `language` setting (`"system"` or a BCP 47 tag)
+//!   to a supported [`Lang`], falling back to English for anything unknown (spec §3.10).
+//! - [`tray_strings`] returns the frozen [`TrayStrings`] table for a language. The table is a
+//!   struct (not a JSON map) so a missing translation is a compile error instead of a runtime
+//!   fallback; [`TrayStrings::all`] exposes the same rows as key/value pairs for the parity test.
+//!
+//! Every user-visible tray/ native-window label lives here. Log lines stay English on purpose
+//! (they are diagnostic text, not UI), matching the rest of the Rust code.
+
+use tauri::Manager;
+use windows::core::PWSTR;
+use windows::Win32::Globalization::{
+    GetUserDefaultLocaleName, GetUserDefaultUILanguage, GetUserPreferredUILanguages,
+    MUI_LANGUAGE_NAME,
+};
+
+/// A language the Rust UI layer can render.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Lang {
+    /// English (the fallback for every unknown/unsupported tag).
+    En,
+    /// Simplified Chinese (`zh-Hans`).
+    ZhHans,
+}
+
+impl Lang {
+    /// The BCP 47 tag persisted in `settings.language` for this language.
+    pub fn tag(self) -> &'static str {
+        match self {
+            Self::En => "en",
+            Self::ZhHans => "zh-Hans",
+        }
+    }
+}
+
+/// Resolves the `language` setting to the language Rust must render.
+///
+/// `"system"` follows the OS UI/display language tag (`system_tag`, e.g. `"zh-CN"`); any `zh-*`
+/// locale maps to Simplified Chinese (V1 ships `zh-Hans` only and prefers Chinese over the English
+/// fallback for Chinese Windows installations), and every other/unknown tag falls back to English
+/// (spec §3.10: missing translations fall back to `en`).
+pub fn resolve_language(setting: &str, system_tag: &str) -> Lang {
+    let tag = if setting.eq_ignore_ascii_case("system") {
+        system_tag
+    } else {
+        setting
+    };
+    let tag = tag.trim().to_ascii_lowercase();
+    if tag == "zh" || tag.starts_with("zh-") || tag.starts_with("zh_") {
+        Lang::ZhHans
+    } else {
+        Lang::En
+    }
+}
+
+/// The resolved tag (`"en"` or `"zh-Hans"`) for a `language` setting against a system tag.
+///
+/// This is the value broadcast to the frontend as `PublicState::resolved_language`: both the Rust
+/// tray and the webview must derive the active language from the *same* resolution, otherwise a
+/// mixed-locale Windows install (display language different from the regional format) could show a
+/// Chinese tray menu next to an English panel under the default `"system"` setting.
+pub fn resolved_tag_for(setting: &str, system_tag: &str) -> &'static str {
+    resolve_language(setting, system_tag).tag()
+}
+
+/// The resolved tag for a setting against the current Windows UI language.
+pub fn resolved_tag(setting: &str) -> &'static str {
+    resolved_tag_for(setting, system_language())
+}
+
+/// Display/UI language tag of the current Windows user (e.g. `"zh-CN"`).
+///
+/// The tray/panel language follows the **Windows display language** (the "Windows display language"
+/// setting, exposed by `GetUserPreferredUILanguages`), not the regional-format locale
+/// (`GetUserDefaultLocaleName`) and not the webview's `navigator.language`: on a mixed-locale
+/// install those can disagree, which used to make the tray and the panel pick different languages
+/// for `language: "system"`. The fallback chain is
+///
+/// 1. first preferred UI language name (`GetUserPreferredUILanguages(MUI_LANGUAGE_NAME)`),
+/// 2. `GetUserDefaultUILanguage` mapped to `"zh-Hans"`/`"en"`,
+/// 3. the regional locale (`GetUserDefaultLocaleName`),
+/// 4. `"en"`.
+///
+/// The value is cached for the process lifetime: the tray re-reads it on every state broadcast and
+/// a Windows display-language change takes effect on the next launch.
+pub fn system_language() -> &'static str {
+    static SYSTEM_LANGUAGE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    SYSTEM_LANGUAGE.get_or_init(read_system_language)
+}
+
+/// Reads the OS display language (the uncached half of [`system_language`]).
+fn read_system_language() -> String {
+    let preferred = preferred_ui_language();
+    let ui = ui_language_tag();
+    let locale = default_locale_name();
+    pick_system_language(preferred.as_deref(), ui.as_deref(), locale.as_deref())
+}
+
+/// Pure fallback chain for [`read_system_language`] (unit-tested for the mixed-locale cases).
+///
+/// Empty/whitespace tags count as missing; the result is always a non-empty tag.
+pub fn pick_system_language(
+    preferred_ui: Option<&str>,
+    default_ui: Option<&str>,
+    locale: Option<&str>,
+) -> String {
+    for candidate in [preferred_ui, default_ui, locale] {
+        if let Some(tag) = candidate.map(str::trim).filter(|tag| !tag.is_empty()) {
+            return tag.to_string();
+        }
+    }
+    "en".to_string()
+}
+
+/// First preferred display-language name (`MUI_LANGUAGE_NAME`), e.g. `"zh-CN"`.
+fn preferred_ui_language() -> Option<String> {
+    let mut count: u32 = 0;
+    let mut size: u32 = 0;
+    // SAFETY: the size query passes a null buffer with a valid size pointer; the win32 wrapper
+    // passes the null PWSTR through unchanged and returns an error result on failure.
+    unsafe { GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, &mut count, None, &mut size) }.ok()?;
+    if count == 0 || size == 0 {
+        return None;
+    }
+    let mut buffer = vec![0u16; size as usize];
+    // SAFETY: `buffer` is writable for `size` u16 units and `size` is the API-reported length.
+    unsafe {
+        GetUserPreferredUILanguages(
+            MUI_LANGUAGE_NAME,
+            &mut count,
+            Some(PWSTR(buffer.as_mut_ptr())),
+            &mut size,
+        )
+    }
+    .ok()?;
+    // The buffer is a double-NUL-terminated list of names; the first one is the display language.
+    let first = buffer.split(|unit| *unit == 0).next()?;
+    let tag = String::from_utf16_lossy(first);
+    (!tag.trim().is_empty()).then(|| tag.trim().to_string())
+}
+
+/// Maps the `GetUserDefaultUILanguage` LANGID to one of the two supported language families.
+///
+/// Only the primary language id is needed for the V1 language set: `LANG_CHINESE` (0x04) selects
+/// Simplified Chinese (traditional Chinese is not shipped in V1 and falls back like any other
+/// unsupported UI language to English), everything else selects English.
+fn ui_language_tag() -> Option<String> {
+    // SAFETY: GetUserDefaultUILanguage reads a user preference and takes no arguments.
+    let langid = unsafe { GetUserDefaultUILanguage() };
+    if langid == 0 {
+        return None;
+    }
+    let primary = langid & 0x3ff;
+    Some(if primary == 0x04 { "zh-Hans" } else { "en" }.to_string())
+}
+
+/// Regional-format locale (`GetUserDefaultLocaleName`), used only as the last fallback.
+fn default_locale_name() -> Option<String> {
+    let mut buffer = [0u16; 85]; // LOCALE_NAME_MAX_LENGTH on current Windows.
+    // SAFETY: the buffer is writable for its whole length; the API writes a NUL-terminated
+    // locale name and returns the number of u16 units written (including the terminator).
+    let written = unsafe { GetUserDefaultLocaleName(&mut buffer) };
+    if written <= 1 {
+        return None;
+    }
+    let len = (written as usize - 1).min(buffer.len());
+    let tag = String::from_utf16_lossy(&buffer[..len]);
+    (!tag.trim().is_empty()).then(|| tag.trim().to_string())
+}
+
+/// The language the Rust UI (tray, native picker, shortcut window title) must render right now.
+///
+/// Resolves the persisted `language` setting against the Windows display language; an unmanaged
+/// `AppState` (early startup, tests) behaves like the spec default `"system"`.
+pub fn app_language(app: &tauri::AppHandle) -> Lang {
+    let setting = app
+        .try_state::<crate::app_state::AppState>()
+        .map(|state| state.snapshot().settings.language)
+        .unwrap_or_else(|| "system".to_string());
+    resolve_language(&setting, system_language())
+}
+
+/// Locale used for the `language: "system"` setting (test seam).
+///
+/// The production code calls [`app_language`]; tests can substitute a deterministic locale.
+#[cfg(test)]
+pub fn effective_language(setting: &str, system_tag: &str) -> Lang {
+    resolve_language(setting, system_tag)
+}
+
+/// Static labels for the complete tray tree, shortcut window and folder picker (spec §3.5).
+///
+/// All fields are `&'static str`: the tables are compile-time constants and [`tray_strings`]
+/// hands out a reference, so menu refresh never allocates per label.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TrayStrings {
+    /// Tray icon tooltip when items are on the line (`{}` = item count).
+    pub tooltip_items: &'static str,
+    /// Tray tooltip suffix when a global shortcut could not be registered.
+    pub tooltip_hotkey_unavailable: &'static str,
+    /// Toggle item while the panel is hidden.
+    pub show_line: &'static str,
+    /// Toggle item while the panel is visible.
+    pub hide_line: &'static str,
+    /// "Take everything down" action.
+    pub take_everything_down: &'static str,
+    /// "Take screenshot…" action (wired to the capture request until Task 16).
+    pub capture: &'static str,
+    /// System-screenshot directory watcher switch.
+    pub handle_screenshots: &'static str,
+    /// Recordings directory watcher switch.
+    pub handle_recordings: &'static str,
+    /// Clipboard image listener switch.
+    pub hang_copied_images: &'static str,
+    /// Reveal-behaviour submenu title.
+    pub reveal_menu: &'static str,
+    /// Reveal on a new screenshot.
+    pub reveal_on_new: &'static str,
+    /// Reveal when the pointer rests on the top edge.
+    pub top_edge_reveal: &'static str,
+    /// Keep the line over full-screen apps.
+    pub show_over_full_screen: &'static str,
+    /// Watched-folders submenu title.
+    pub folders_menu: &'static str,
+    /// Open the system folder picker.
+    pub add_folder: &'static str,
+    /// Add-folder item once the three-folder limit is reached.
+    pub add_folder_max: &'static str,
+    /// Submenu that removes watched folders.
+    pub stop_watching_menu: &'static str,
+    /// Keep-count submenu title.
+    pub keep_menu: &'static str,
+    /// Keep as many cards as fit.
+    pub keep_fit: &'static str,
+    /// Card-size submenu title.
+    pub size_menu: &'static str,
+    /// Small cards.
+    pub size_small: &'static str,
+    /// Medium cards.
+    pub size_medium: &'static str,
+    /// Large cards.
+    pub size_large: &'static str,
+    /// Shortcut submenu title.
+    pub shortcut_menu: &'static str,
+    /// Capture shortcut row (followed by the accelerator).
+    pub shortcut_capture: &'static str,
+    /// Show/hide shortcut row (followed by the accelerator).
+    pub shortcut_toggle: &'static str,
+    /// Opens the change-shortcut window.
+    pub shortcut_change: &'static str,
+    /// Disabled status row when every shortcut is registered.
+    pub hotkeys_ok: &'static str,
+    /// Disabled status row when a shortcut could not be registered.
+    pub hotkey_unavailable: &'static str,
+    /// Opens Hangline's own screenshot directory.
+    pub open_screenshots: &'static str,
+    /// Copy/discard sound switch.
+    pub sound: &'static str,
+    /// Start-at-login switch.
+    pub start_at_login: &'static str,
+    /// Manual update check.
+    pub check_updates: &'static str,
+    /// Language submenu title.
+    pub language_menu: &'static str,
+    /// Follow the Windows UI language.
+    pub language_system: &'static str,
+    /// English label (native name, identical in both tables).
+    pub language_en: &'static str,
+    /// Simplified Chinese label (native name, identical in both tables).
+    pub language_zh_hans: &'static str,
+    /// Quit action.
+    pub quit: &'static str,
+    /// Title of the system folder picker.
+    pub picker_title: &'static str,
+    /// Title of the minimal change-shortcut window.
+    pub shortcut_window_title: &'static str,
+}
+
+/// English strings (the fallback language).
+pub const EN: TrayStrings = TrayStrings {
+    tooltip_items: "Hangline — {} card(s) on the line",
+    tooltip_hotkey_unavailable: " — shortcut unavailable",
+    show_line: "Show line",
+    hide_line: "Hide line",
+    take_everything_down: "Take everything down",
+    capture: "Take screenshot…",
+    handle_screenshots: "Handle system screenshots",
+    handle_recordings: "Handle recordings",
+    hang_copied_images: "Hang copied images",
+    reveal_menu: "Bring the line down",
+    reveal_on_new: "On new screenshots",
+    top_edge_reveal: "When the pointer rests on the top edge",
+    show_over_full_screen: "Over full-screen apps",
+    folders_menu: "Also watch folders",
+    add_folder: "Add Folder…",
+    add_folder_max: "Add Folder… (3/3)",
+    stop_watching_menu: "Stop watching",
+    keep_menu: "Keep on line",
+    keep_fit: "As many as fit",
+    size_menu: "Size",
+    size_small: "Small",
+    size_medium: "Medium",
+    size_large: "Large",
+    shortcut_menu: "Shortcut",
+    shortcut_capture: "Capture",
+    shortcut_toggle: "Show/hide line",
+    shortcut_change: "Change Shortcut…",
+    hotkeys_ok: "Hotkeys are active",
+    hotkey_unavailable: "Shortcut unavailable",
+    open_screenshots: "Open screenshots folder",
+    sound: "Sounds",
+    start_at_login: "Open at login",
+    check_updates: "Check for updates…",
+    language_menu: "Language",
+    language_system: "Follow system",
+    language_en: "English",
+    language_zh_hans: "简体中文",
+    quit: "Quit Hangline",
+    picker_title: "Choose a folder to watch",
+    shortcut_window_title: "Hangline — Change shortcut",
+};
+
+/// Simplified Chinese strings (`zh-Hans`).
+pub const ZH_HANS: TrayStrings = TrayStrings {
+    tooltip_items: "Hangline — 线上 {} 张",
+    tooltip_hotkey_unavailable: " — 快捷键不可用",
+    show_line: "显示线",
+    hide_line: "隐藏线",
+    take_everything_down: "全部取下线",
+    capture: "截图…",
+    handle_screenshots: "处理系统截图",
+    handle_recordings: "挂起录屏",
+    hang_copied_images: "挂起复制的图片",
+    reveal_menu: "线出现方式",
+    reveal_on_new: "新截图时",
+    top_edge_reveal: "指针停在顶边时",
+    show_over_full_screen: "全屏应用上",
+    folders_menu: "也监听文件夹",
+    add_folder: "添加文件夹…",
+    add_folder_max: "添加文件夹…（已达上限 3 个）",
+    stop_watching_menu: "停止监听",
+    keep_menu: "保留数量",
+    keep_fit: "放得下多少",
+    size_menu: "尺寸",
+    size_small: "小",
+    size_medium: "中",
+    size_large: "大",
+    shortcut_menu: "快捷键",
+    shortcut_capture: "截图",
+    shortcut_toggle: "显示/隐藏线",
+    shortcut_change: "修改快捷键…",
+    hotkeys_ok: "快捷键已启用",
+    hotkey_unavailable: "快捷键不可用",
+    open_screenshots: "打开截图文件夹",
+    sound: "声音",
+    start_at_login: "开机启动",
+    check_updates: "检查更新…",
+    language_menu: "语言",
+    language_system: "跟随系统",
+    language_en: "English",
+    language_zh_hans: "简体中文",
+    quit: "退出 Hangline",
+    picker_title: "选择要监听的文件夹",
+    shortcut_window_title: "Hangline — 修改快捷键",
+};
+
+impl TrayStrings {
+    /// The table for `lang` (never fails: every [`Lang`] has a full table).
+    pub fn for_language(lang: Lang) -> &'static TrayStrings {
+        match lang {
+            Lang::En => &EN,
+            Lang::ZhHans => &ZH_HANS,
+        }
+    }
+
+    /// Every user-visible string as a `(key, value)` row (test-only parity check).
+    ///
+    /// The parity test asserts both languages expose the same keys and every value is non-empty;
+    /// a new field added to the struct without being added here fails that test, which keeps the
+    /// row list in sync with the table.
+    #[cfg(test)]
+    pub fn all(&self) -> Vec<(&'static str, &'static str)> {
+        vec![
+            ("tooltip_items", self.tooltip_items),
+            ("tooltip_hotkey_unavailable", self.tooltip_hotkey_unavailable),
+            ("show_line", self.show_line),
+            ("hide_line", self.hide_line),
+            ("take_everything_down", self.take_everything_down),
+            ("capture", self.capture),
+            ("handle_screenshots", self.handle_screenshots),
+            ("handle_recordings", self.handle_recordings),
+            ("hang_copied_images", self.hang_copied_images),
+            ("reveal_menu", self.reveal_menu),
+            ("reveal_on_new", self.reveal_on_new),
+            ("top_edge_reveal", self.top_edge_reveal),
+            ("show_over_full_screen", self.show_over_full_screen),
+            ("folders_menu", self.folders_menu),
+            ("add_folder", self.add_folder),
+            ("add_folder_max", self.add_folder_max),
+            ("stop_watching_menu", self.stop_watching_menu),
+            ("keep_menu", self.keep_menu),
+            ("keep_fit", self.keep_fit),
+            ("size_menu", self.size_menu),
+            ("size_small", self.size_small),
+            ("size_medium", self.size_medium),
+            ("size_large", self.size_large),
+            ("shortcut_menu", self.shortcut_menu),
+            ("shortcut_capture", self.shortcut_capture),
+            ("shortcut_toggle", self.shortcut_toggle),
+            ("shortcut_change", self.shortcut_change),
+            ("hotkeys_ok", self.hotkeys_ok),
+            ("hotkey_unavailable", self.hotkey_unavailable),
+            ("open_screenshots", self.open_screenshots),
+            ("sound", self.sound),
+            ("start_at_login", self.start_at_login),
+            ("check_updates", self.check_updates),
+            ("language_menu", self.language_menu),
+            ("language_system", self.language_system),
+            ("language_en", self.language_en),
+            ("language_zh_hans", self.language_zh_hans),
+            ("quit", self.quit),
+            ("picker_title", self.picker_title),
+            ("shortcut_window_title", self.shortcut_window_title),
+        ]
+    }
+}
+
+/// Returns the frozen table for `lang`.
+pub fn tray_strings(lang: Lang) -> &'static TrayStrings {
+    TrayStrings::for_language(lang)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The two V1 tables must expose exactly the same key set (design spec §3.10) and no empty
+    /// value: a missing Chinese string would render as a blank menu row.
+    #[test]
+    fn en_and_zh_hans_tables_have_key_parity_and_no_blanks() {
+        let en = EN.all();
+        let zh = ZH_HANS.all();
+        let en_keys: Vec<&str> = en.iter().map(|(key, _)| *key).collect();
+        let zh_keys: Vec<&str> = zh.iter().map(|(key, _)| *key).collect();
+        assert_eq!(en_keys, zh_keys, "en/zh-Hans key lists must match");
+        for (key, value) in en.iter().chain(zh.iter()) {
+            assert!(
+                !value.trim().is_empty(),
+                "{key} must not be empty in both languages"
+            );
+        }
+        // Native language names stay untranslated in both tables.
+        assert_eq!(EN.language_en, "English");
+        assert_eq!(ZH_HANS.language_en, "English");
+        assert_eq!(EN.language_zh_hans, "简体中文");
+        assert_eq!(ZH_HANS.language_zh_hans, "简体中文");
+        // The tray toggle labels are distinct in both languages (the label follows panel state).
+        assert_ne!(EN.show_line, EN.hide_line);
+        assert_ne!(ZH_HANS.show_line, ZH_HANS.hide_line);
+    }
+
+    #[test]
+    fn language_resolution_follows_spec_fallback() {
+        // `system` maps through the OS locale.
+        assert_eq!(resolve_language("system", "en-US"), Lang::En);
+        assert_eq!(resolve_language("system", "zh-CN"), Lang::ZhHans);
+        assert_eq!(resolve_language("system", "zh-Hans-CN"), Lang::ZhHans);
+        assert_eq!(resolve_language("system", "zh-TW"), Lang::ZhHans);
+        // Explicit tags win over the OS locale.
+        assert_eq!(resolve_language("en", "zh-CN"), Lang::En);
+        assert_eq!(resolve_language("zh-Hans", "en-US"), Lang::ZhHans);
+        assert_eq!(resolve_language("EN", "zh-CN"), Lang::En);
+        // Unknown/unsupported tags fall back to English (spec §3.10).
+        assert_eq!(resolve_language("fr", "zh-CN"), Lang::En);
+        assert_eq!(resolve_language("", "zh-CN"), Lang::En);
+        assert_eq!(resolve_language("system", ""), Lang::En);
+        // `effective_language` is the test seam used by the tray: same contract as `resolve_language`.
+        assert_eq!(effective_language("system", "zh-CN"), Lang::ZhHans);
+        assert_eq!(effective_language("system", "en-GB"), Lang::En);
+    }
+
+    /// `resolved_tag_for` is what the full-state broadcast exposes as `resolvedLanguage`; the tray
+    /// and the panel both derive their table from it, so the two halves cannot disagree.
+    #[test]
+    fn resolved_tag_is_the_single_source_for_tray_and_panel_language() {
+        assert_eq!(resolved_tag_for("system", "zh-CN"), "zh-Hans");
+        assert_eq!(resolved_tag_for("system", "en-US"), "en");
+        assert_eq!(resolved_tag_for("zh-Hans", "en-US"), "zh-Hans");
+        assert_eq!(resolved_tag_for("en", "zh-CN"), "en");
+        // Unsupported/hand-edited tags fall back to English in both layers.
+        assert_eq!(resolved_tag_for("fr", "zh-CN"), "en");
+        assert_eq!(resolved_tag_for("", "zh-CN"), "en");
+        // The process-wide resolution against the real display language is a supported tag.
+        let system = system_language();
+        assert!(
+            ["en", "zh-Hans"].contains(&resolved_tag("system")),
+            "system language tag {system:?} must resolve to a shipped language"
+        );
+        assert_eq!(resolved_tag("system"), resolved_tag_for("system", system));
+    }
+
+    /// The display-language fallback chain: preferred UI language → default UI language → regional
+    /// locale → English. This is the Important-2 fix for mixed-locale Windows installs where the
+    /// regional format locale (`GetUserDefaultLocaleName`) differs from the display language.
+    #[test]
+    fn system_language_prefers_display_language_then_falls_back() {
+        // Preferred display language wins even when the regional locale is English.
+        assert_eq!(
+            pick_system_language(Some("zh-CN"), Some("en"), Some("en-US")),
+            "zh-CN"
+        );
+        // Mixed locale: regional format zh-CN but display language en-US -> English display wins.
+        assert_eq!(
+            pick_system_language(Some("en-US"), Some("en"), Some("zh-CN")),
+            "en-US"
+        );
+        // No preferred list: the default UI language LANGID mapping is next.
+        assert_eq!(pick_system_language(None, Some("zh-Hans"), Some("en-US")), "zh-Hans");
+        // No UI-language APIs: the regional locale is the last useful fallback.
+        assert_eq!(pick_system_language(None, None, Some("zh-TW")), "zh-TW");
+        // Nothing usable: English (spec §3.10 fallback).
+        assert_eq!(pick_system_language(None, None, None), "en");
+        assert_eq!(pick_system_language(Some("  "), Some(""), Some("\t")), "en");
+        // End-to-end through the resolver: a Chinese display language maps to zh-Hans regardless
+        // of what the regional format says; English display + Chinese format stays English.
+        assert_eq!(
+            resolved_tag_for("system", &pick_system_language(Some("zh-CN"), None, Some("en-US"))),
+            "zh-Hans"
+        );
+        assert_eq!(
+            resolved_tag_for("system", &pick_system_language(Some("en-US"), None, Some("zh-CN"))),
+            "en"
+        );
+    }
+
+    #[test]
+    fn tags_match_the_menu_settings_values() {
+        assert_eq!(Lang::En.tag(), "en");
+        assert_eq!(Lang::ZhHans.tag(), "zh-Hans");
+        let strings = tray_strings(Lang::ZhHans);
+        assert_eq!(strings.show_line, "显示线");
+        assert_eq!(tray_strings(Lang::En).show_line, "Show line");
+    }
+}

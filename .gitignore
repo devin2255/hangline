@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+
+# Frontend build output
+dist/
+dist-ssr/
+.vite/
+*.local
+
+# Rust / Tauri build output
+src-tauri/target/
+src-tauri/target/p5-tools/
+src-tauri/gen/
+
+# Release artifacts (built locally by scripts/release/build-release.mjs; never committed)
+/release/
+
+# Logs
+*.log
+pnpm-debug.log*
+
+# Test / tool caches
+coverage/
+.vitest/
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local reference assets / controller workspace (never commit)
+.superpowers/
+# Updater signing keys/password (defense in depth: .superpowers/ above already covers them;
+# the explicit rule keeps the private key out even if the directory pattern is ever narrowed)
+.superpowers/release-keys/

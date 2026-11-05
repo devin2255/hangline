@@ -1,0 +1,211 @@
+{
+  "crops": [
+    {
+      "blake3": "01d0682a6f721342cadce3b40f2b82c7f9817ffa7b49c7bd5a58afc7e92b18b3",
+      "height": 1080,
+      "name": "app-left-monitor-150pct.png",
+      "path": "%USERPROFILE%\\AppData\\Local\\Temp\\hangline-e5\\app-left-monitor-150pct.png",
+      "width": 1920
+    },
+    {
+      "blake3": "a91200b0225c0fc391c53a970c5682d73c3e09a3da577dfb4c90d20056e0c23a",
+      "height": 1080,
+      "name": "app-primary-monitor-100pct.png",
+      "path": "%USERPROFILE%\\AppData\\Local\\Temp\\hangline-e5\\app-primary-monitor-100pct.png",
+      "width": 1920
+    },
+    {
+      "blake3": "522b804de10c588b8c9fe20914b9399b752586f51f41812f637298469da3064f",
+      "height": 360,
+      "name": "app-seam-x0-640x360.png",
+      "path": "%USERPROFILE%\\AppData\\Local\\Temp\\hangline-e5\\app-seam-x0-640x360.png",
+      "width": 640
+    }
+  ],
+  "dp_to_px": {
+    "100": 4,
+    "125": 5,
+    "150": 6
+  },
+  "dpi_awareness": 2,
+  "elapsed_ms": 5111,
+  "image": {
+    "blake3": "a722003ee622d78ef5a149c3321f33c0f7234b8b57c13fbadf0cbadf2bca9859",
+    "bytes": 5117272,
+    "height": 1080,
+    "path": "%USERPROFILE%\\AppData\\Local\\Hangline\\Screenshots\\Hangline 2026-10-29 13.16.00.png",
+    "width": 3840
+  },
+  "left_work_area_logical": {
+    "h": 672.0,
+    "w": 1280.0,
+    "x": -1280.0,
+    "y": 0.0
+  },
+  "local_app_data": "%USERPROFILE%\\AppData\\Local",
+  "monitors": [
+    {
+      "id": "\\\\.\\DISPLAY2",
+      "isPrimary": false,
+      "rect": {
+        "h": 1080,
+        "w": 1920,
+        "x": -1920,
+        "y": 0
+      },
+      "scaleFactor": 1.5,
+      "workArea": {
+        "h": 1008,
+        "w": 1920,
+        "x": -1920,
+        "y": 0
+      }
+    },
+    {
+      "id": "\\\\.\\DISPLAY1",
+      "isPrimary": true,
+      "rect": {
+        "h": 1080,
+        "w": 1920,
+        "x": 0,
+        "y": 0
+      },
+      "scaleFactor": 1.0,
+      "workArea": {
+        "h": 1032,
+        "w": 1920,
+        "x": 0,
+        "y": 0
+      }
+    }
+  ],
+  "probes": [
+    {
+      "capture_rgb": [
+        0,
+        0,
+        0
+      ],
+      "matches": true,
+      "screen_rgb": [
+        0,
+        0,
+        0
+      ],
+      "x": -1920,
+      "y": 0
+    },
+    {
+      "capture_rgb": [
+        0,
+        0,
+        0
+      ],
+      "matches": true,
+      "screen_rgb": [
+        0,
+        0,
+        0
+      ],
+      "x": -1919,
+      "y": 1079
+    },
+    {
+      "capture_rgb": [
+        0,
+        0,
+        0
+      ],
+      "matches": true,
+      "screen_rgb": [
+        0,
+        0,
+        0
+      ],
+      "x": -1000,
+      "y": 500
+    },
+    {
+      "capture_rgb": [
+        0,
+        0,
+        0
+      ],
+      "matches": true,
+      "screen_rgb": [
+        0,
+        0,
+        0
+      ],
+      "x": -1,
+      "y": 1079
+    },
+    {
+      "capture_rgb": [
+        107,
+        141,
+        173
+      ],
+      "matches": true,
+      "screen_rgb": [
+        107,
+        141,
+        173
+      ],
+      "x": 0,
+      "y": 0
+    },
+    {
+      "capture_rgb": [
+        109,
+        142,
+        174
+      ],
+      "matches": true,
+      "screen_rgb": [
+        109,
+        142,
+        174
+      ],
+      "x": 1,
+      "y": 1
+    },
+    {
+      "capture_rgb": [
+        182,
+        170,
+        154
+      ],
+      "matches": true,
+      "screen_rgb": [
+        182,
+        170,
+        154
+      ],
+      "x": 960,
+      "y": 540
+    },
+    {
+      "capture_rgb": [
+        0,
+        52,
+        50
+      ],
+      "matches": true,
+      "screen_rgb": [
+        0,
+        52,
+        50
+      ],
+      "x": 1919,
+      "y": 1079
+    }
+  ],
+  "probes_all_match": true,
+  "virtual_screen": {
+    "h": 1080,
+    "w": 3840,
+    "x": -1920,
+    "y": 0
+  }
+}

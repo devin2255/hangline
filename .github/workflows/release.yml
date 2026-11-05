@@ -1,0 +1,71 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - uses: dtolnay/rust-toolchain@stable
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Verify tag matches package version
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME.TrimStart("v")
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ($tag -ne $version) { throw "tag v$tag does not match package.json version $version" }
+          Write-Host "releasing v$version"
+
+      - run: pnpm check
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      # Signed release: the updater private key/password come from repository secrets. The
+      # script refuses to sign without them and never prints the key.
+      - name: Build signed installer, portable and latest.json
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: node scripts/release/build-release.mjs --ci --sign
+
+      - name: Verify signed manifest and budget
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem release/Hangline_*_x64-setup.exe | Select-Object -First 1
+          if (-not $setup -or $setup.Length -gt 15000000) { throw "installer missing or over 15 MB" }
+          $manifest = Get-Content release/latest.json -Raw | ConvertFrom-Json
+          $entry = $manifest.platforms."windows-x86_64-nsis"
+          if (-not $entry) { $entry = $manifest.platforms."windows-x86_64" }
+          if (-not $entry -or $entry.signature -eq "UNSIGNED-PLACEHOLDER" -or $entry.signature.Length -lt 100) {
+            throw "latest.json is not signed with a real updater signature"
+          }
+          if ($entry.url -notmatch "Hangline_$($manifest.version)_x64-setup\.exe$") { throw "manifest URL does not point at the setup" }
+          Write-Host "signed manifest: version=$($manifest.version) url=$($entry.url)"
+
+      - name: Create GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $notes = "Hangline $version. See CHANGELOG.md for details. Unsigned build: Windows SmartScreen may show an unknown publisher; verify SHA256SUMS.txt."
+          gh release create $env:GITHUB_REF_NAME `
+            (Get-ChildItem release/Hangline_*_x64-setup.exe).FullName `
+            (Get-ChildItem release/Hangline_*_x64-portable.zip).FullName `
+            release/latest.json `
+            release/SHA256SUMS.txt `
+            --title "Hangline $version" `
+            --notes $notes `
+            --verify-tag

@@ -1,0 +1,579 @@
+/* Panel window chrome: the window itself is transparent; only the rope, pins and cards paint. */
+
+.panel {
+  /* Dark theme (default). Light overrides below. */
+  --glass-fill-top: rgba(255, 255, 255, 0.32);
+  --glass-fill-bottom: rgba(255, 255, 255, 0.08);
+  --glass-tint: rgba(150, 170, 190, 0.14);
+  --glass-border: rgba(255, 255, 255, 0.34);
+  --glass-border-hover: rgba(255, 255, 255, 0.62);
+  /* Source shadow: black .18 / radius 10 / y 5 (hover .26 / 14 / 8), plus the glass inner edge.
+     The 0.5 dp border is drawn as an inset ring so it never consumes layout: the content box is
+     exactly `card − 8` and the photo sits with a symmetric 4 dp frame on every side. */
+  --glass-shadow:
+    0 5px 10px rgba(0, 0, 0, 0.18),
+    inset 0 0.75px 0 rgba(255, 255, 255, 0.55),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.22),
+    inset 0 0 0 0.5px var(--glass-border);
+  --glass-shadow-hover:
+    0 8px 14px rgba(0, 0, 0, 0.26),
+    inset 0 0.75px 0 rgba(255, 255, 255, 0.7),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.22),
+    inset 0 0 0 0.5px var(--glass-border-hover);
+  --glass-circle-bg: rgba(18, 22, 28, 0.8);
+  --glass-circle-border: rgba(255, 255, 255, 0.34);
+  --photo-bg: rgba(10, 14, 19, 0.55);
+  --fallback-text: rgba(238, 243, 248, 0.92);
+  --fallback-chip: rgba(0, 0, 0, 0.32);
+  --fallback-bg:
+    radial-gradient(120% 100% at 18% 0%, rgba(255, 255, 255, 0.14), transparent 62%),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.035) 0 6px, transparent 6px 12px),
+    linear-gradient(155deg, #3a4550 0%, #232b34 58%, #151a20 100%);
+  --rope-core: rgba(234, 240, 246, 0.9);
+  --rope-shadow: rgba(0, 0, 0, 0.5);
+  --rope-highlight: rgba(255, 255, 255, 0.95);
+  --pill-bg: rgba(38, 44, 52, 0.72);
+  --pill-border: rgba(255, 255, 255, 0.28);
+  --pill-text: #f3f7fa;
+  /* Opaque-enough scrim: the hint sits on the transparent desktop, so its text must clear 4.5:1
+     over pure white **and** pure black (P2-8 review; see `panelContrast.test.ts`). */
+  --hint-bg: rgba(14, 19, 25, 0.88);
+  --hint-border: rgba(255, 255, 255, 0.3);
+  --hint-text: #f3f7fa;
+
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  color-scheme: dark;
+  background: transparent;
+  font-family: var(--font-ui);
+  /* Tuck animation: 220 ms ease-in (spec §3.3). The reveal spring drives inline transforms and
+     disables this transition through `.panel--springing`. */
+  transform: translate3d(0, 0, 0);
+  transition: transform 220ms ease-in;
+  will-change: transform;
+}
+
+/* While the spring owns translateY the CSS tuck transition must not lag each frame. */
+.panel--springing {
+  transition: none;
+}
+
+/* `theme: "light"` / the system theme resolved by `matchMedia` in Panel.tsx. */
+.panel[data-theme="light"] {
+  --glass-fill-top: rgba(255, 255, 255, 0.7);
+  --glass-fill-bottom: rgba(255, 255, 255, 0.38);
+  --glass-tint: rgba(255, 255, 255, 0.22);
+  --glass-border: rgba(255, 255, 255, 0.9);
+  --glass-border-hover: #ffffff;
+  --glass-shadow:
+    0 5px 10px rgba(20, 28, 38, 0.18),
+    inset 0 0.75px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -1px 0 rgba(20, 28, 38, 0.08),
+    inset 0 0 0 0.5px var(--glass-border);
+  --glass-shadow-hover:
+    0 8px 14px rgba(20, 28, 38, 0.26),
+    inset 0 0.75px 0 rgba(255, 255, 255, 1),
+    inset 0 -1px 0 rgba(20, 28, 38, 0.08),
+    inset 0 0 0 0.5px var(--glass-border-hover);
+  --glass-circle-bg: rgba(255, 255, 255, 0.94);
+  --glass-circle-border: rgba(255, 255, 255, 0.9);
+  --photo-bg: rgba(255, 255, 255, 0.5);
+  --fallback-text: rgba(24, 32, 40, 0.84);
+  --fallback-chip: rgba(255, 255, 255, 0.62);
+  --fallback-bg:
+    radial-gradient(120% 100% at 18% 0%, rgba(255, 255, 255, 0.8), transparent 62%),
+    repeating-linear-gradient(135deg, rgba(20, 28, 38, 0.04) 0 6px, transparent 6px 12px),
+    linear-gradient(155deg, #e8edf2 0%, #d3dbe3 58%, #c2ccd6 100%);
+  --rope-core: rgba(54, 64, 74, 0.66);
+  --rope-shadow: rgba(0, 0, 0, 0.2);
+  --rope-highlight: rgba(255, 255, 255, 0.85);
+  --pill-bg: rgba(255, 255, 255, 0.86);
+  --pill-border: rgba(255, 255, 255, 0.95);
+  --pill-text: rgba(24, 32, 40, 0.88);
+  --hint-bg: rgba(255, 255, 255, 0.94);
+  --hint-border: rgba(24, 32, 40, 0.14);
+  --hint-text: #182028;
+
+  color-scheme: light;
+}
+
+/*
+ * Horizontal viewport. Task 14: the panel owns the scroll offset (one card per wheel event, see
+ * `nextScrollOffset`); there is no native scrolling, so no scrollbar and no second scroll model.
+ */
+.panel__viewport {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+.panel__line {
+  position: relative;
+  height: 100%;
+  min-width: 100%;
+}
+
+.panel__rope {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+  /* Fade both ends so the cord does not stop in a hard edge at the panel border. */
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 4%, #000 96%, transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 4%, #000 96%, transparent 100%);
+}
+
+.rope {
+  fill: none;
+  stroke-linecap: round;
+}
+
+/* Three strokes: shadow 1.4 dp, core 1.2 dp, highlight 0.4 dp (design spec §3.3). */
+.rope--shadow {
+  stroke: var(--rope-shadow);
+  stroke-width: 1.4;
+  transform: translateY(0.55px);
+}
+
+.rope--core {
+  stroke: var(--rope-core);
+  stroke-width: 1.2;
+}
+
+.rope--highlight {
+  stroke: var(--rope-highlight);
+  stroke-width: 0.4;
+  opacity: 0.72;
+  transform: translateY(-0.35px);
+}
+
+/* Empty-line hint: a glass capsule centred under the rope's lowest point (LineView.swift:65-69). */
+.panel__hint {
+  position: absolute;
+  left: 50%;
+  z-index: 4;
+  margin: 0;
+  padding: 6px 12px;
+  border: 0.5px solid var(--hint-border);
+  border-radius: 999px;
+  background: var(--hint-bg);
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.12),
+    inset 0 0.75px 0 rgba(255, 255, 255, 0.35);
+  color: var(--hint-text);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.25;
+  white-space: nowrap;
+  pointer-events: none;
+  /* The plan's top is the capsule centre (`position(y:)` in the source), not its top edge. */
+  transform: translate(-50%, -50%);
+  backdrop-filter: blur(14px) saturate(1.1);
+}
+
+/* One fixed-width card slot; the unit inside carries the motion transform and the tilt. */
+.glass-card-slot {
+  position: absolute;
+  pointer-events: auto;
+  /* P2-4 reorder spring: a moved card starts offset and glides to its new layout position. */
+  transform: translate3d(var(--slot-dx, 0px), var(--slot-dy, 0px), 0);
+  will-change: transform;
+}
+
+/* The fly overlay (P2-5) draws the card while it flies; the panel copy must not show through. */
+.glass-card-slot[data-flying="true"] {
+  visibility: hidden;
+}
+
+/* P2-6: the fall overlay draws the card while it drops; the panel copy is hidden immediately. */
+.glass-card-slot[data-falling="true"] {
+  visibility: hidden;
+}
+
+/* A hovered card is raised above its neighbours (replaces the old `.glass-card-slot:hover`). */
+.glass-card-slot[data-hovered="true"] {
+  z-index: 5;
+}
+
+/*
+ * Motion wrapper (P2-4): the hook drives the arrival offset and the swing; the static tilt stays
+ * on `--tilt`. It rotates around the pin's top centre, exactly like the source
+ * `rotationEffect(anchor: .top)`. The card scale lives on `.glass-card` (source order:
+ * translate → rotate → scale).
+ */
+.glass-card-unit {
+  position: relative;
+  width: 100%;
+  transform: translate3d(0, var(--arrive-y, 0px), 0)
+    rotate(calc(var(--tilt, 0deg) + var(--swing, 0deg)));
+  transform-origin: 50% 0;
+  will-change: transform;
+}
+
+.glass-card-slot__pin {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  z-index: 2;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+/* Source shadow: black .30, radius 2, y 1.5 (PeggedView.swift:211). */
+.clothes-pin {
+  display: block;
+  filter: drop-shadow(0 1.5px 2px rgba(0, 0, 0, 0.3));
+}
+
+/*
+ * Simulated glass: layered gradients + 0.75 dp inner top highlight + 0.5 dp ring + shadow.
+ * The ring is part of `--glass-shadow` (inset), not a `border`: a 0.5 px border would consume
+ * layout (and round to 1 px at DPR 1), breaking the symmetric 4 dp frame. `backdrop-filter`
+ * cannot blur the desktop behind a transparent WebView2 window, so it is only a progressive
+ * enhancement here — the gradients carry the material.
+ */
+.glass-card {
+  position: relative;
+  display: block;
+  margin: 0 auto;
+  /* Content box = card − 2×4 dp = exactly the photo box (source `Frame.inset` is 4 dp). */
+  padding: 4px;
+  /* Not hidden: the Copied pill hangs 16 dp below the card edge. The photo clips itself. */
+  overflow: visible;
+  border-radius: var(--card-radius, 16px);
+  background:
+    linear-gradient(
+      157deg,
+      var(--glass-fill-top) 0%,
+      var(--glass-fill-bottom) 52%,
+      var(--glass-fill-top) 100%
+    ),
+    linear-gradient(180deg, var(--glass-tint), rgba(8, 12, 17, 0.12));
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(18px) saturate(1.2);
+  transform: scale(var(--card-scale, 1));
+  transform-origin: 50% 0;
+  transition: box-shadow 160ms ease;
+  will-change: transform;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Hover raises only the shadow/material; the scale and swing are driven by the motion hook. */
+.glass-card[data-hovered="true"] {
+  box-shadow: var(--glass-shadow-hover);
+}
+
+/*
+ * Native drag-out in flight (Task 13): the OS drag loop owns the pointer, so hover feedback would
+ * be stale. The card steps aside (source `opacity(dragging ? 0.45 : 1)`).
+ */
+.glass-card-slot[data-dragging="true"] .glass-card {
+  box-shadow: var(--glass-shadow-hover);
+  opacity: 0.45;
+  transition: none;
+}
+
+/* Glass sheen: a soft diagonal highlight across the whole surface. */
+.glass-card::before {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border-radius: inherit;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0) 32%);
+  pointer-events: none;
+  content: "";
+}
+
+/* Photo: the exact `photoSize` box; radius = card radius − inset (concentric corners). */
+.glass-card__photo {
+  position: relative;
+  overflow: hidden;
+  border-radius: calc(var(--card-radius, 16px) - 4px);
+  background: var(--photo-bg);
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.18);
+}
+
+.glass-card__image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /*
+   * The box already matches the image's aspect for real dimensions, so cover == contain there.
+   * Until P2-7 supplies thumbnail dimensions, 0×0 items (recordings/HEIC) use the full fallback
+   * box; if such an item ever gets a real image before then, cover would crop it — intended fill.
+   */
+  object-fit: cover;
+}
+
+/* Neutral fallback for recordings and for files the asset protocol cannot load (HEIC, gone). */
+.glass-card__fallback {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 6px;
+  color: var(--fallback-text);
+  background: var(--fallback-bg);
+}
+
+.glass-card__fallback-icon {
+  width: 20px;
+  height: 15px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.72;
+}
+
+/* Recordings put their file name at the bottom so it never covers the centred play glyph. */
+.glass-card__fallback--recording {
+  justify-content: flex-end;
+  padding-bottom: 8px;
+}
+
+.glass-card__fallback-name {
+  max-width: 100%;
+  padding: 1px 5px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--fallback-chip);
+  font-size: 9px;
+  line-height: 1.3;
+  letter-spacing: 0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panel[data-card-size="large"] .glass-card__fallback-name {
+  font-size: 10px;
+}
+
+/* Play glyph for recording cards: 28 dp glass circle with the source's 11 pt triangle. */
+.glass-card__play {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  /* Triangle colour follows the theme's fallback text so it never disappears on the light tile. */
+  color: var(--fallback-text);
+  border: 0.5px solid var(--glass-circle-border);
+  border-radius: 50%;
+  background: var(--glass-circle-bg);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.glass-card__play::before {
+  display: block;
+  margin-left: 2px;
+  border-style: solid;
+  border-width: 5.5px 0 5.5px 8.5px;
+  border-color: transparent;
+  border-left-color: currentColor;
+  content: "";
+}
+
+/*
+ * Top-left take-down cross (Task 12): a 26 dp hit area containing a 20 dp glass circle that fades
+ * in on hover. The 20 dp glyph is centred in the 26 dp hit area, so it sits exactly 3 dp from the
+ * card edge like the source `.padding(3)`.
+ */
+.glass-card__take-down {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 6;
+  display: grid;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--fallback-text);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 160ms ease;
+}
+
+.glass-card[data-hovered="true"] .glass-card__take-down,
+.glass-card__take-down:focus-visible {
+  opacity: 1;
+}
+
+.glass-card__take-down-glyph {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border: 0.5px solid var(--glass-circle-border);
+  border-radius: 50%;
+  background: var(--glass-circle-bg);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+  transform: scale(0.6);
+  transition: transform 160ms ease;
+}
+
+.glass-card[data-hovered="true"] .glass-card__take-down-glyph,
+.glass-card__take-down:focus-visible .glass-card__take-down-glyph {
+  transform: scale(1);
+}
+
+.glass-card__take-down:focus-visible {
+  outline: 1.5px solid var(--glass-border-hover);
+  outline-offset: -2px;
+}
+
+.glass-card__take-down-icon {
+  width: 8px;
+  height: 8px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+/* The Copied pill hangs from the card's bottom centre, 16 dp lower (PeggedView.swift:102-115). */
+.glass-card__status {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  z-index: 6;
+  pointer-events: none;
+  transform: translate(-50%, 16px);
+}
+
+.copied-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border: 0.5px solid var(--pill-border);
+  border-radius: 999px;
+  background: var(--pill-bg);
+  box-shadow:
+    0 4px 10px rgba(0, 0, 0, 0.22),
+    inset 0 0.75px 0 rgba(255, 255, 255, 0.6);
+  color: var(--pill-text);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  animation: copied-pill-in 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  backdrop-filter: blur(12px);
+}
+
+.copied-pill__check {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.copied-pill__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@keyframes copied-pill-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px) scale(0.94);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/*
+ * P5-2 update notice: a compact pill at the bottom centre of the (otherwise click-through) panel.
+ * The `Install update` button is the only interactive control outside the cards; Panel.tsx reports
+ * this element's rect to Rust so the native hit-test lets the click through.
+ */
+.panel__update {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  z-index: 7;
+  display: flex;
+  max-width: calc(100% - 24px);
+  align-items: center;
+  gap: 10px;
+  padding: 5px 6px 5px 12px;
+  border: 0.5px solid var(--pill-border);
+  border-radius: 999px;
+  background: var(--pill-bg);
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.24),
+    inset 0 0.75px 0 rgba(255, 255, 255, 0.5);
+  color: var(--pill-text);
+  pointer-events: auto;
+  transform: translateX(-50%);
+  backdrop-filter: blur(12px);
+  animation: copied-pill-in 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.panel__update-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.panel__update-action {
+  flex: none;
+  padding: 3px 10px;
+  border: 0.5px solid var(--pill-border);
+  border-radius: 999px;
+  background: var(--hint-bg);
+  color: var(--hint-text);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+}
+
+.panel__update-action:hover {
+  border-color: var(--glass-border-hover);
+}
+
+.panel__update-action:focus-visible {
+  outline: 2px solid var(--rope-core);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel,
+  .glass-card,
+  .glass-card__take-down,
+  .glass-card__take-down-glyph,
+  .copied-pill,
+  .panel__update {
+    transition: none;
+    animation: none;
+  }
+}

@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1d2630" />
+      <stop offset="1" stop-color="#0d1115" />
+    </linearGradient>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8fb8d6" />
+      <stop offset="0.62" stop-color="#e6d2ad" />
+      <stop offset="1" stop-color="#f0e3c6" />
+    </linearGradient>
+    <linearGradient id="pin" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e0a877" />
+      <stop offset="1" stop-color="#b87a4c" />
+    </linearGradient>
+    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="16" />
+    </filter>
+  </defs>
+
+  <rect x="32" y="32" width="960" height="960" rx="212" fill="url(#bg)" />
+  <rect
+    x="38"
+    y="38"
+    width="948"
+    height="948"
+    rx="206"
+    fill="none"
+    stroke="#33404c"
+    stroke-opacity="0.55"
+    stroke-width="4"
+  />
+
+  <!-- rope -->
+  <path
+    d="M104 352 Q512 430 920 352"
+    fill="none"
+    stroke="#0a0d10"
+    stroke-opacity="0.35"
+    stroke-width="32"
+    stroke-linecap="round"
+    transform="translate(0 12)"
+  />
+  <path
+    d="M104 352 Q512 430 920 352"
+    fill="none"
+    stroke="#d8b478"
+    stroke-width="26"
+    stroke-linecap="round"
+  />
+  <path
+    d="M104 352 Q512 430 920 352"
+    fill="none"
+    stroke="#f3dfb4"
+    stroke-opacity="0.5"
+    stroke-width="7"
+    stroke-linecap="round"
+    transform="translate(0 -6)"
+  />
+  <circle cx="104" cy="352" r="17" fill="#8d6a3c" />
+  <circle cx="920" cy="352" r="17" fill="#8d6a3c" />
+
+  <!-- hanging photo -->
+  <g transform="rotate(-4 512 584)">
+    <rect
+      x="364"
+      y="382"
+      width="304"
+      height="428"
+      rx="28"
+      fill="#000000"
+      fill-opacity="0.45"
+      filter="url(#soft)"
+    />
+    <rect x="356" y="368" width="312" height="432" rx="26" fill="#f5f2ea" />
+    <rect x="378" y="390" width="268" height="268" rx="8" fill="url(#sky)" />
+    <circle cx="562" cy="466" r="34" fill="#f2b95c" />
+    <path
+      d="M378 596 L462 528 L536 578 L612 500 L646 534 L646 658 L378 658 Z"
+      fill="#5f8471"
+    />
+    <path
+      d="M378 620 L470 566 L552 612 L646 556 L646 658 L378 658 Z"
+      fill="#46675a"
+      fill-opacity="0.85"
+    />
+    <rect x="378" y="686" width="164" height="16" rx="8" fill="#c9c4b7" />
+    <rect x="378" y="720" width="104" height="12" rx="6" fill="#dcd7ca" />
+  </g>
+
+  <!-- clothespin -->
+  <g transform="rotate(-4 512 584)">
+    <rect x="482" y="322" width="60" height="116" rx="18" fill="#8a5a35" />
+    <rect x="486" y="330" width="52" height="104" rx="16" fill="url(#pin)" />
+    <rect x="498" y="338" width="28" height="64" rx="13" fill="#f0c9a4" fill-opacity="0.55" />
+    <circle cx="512" cy="414" r="12" fill="#6b7178" />
+    <circle cx="512" cy="414" r="5" fill="#3f454b" />
+  </g>
+</svg>

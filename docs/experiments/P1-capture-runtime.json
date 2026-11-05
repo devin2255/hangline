@@ -1,0 +1,403 @@
+{
+  "startedAt": "2026-11-02T03:53:52.973Z",
+  "steps": [
+    {
+      "name": "initial-state",
+      "at": "2026-11-02T03:53:57.914Z",
+      "revision": 0,
+      "items": [],
+      "revealOnNew": true,
+      "panelWindows": [
+        {
+          "title": "Hangline",
+          "found": true,
+          "hwnd": 1182674,
+          "visible": false,
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "w": 1920,
+            "h": 210
+          }
+        }
+      ],
+      "helperWindows": [
+        {
+          "title": "Hangline Task16 Helper",
+          "found": true,
+          "hwnd": 920536,
+          "visible": true,
+          "rect": {
+            "x": -1920,
+            "y": 0,
+            "w": 1920,
+            "h": 1080
+          }
+        }
+      ]
+    },
+    {
+      "name": "line-shown",
+      "at": "2026-11-02T03:54:03.034Z",
+      "attempt": 1,
+      "visible": true,
+      "panelWindows": [
+        {
+          "title": "Hangline",
+          "found": true,
+          "hwnd": 1182674,
+          "visible": true,
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "w": 1920,
+            "h": 210
+          }
+        }
+      ]
+    },
+    {
+      "name": "capture-overlay",
+      "at": "2026-11-02T03:54:06.870Z",
+      "readyMs": 3829,
+      "monitors": [
+        {
+          "id": "\\\\.\\DISPLAY1",
+          "rect": {
+            "x": -1920,
+            "y": 0,
+            "w": 1920,
+            "h": 1080
+          },
+          "workArea": {
+            "x": -1920,
+            "y": 0,
+            "w": 1920,
+            "h": 1008
+          },
+          "scaleFactor": 1.5,
+          "isPrimary": false
+        },
+        {
+          "id": "\\\\.\\DISPLAY2",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "w": 1920,
+            "h": 1080
+          },
+          "workArea": {
+            "x": 0,
+            "y": 0,
+            "w": 1920,
+            "h": 1032
+          },
+          "scaleFactor": 1,
+          "isPrimary": true
+        }
+      ],
+      "virtual": {
+        "x": -1920,
+        "y": 0,
+        "w": 3840,
+        "h": 1080
+      },
+      "pageGeometry": {
+        "dpr": 1,
+        "innerWidth": 3840,
+        "innerHeight": 1080,
+        "screenX": -1280,
+        "screenY": 0,
+        "outerWidth": 3840,
+        "outerHeight": 1080,
+        "img": {
+          "src": "http://asset.localhost/C%3A%5CUsers%5C<user>%5CAppData%5CLocal%5CHangline%5Ccapture-tmp.png",
+          "naturalWidth": 3840,
+          "naturalHeight": 1080,
+          "clientWidth": 3840,
+          "clientHeight": 1080
+        }
+      },
+      "targetRect": {
+        "x": -1698,
+        "y": 99,
+        "w": 399,
+        "h": 300
+      },
+      "cssDrag": {
+        "start": {
+          "x": 222,
+          "y": 99
+        },
+        "end": {
+          "x": 621,
+          "y": 399
+        }
+      }
+    },
+    {
+      "name": "selection-active",
+      "at": "2026-11-02T03:54:07.093Z",
+      "selection": {
+        "left": "222px",
+        "top": "99px",
+        "width": "399px",
+        "height": "300px",
+        "label": "399 × 300"
+      },
+      "interactionMs": 4058
+    },
+    {
+      "name": "first-capture-result",
+      "at": "2026-11-02T03:54:10.419Z",
+      "revision": 1,
+      "itemCount": 1,
+      "item": {
+        "id": "6eb74478d13810ff50eeb481f33eba71",
+        "path": "%USERPROFILE%\\AppData\\Local\\Hangline\\Screenshots\\Hangline 2026-11-02 11.54.07.png",
+        "kind": "capture",
+        "hash": 6984288073171440000,
+        "width": 399,
+        "height": 300,
+        "createdAt": 1793591647103,
+        "addedAt": 1793591647177
+      },
+      "panelWindows": [
+        {
+          "title": "Hangline",
+          "found": true,
+          "hwnd": 1182674,
+          "visible": true,
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "w": 1920,
+            "h": 210
+          }
+        },
+        {
+          "title": "Hangline capture",
+          "found": false
+        }
+      ],
+      "screenshots": [
+        "Hangline 2026-10-29 13.12.25.png",
+        "Hangline 2026-10-29 13.16.00.png",
+        "Hangline 2026-11-02 11.54.07.png"
+      ],
+      "tempExists": false,
+      "captureConsole": [
+        {
+          "type": "debug",
+          "text": "[vite] connecting..."
+        },
+        {
+          "type": "debug",
+          "text": "[vite] connected."
+        },
+        {
+          "type": "info",
+          "text": "%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"
+        },
+        {
+          "type": "info",
+          "text": "Hangline capture: frozen frame 3840x1080 px at (-1920, 0), scale 1.5"
+        },
+        {
+          "type": "info",
+          "text": "Hangline capture: confirm CSS 222,99 399x300 -> physical -1698,99 399x300 (dpr 1)"
+        }
+      ]
+    },
+    {
+      "name": "watcher-dedupe",
+      "at": "2026-11-02T03:54:13.027Z",
+      "revision": 1,
+      "itemCount": 1,
+      "duplicates": 1
+    },
+    {
+      "name": "saved-png",
+      "at": "2026-11-02T03:54:16.518Z",
+      "probe": {
+        "path": "%USERPROFILE%\\AppData\\Local\\Hangline\\Screenshots\\Hangline 2026-11-02 11.54.07.png",
+        "width": 399,
+        "height": 300,
+        "sampled": 13300,
+        "uniqueColors": 1,
+        "topColors": [
+          {
+            "color": "230,180,40,255",
+            "count": 13300
+          }
+        ],
+        "first": [
+          230,
+          180,
+          40,
+          255
+        ],
+        "last": [
+          230,
+          180,
+          40,
+          255
+        ]
+      },
+      "copy": "%USERPROFILE%\\AppData\\Local\\Temp\\hangline-t16\\out\\saved-selection.png",
+      "solidHelperContent": true
+    },
+    {
+      "name": "overlay-selection-crop",
+      "at": "2026-11-02T03:54:19.807Z",
+      "probe": {
+        "path": "%USERPROFILE%\\AppData\\Local\\Temp\\hangline-t16\\out\\overlay-full.png",
+        "width": 399,
+        "height": 300,
+        "sampled": 13300,
+        "uniqueColors": 4,
+        "topColors": [
+          {
+            "color": "230,180,40,255",
+            "count": 13068
+          },
+          {
+            "color": "254,251,244,255",
+            "count": 209
+          },
+          {
+            "color": "88,88,89,255",
+            "count": 22
+          },
+          {
+            "color": "204,203,198,255",
+            "count": 1
+          }
+        ],
+        "first": [
+          254,
+          251,
+          244,
+          255
+        ],
+        "last": [
+          254,
+          251,
+          244,
+          255
+        ]
+      },
+      "path": "%USERPROFILE%\\AppData\\Local\\Temp\\hangline-t16\\out\\overlay-selection.png",
+      "yellowFraction": 13068
+    },
+    {
+      "name": "cancel-result",
+      "at": "2026-11-02T03:54:30.996Z",
+      "revisionBefore": 1,
+      "revisionAfter": 1,
+      "itemCount": 1,
+      "filesBeforeCancel": 3,
+      "filesAfterCancel": 3,
+      "tempExists": false,
+      "overlayWindows": [
+        {
+          "title": "Hangline capture",
+          "found": true,
+          "hwnd": 40110348,
+          "visible": true,
+          "rect": {
+            "x": -1920,
+            "y": 0,
+            "w": 3840,
+            "h": 1080
+          }
+        },
+        {
+          "title": "Hangline",
+          "found": true,
+          "hwnd": 1182674,
+          "visible": false,
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "w": 1920,
+            "h": 210
+          }
+        }
+      ],
+      "panelWindows": [
+        {
+          "title": "Hangline",
+          "found": true,
+          "hwnd": 1182674,
+          "visible": true,
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "w": 1920,
+            "h": 210
+          }
+        }
+      ]
+    },
+    {
+      "name": "collision-result",
+      "at": "2026-11-02T03:54:37.297Z",
+      "item": {
+        "id": "df8dd254cde55bdfe609f059385ba29d",
+        "path": "%USERPROFILE%\\AppData\\Local\\Hangline\\Screenshots\\Hangline 2026-11-02 11.54.37-2.png",
+        "kind": "capture",
+        "hash": 6947318443229828000,
+        "width": 200,
+        "height": 150,
+        "createdAt": 1793591677097,
+        "addedAt": 1793591677124
+      },
+      "selection": {
+        "width": "200px",
+        "height": "150px",
+        "label": "200 × 150"
+      },
+      "suffixed": true,
+      "placeholderDirsKept": 7
+    },
+    {
+      "name": "collision-saved-png",
+      "at": "2026-11-02T03:54:40.953Z",
+      "probe": {
+        "path": "%USERPROFILE%\\AppData\\Local\\Hangline\\Screenshots\\Hangline 2026-11-02 11.54.37-2.png",
+        "width": 200,
+        "height": 150,
+        "sampled": 3350,
+        "uniqueColors": 1,
+        "topColors": [
+          {
+            "color": "230,180,40,255",
+            "count": 3350
+          }
+        ],
+        "first": [
+          230,
+          180,
+          40,
+          255
+        ],
+        "last": [
+          230,
+          180,
+          40,
+          255
+        ]
+      }
+    },
+    {
+      "name": "log-lines",
+      "at": "2026-11-02T03:54:40.981Z",
+      "lines": []
+    }
+  ],
+  "finishedAt": "2026-11-02T03:54:40.981Z",
+  "summary": {
+    "ok": true
+  }
+}

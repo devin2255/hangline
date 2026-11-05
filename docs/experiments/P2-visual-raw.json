@@ -1,0 +1,59 @@
+{
+  "reveal": {
+    "durationMs": 383,
+    "startY": -220.9,
+    "endY": 0,
+    "samples": 33
+  },
+  "arrival": {
+    "swingPeakDeg": 16,
+    "startSwingDeg": 16,
+    "startArriveY": -46,
+    "minArriveY": -46,
+    "durationMs": 878
+  },
+  "tuck": {
+    "durationMs": 234,
+    "startY": 0,
+    "endY": -222,
+    "samples": 15
+  },
+  "hover": {
+    "maxScale": 1.037
+  },
+  "press": {
+    "minScale": 0.95
+  },
+  "copied": {
+    "peakSwingDeg": 0.58,
+    "samples": 46
+  },
+  "fly": {
+    "durationMs": 657,
+    "maxK": 1,
+    "maxArcDp": 30,
+    "maxChrome": 1,
+    "samples": 42
+  },
+  "fall": {
+    "durationMs": 564,
+    "maxK": 1,
+    "maxDropDp": 520,
+    "minOpacity": 0,
+    "maxTiltDeg": 22.56,
+    "samples": 36
+  },
+  "screenshots": [
+    "p2-frames/reveal.png",
+    "p2-frames/hover.png",
+    "p2-frames/fly-landed.png",
+    "p2-frames/fall-after.png"
+  ],
+  "environment": {
+    "items": 12,
+    "theme": "dark",
+    "cardSize": "medium",
+    "keep": "fit",
+    "runNote": "same 12-item line as perf.mjs; compare takes items off the line (deleteFile:false) and adds action fixtures; screenshots are relative to docs/experiments"
+  }
+}

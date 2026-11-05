@@ -1,0 +1,45 @@
+name: ci
+
+on: [push, pull_request]
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - uses: dtolnay/rust-toolchain@stable
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
+      - run: pnpm build
+
+      # Unsigned installer + portable check: exercises the exact release pipeline (NSIS 3.13,
+      # embedded WebView2 bootstrapper, size gate, updater manifest layout). Signing secrets are
+      # not required here; release.yml signs on a tag.
+      - run: node scripts/release/build-release.mjs --ci
+
+      - name: Verify installer budget and artifacts
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem release/Hangline_*_x64-setup.exe | Select-Object -First 1
+          if (-not $setup) { throw "installer missing" }
+          if ($setup.Length -gt 15000000) { throw "installer exceeds 15 MB: $($setup.Length) bytes" }
+          $portable = Get-ChildItem release/Hangline_*_x64-portable.zip | Select-Object -First 1
+          if (-not $portable) { throw "portable zip missing" }
+          Write-Host "setup=$($setup.Name) $($setup.Length) bytes; portable=$($portable.Name) $($portable.Length) bytes"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hangline-windows-unsigned
+          path: |
+            release/Hangline_*_x64-setup.exe
+            release/Hangline_*_x64-portable.zip
+            release/SHA256SUMS.txt
+            release/latest.json
+            release/build-info.json
+          if-no-files-found: error

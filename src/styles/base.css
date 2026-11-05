@@ -1,0 +1,61 @@
+/* Hangline base styles: reset + shared tokens. Window-specific styles live next to each window. */
+
+:root {
+  color-scheme: dark;
+  --font-ui:
+    "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", system-ui, -apple-system, sans-serif;
+  --color-text: #eef1f5;
+  --color-text-muted: #9aa3ad;
+  --color-surface: #14171b;
+  --color-line: #3a4048;
+  font-family: var(--font-ui);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* P2-8: capture/shortcut windows set `data-theme` on `<html>`; the panel keeps it on `.panel`. */
+html[data-theme="light"] {
+  color-scheme: light;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-surface);
+  color: var(--color-text);
+  overflow: hidden;
+  user-select: none;
+}
+
+/* The panel window is transparent: never paint a white/black backdrop behind the cards. */
+html[data-window="panel"],
+html[data-window="panel"] body {
+  background: transparent;
+}
+
+/* P2-5: the fly overlay is a transparent, click-through full-virtual-screen window. */
+html[data-window="fly"],
+html[data-window="fly"] body {
+  background: transparent;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}

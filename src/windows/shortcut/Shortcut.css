@@ -1,0 +1,154 @@
+/* Change-shortcut window (Task 15): compact glass dialog with a live key-capture box. */
+
+html[data-window="shortcut"],
+html[data-window="shortcut"] body {
+  background: var(--shortcut-window-bg);
+}
+
+/* P2-8 theme tokens (dark default; light values mirror the panel material). */
+html[data-window="shortcut"] {
+  --shortcut-window-bg: #14171b;
+  --shortcut-text: #eef1f5;
+  --shortcut-muted: #9aa3ad;
+  --shortcut-line: #3a4048;
+  --shortcut-glass: rgba(255, 255, 255, 0.04);
+  --shortcut-chip: rgba(255, 255, 255, 0.06);
+  --shortcut-chip-hover: rgba(255, 255, 255, 0.12);
+  --shortcut-primary: #2f6fb5;
+  --shortcut-primary-border: #4c8dd8;
+  --shortcut-primary-hover: #2f6cae;
+  --shortcut-primary-text: #f7fafc;
+  --shortcut-error: #e08b84;
+  --shortcut-error-border: #b4534b;
+}
+
+html[data-window="shortcut"][data-theme="light"] {
+  --shortcut-window-bg: #eef2f6;
+  --shortcut-text: #182028;
+  --shortcut-muted: #55606b;
+  --shortcut-line: #c4ced8;
+  --shortcut-glass: rgba(255, 255, 255, 0.62);
+  --shortcut-chip: rgba(24, 32, 40, 0.06);
+  --shortcut-chip-hover: rgba(24, 32, 40, 0.12);
+  --shortcut-primary: #2f6fb5;
+  --shortcut-primary-border: #2f6fb5;
+  --shortcut-primary-hover: #2f6cae;
+  --shortcut-primary-text: #f7fafc;
+  --shortcut-error: #a33a32;
+  --shortcut-error-border: #b4534b;
+  color-scheme: light;
+}
+
+.shortcut {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  height: 100%;
+  padding: 18px 20px 16px;
+  color: var(--shortcut-text);
+  font-size: 13px;
+  user-select: none;
+  cursor: default;
+}
+
+.shortcut__header {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.shortcut__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.shortcut__target {
+  margin: 0;
+  color: var(--shortcut-muted);
+  font-size: 12px;
+}
+
+.shortcut__current {
+  font-variant-numeric: tabular-nums;
+}
+
+.shortcut__capture {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: 1;
+  min-height: 76px;
+  padding: 10px 14px;
+  border: 1px solid var(--shortcut-line);
+  border-radius: 10px;
+  background: var(--shortcut-glass);
+  text-align: center;
+}
+
+.shortcut__capture[data-error="true"] {
+  border-color: var(--shortcut-error-border);
+}
+
+.shortcut__keys {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+.shortcut__hint {
+  color: var(--shortcut-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.shortcut__capture[data-error="true"] .shortcut__hint {
+  color: var(--shortcut-error);
+}
+
+.shortcut__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.shortcut__esc-hint {
+  flex: 1;
+  color: var(--shortcut-muted);
+  font-size: 11px;
+}
+
+.shortcut__button {
+  min-width: 72px;
+  padding: 6px 14px;
+  border: 1px solid var(--shortcut-line);
+  border-radius: 7px;
+  background: var(--shortcut-chip);
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.shortcut__button:hover:not(:disabled) {
+  background: var(--shortcut-chip-hover);
+}
+
+.shortcut__button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.shortcut__button--primary {
+  border-color: var(--shortcut-primary-border);
+  background: var(--shortcut-primary);
+  color: var(--shortcut-primary-text);
+}
+
+.shortcut__button--primary:hover:not(:disabled) {
+  background: var(--shortcut-primary-hover);
+}

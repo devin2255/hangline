@@ -1,0 +1,39 @@
+{
+  "name": "hangline",
+  "version": "1.0.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "node scripts/check-release-instrumentation.mjs --self-test && tsc --noEmit && vite build && node scripts/check-release-instrumentation.mjs",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "check": "pnpm lint && node scripts/check-release-instrumentation.mjs --self-test && pnpm typecheck && pnpm test && node scripts/check-i18n.mjs && node scripts/version.mjs"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2",
+    "react": "^19",
+    "react-dom": "^19",
+    "zustand": "^5"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^5",
+    "@eslint/js": "^9",
+    "eslint": "^9",
+    "eslint-plugin-react-hooks": "^5",
+    "typescript-eslint": "^8",
+    "prettier": "^3",
+    "typescript": "^5",
+    "vite": "^7",
+    "vitest": "^3"
+  }
+}
