@@ -584,7 +584,7 @@ function signSetup(setupPath, version) {
   const setupFilePath = join(RELEASE_DIR, setupName);
   const signed = SIGN ? signSetup(setupFilePath, version) : null;
   const signature = signed?.signature ?? "UNSIGNED-PLACEHOLDER";
-  const downloadUrl = `https://github.com/hangline-app/hangline/releases/download/v${version}/${setupName}`;
+  const downloadUrl = `https://github.com/devin2255/hangline/releases/download/v${version}/${setupName}`;
   const platformEntry = { signature, url: downloadUrl };
   // NSIS-installed apps look up "windows-x86_64-nsis" first, then "windows-x86_64"; write both
   // so the manifest works even if the installer detection falls back (same setup file).

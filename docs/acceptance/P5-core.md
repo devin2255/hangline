@@ -24,11 +24,12 @@ Windows 11 Home 10.0.26300 x64；Node 22.17 / pnpm 10；Rust 1.90 MSVC；Tauri 2
 
 | 产物 | 大小 | SHA-256 | 备注 |
 |---|---|---|---|
-| `Hangline_1.0.0_x64-setup.exe` | **7,315,272 B (7.32 MB)** | `8BD0BE9C6DD618A6C72FF6D2DEAD3492A9B5B98676217D8D298DBB6E09483C68` | Authenticode **NotSigned**；≤15,000,000 B 门禁 PASS |
-| `Hangline_1.0.0_x64-portable.zip` | **8,430,050 B (8.43 MB)** | `3946BE39A62D7C7C12B6D7B493BD2B925C78E51E4331665044DC04C3F887DA1E` | exe + icon + `portable` marker + 双语 README（更新检查说明已与 1.0.0 一致） |
-| `latest.json` | — | — | 真实 updater 签名（`windows-x86_64-nsis` + `windows-x86_64`，436 字符）；占位 GitHub endpoint |
+| `Hangline_1.0.0_x64-setup.exe`（本地已验证构建，endpoint 修复前） | **7,315,272 B (7.32 MB)** | `8BD0BE9C6DD618A6C72FF6D2DEAD3492A9B5B98676217D8D298DBB6E09483C68` | Authenticode **NotSigned**；≤15,000,000 B 门禁 PASS；生命周期 84/84 基于此构建 |
+| `Hangline_1.0.0_x64-portable.zip`（同上） | **8,430,050 B (8.43 MB)** | `3946BE39A62D7C7C12B6D7B493BD2B925C78E51E4331665044DC04C3F887DA1E` | exe + icon + `portable` marker + 双语 README |
+| endpoint 修复后本地产物（未做生命周期复跑） | setup **7,321,079 B** / portable **8,430,059 B** | setup `0EBDE8E5F3B3DDDE12408C026C511C44466EF54B858DD7AEC7697035D1A78079` / portable `D7216197BBBE0AB8D4FC06584D44622389B01D4B45726658C68398535EEAAF75` | updater URL 已指向 `devin2255/hangline`；本机 Defender 对未签名 exe 误报隔离，无法重跑生命周期；公开 Release 以 CI 构建的 `SHA256SUMS.txt` 为准 |
+| `latest.json` | — | — | 真实 updater 签名（`windows-x86_64-nsis` + `windows-x86_64`，436 字符）；endpoint 指向 `devin2255/hangline` Releases |
 
-构建溯源：产物由 `build-info.json` 记录（`git_commit 59991fa`、NSIS/WebView2 哈希、大小、签名来源；不包含主机绝对路径）。`59991fa` 是**压缩前的私有开发历史**中的最后一个代码/脚本提交；公开仓库以同一代码树的单提交历史发布（`v1.0.0` tag 指向该公开提交），构建后只有文档修改，不改变应用或安装器行为。`build-info.json` 属于本地 git-ignored 发布产物，不随公开仓库发布。
+构建溯源：`build-info.json` 记录构建时 HEAD、NSIS/WebView2 哈希、大小、签名来源（不含主机绝对路径），属于本地 git-ignored 产物，不随公开仓库发布。生命周期证据对应 endpoint 修复前的已验证本地产物；endpoint 修复后的最终本地产物由公开提交 `5bd60ac` 的树加修复构建（`git_commit 5bd60ac`），本机 Defender 误报阻断复跑。公开 GitHub Release 由 tag 触发的 CI 从同一源码重新构建并生成自己的 `SHA256SUMS.txt`，其哈希为发布权威值。
 
 ## 3. 本机生命周期（脚本化，隔离）
 

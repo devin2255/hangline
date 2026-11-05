@@ -1,8 +1,8 @@
 # Updater signing and release flow (P5-2 handoff to P5-3)
 
 Hangline uses `tauri-plugin-updater` 2 with the Tauri/minisign updater signature. The updater
-endpoint is `https://github.com/hangline-app/hangline/releases/latest/download/latest.json`
-(placeholder repository until the user publishes; see `docs/superpowers/plans/2026-11-04-hangline-windows-p5-release.md`).
+endpoint is `https://github.com/devin2255/hangline/releases/latest/download/latest.json`
+(the public repository; see `docs/RELEASE.md`).
 
 This document is the signing contract for `scripts/release/build-release.mjs` (P5-1) and the
 release workflow (P5-3). The private key is **never** committed, printed in CI logs, or copied into
@@ -42,7 +42,7 @@ Verify with `git check-ignore -v .superpowers/release-keys/hangline.key`.
 ```json
 "plugins": {
   "updater": {
-    "endpoints": ["https://github.com/hangline-app/hangline/releases/latest/download/latest.json"],
+    "endpoints": ["https://github.com/devin2255/hangline/releases/latest/download/latest.json"],
     "pubkey": "<contents of .superpowers/release-keys/hangline.key.pub>",
     "windows": { "installMode": "passive" }
   }
@@ -80,7 +80,7 @@ Then `release/latest.json` (Tauri v2 static-manifest shape):
   "platforms": {
     "windows-x86_64": {
       "signature": "<contents of Hangline_<version>_x64-setup.exe.sig>",
-      "url": "https://github.com/hangline-app/hangline/releases/download/v<version>/Hangline_<version>_x64-setup.exe"
+      "url": "https://github.com/devin2255/hangline/releases/download/v<version>/Hangline_<version>_x64-setup.exe"
     }
   }
 }

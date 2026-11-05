@@ -46,7 +46,7 @@ All artifacts are git-ignored under `release/`.
 - `latest.json` carries the signature for both `windows-x86_64-nsis` and `windows-x86_64` (the
   updater probes the NSIS-specific key first, then the generic one) and points at the tagged
   release asset URL. The endpoint in `tauri.conf.json` is a placeholder
-  (`github.com/hangline-app/hangline`); rename it when the public repository is created.
+  (`github.com/devin2255/hangline`), matching the public repository.
 
 ## Publishing a release (operator)
 

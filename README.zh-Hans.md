@@ -128,7 +128,7 @@ cargo check --manifest-path src-tauri/Cargo.toml --all-targets # 0 warnings
 ## 隐私
 
 - **唯一的网络请求是更新检查。** `autoCheckUpdates` 开启时每日一次，或从托盘手动检查；更新端点是唯一访问的主机。没有统计、遥测、账号、云同步或崩溃上报。
-- 只有在用户主动选择时才会用默认浏览器打开链接（例如文档或更新提示里的 release 页面）；「打开截图文件夹」只是本地打开资源管理器。更新端点是 GitHub Releases 占位地址，需运营者发布仓库后替换。
+- 只有在用户主动选择时才会用默认浏览器打开链接（例如文档或更新提示里的 release 页面）；「打开截图文件夹」只是本地打开资源管理器。更新端点是公开仓库 `devin2255/hangline` 的 GitHub Releases 地址。
 - 截图与录屏留在你的磁盘上。Hangline 只会把剪贴板图片、以及你显式监听目录中的新文件复制到 `%LOCALAPPDATA%\Hangline\Screenshots\`，不会上传到任何地方。
 - 剪贴板采集只接受纯图片，并跳过看起来隐私的复制（密码/文本、`ExcludeClipboardContentFromMonitorProcessing`、`CanIncludeInClipboardHistory=0`、`org.nspasteboard.ConcealedType`、文件）。
 - 本地日志与状态文件可能包含本地文件路径和事件元数据，但不包含图像内容，且只留在本机。

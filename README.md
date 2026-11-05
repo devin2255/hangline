@@ -189,8 +189,8 @@ Data lives under `%LOCALAPPDATA%\Hangline\` (`settings.json`,
   accounts, cloud sync, or crash reporting.
 - Opening a URL in your default browser (for example a documentation link or the release page
   shown after an update prompt) is only done when you choose it; "Open screenshots folder"
-  opens Explorer locally. The updater endpoint is a GitHub Releases URL that stays a placeholder
-  until the operator publishes a repository.
+  opens Explorer locally. The updater endpoint is the public repository's GitHub Releases URL
+  (`devin2255/hangline`).
 - Screenshots and recordings stay on your disk. Hangline copies clipboard images
   and new files from the folders you explicitly watch into
   `%LOCALAPPDATA%\Hangline\Screenshots\`; it does not upload them anywhere.

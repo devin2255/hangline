@@ -272,7 +272,7 @@ fn run_actions(
 /// `tauri-plugin-updater` (the update endpoint is the app's only network destination). This URL is
 /// no longer opened automatically: it is logged as a manual fallback when a check cannot reach the
 /// endpoint, until the user publishes the real repository Releases page (plan reference data).
-pub const RELEASES_URL: &str = "https://github.com/hangline-app/hangline/releases";
+pub const RELEASES_URL: &str = "https://github.com/devin2255/hangline/releases";
 
 /// Takes every card off the line, reusing the Task 12 take-down rule per item.
 ///

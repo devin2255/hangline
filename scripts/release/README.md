@@ -33,7 +33,7 @@ node scripts/release/build-release.mjs --skip-build --skip-check --skip-tools --
 
 `latest.json` then contains a real Tauri updater signature for both `windows-x86_64-nsis` and
 `windows-x86_64`, pointing at
-`https://github.com/hangline-app/hangline/releases/download/v<version>/Hangline_<version>_x64-setup.exe`.
+`https://github.com/devin2255/hangline/releases/download/v<version>/Hangline_<version>_x64-setup.exe`.
 The repo name is a placeholder until the user publishes their GitHub repository; update
 `src-tauri/tauri.conf.json` `plugins.updater.endpoints` and the URL template in
 `build-release.mjs` when renaming. Authenticode signing is NOT included (V1 ships unsigned; see
