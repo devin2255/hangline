@@ -4,6 +4,7 @@ import {
   formatAccelerator,
   mainKeyForCode,
   modifierNames,
+  parseShortcutTarget,
   type ShortcutKeyEvent,
 } from "./capture";
 
@@ -94,5 +95,20 @@ describe("shortcut capture", () => {
 
   it("formats the preview without changing the canonical string", () => {
     expect(formatAccelerator("  Ctrl+Alt+S ")).toBe("Ctrl+Alt+S");
+  });
+});
+
+describe("parseShortcutTarget", () => {
+  it("maps every known target", () => {
+    expect(parseShortcutTarget("capture")).toBe("capture");
+    expect(parseShortcutTarget("toggle")).toBe("toggle");
+    expect(parseShortcutTarget("editLatest")).toBe("editLatest");
+  });
+
+  it("falls back to capture for unknown, empty or missing values", () => {
+    expect(parseShortcutTarget("nope")).toBe("capture");
+    expect(parseShortcutTarget("")).toBe("capture");
+    expect(parseShortcutTarget(null)).toBe("capture");
+    expect(parseShortcutTarget(undefined)).toBe("capture");
   });
 });

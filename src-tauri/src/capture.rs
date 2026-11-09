@@ -48,6 +48,7 @@ use std::fs;
 use std::io::{BufWriter, Write};
 use std::mem::size_of;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
@@ -60,19 +61,24 @@ use tauri::{
     WebviewWindowBuilder,
 };
 use windows::core::PCWSTR;
-use windows::Win32::Foundation::{HWND, SYSTEMTIME};
+use windows::Win32::Foundation::{HWND, POINT, SYSTEMTIME};
 use windows::Win32::Graphics::Gdi::{
     BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC, GetDIBits,
     ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, CAPTUREBLT, DIB_RGB_COLORS,
     HBITMAP, HDC, HGDIOBJ, RGBQUAD, SRCCOPY,
 };
 use windows::Win32::System::SystemInformation::GetLocalTime;
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    GetAsyncKeyState, ReleaseCapture, SetCapture, VK_LBUTTON,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetSystemMetrics, IsWindowVisible, MessageBoxW, MB_ICONERROR, MB_OK, MB_SETFOREGROUND,
-    MB_TOPMOST, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN,
+    GetCursorPos, GetSystemMetrics, IsWindowVisible, MessageBoxW, MB_ICONERROR, MB_OK,
+    MB_SETFOREGROUND, MB_TOPMOST, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
+    SM_YVIRTUALSCREEN,
 };
 
 use crate::app_state::{self, AppState};
+use crate::clipboard_io;
 use crate::dedupe::{self, Deduper};
 use crate::fly;
 use crate::geometry::PhysicalRect;
@@ -665,6 +671,22 @@ const OVERLAY_ATTACH_POLL: Duration = Duration::from_millis(20);
 /// Extra settle time after `IsWindowVisible` is false, letting the compositor drop the layer.
 const PANEL_HIDE_SETTLE: Duration = Duration::from_millis(30);
 
+/// How long a make-up-press mouse capture may stay claimed before it is force-released (W1.6).
+///
+/// The capture normally ends with `finish_capture`/`cancel_capture` or when the held button is
+/// released; this bound only exists so a lost frontend/hidden overlay can never leave the mouse
+/// captured forever.
+const MOUSE_CAPTURE_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Poll interval of the make-up-press release watchdog.
+const MOUSE_CAPTURE_POLL: Duration = Duration::from_millis(100);
+
+/// Whether Hangline currently owns the mouse capture for a make-up press (W1.6).
+///
+/// Only touched from the capture worker/UI thread pair; the main thread owns the actual Win32
+/// `SetCapture`/`ReleaseCapture` calls (the capture is window/thread-owned).
+static MOUSE_CAPTURED: AtomicBool = AtomicBool::new(false);
+
 /// Everything one interactive capture owns from "freeze" until finish/cancel.
 #[derive(Debug)]
 struct CaptureSession {
@@ -676,6 +698,9 @@ struct CaptureSession {
     image: RgbaImage,
     /// Scale factor of the overlay window (physical px per CSS px): logs + `capture-ready` payload.
     scale: f64,
+    /// W1.6: physical make-up-press origin recorded when the request started, if the left button
+    /// was already down then. Only emitted while the button is *still* down at ready time.
+    pressed_at: Option<PressedAt>,
 }
 
 impl CaptureSession {
@@ -687,8 +712,18 @@ impl CaptureSession {
             scale: self.scale,
             width: self.image.width(),
             height: self.image.height(),
+            pressed_at: self.pressed_at,
         }
     }
+}
+
+/// One physical-pixel point on the virtual desktop (W1.6 make-up press).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+pub struct PressedAt {
+    /// Physical screen x (negative on a monitor left of the primary).
+    pub x: i32,
+    /// Physical screen y (negative on a monitor above the primary).
+    pub y: i32,
 }
 
 /// Payload of the Rust → capture-overlay `capture-ready` event (Task 16).
@@ -708,6 +743,20 @@ pub struct CaptureReady {
     pub width: u32,
     /// Frozen-frame height in physical pixels.
     pub height: u32,
+    /// W1.6 make-up press: where the left button was pressed when the capture was requested, only
+    /// when it is still held down when this payload is emitted (`null` otherwise).
+    pub pressed_at: Option<PressedAt>,
+}
+
+/// Result of one confirmed capture (`finish_capture` IPC, W1.5).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CaptureOutcome {
+    /// The screenshot was saved into the screenshots folder and hung on the line.
+    pub saved: bool,
+    /// Saving failed, but the cropped image was copied to the clipboard so the capture was not
+    /// silently lost (W1.5 save-failure fallback).
+    pub copied_fallback: bool,
 }
 
 /// Phases of the single interactive capture managed by [`CaptureCoordinator`].
@@ -905,9 +954,19 @@ pub fn request_capture(app: &AppHandle) -> anyhow::Result<()> {
         log::info!("capture: a capture is already in progress; ignoring the request");
         return Ok(());
     };
+    // W1.6: the press that triggers the shortcut may be swallowed by the overlay load. Remember
+    // where it happened (physical px) only while the left button is still down.
+    let pressed_at = pressed_at_request();
+    if let Some(point) = pressed_at {
+        log::info!(
+            "capture: make-up press recorded at ({}, {}) (left button held)",
+            point.x,
+            point.y
+        );
+    }
 
     let mut temp_path: Option<PathBuf> = None;
-    let result = request_capture_owned(app, &coordinator, lease, &mut temp_path);
+    let result = request_capture_owned(app, &coordinator, lease, &mut temp_path, pressed_at);
     if let Err(error) = result {
         // Undo only what this request still owns: a stale generation cannot clobber a newer capture.
         let attached = coordinator.abort_owned(lease);
@@ -933,6 +992,7 @@ fn request_capture_owned(
     coordinator: &CaptureCoordinator,
     lease: CaptureLease,
     temp_path: &mut Option<PathBuf>,
+    pressed_at: Option<PressedAt>,
 ) -> anyhow::Result<()> {
     // The reveal controller hides the line (single owner of panel::show/hide) and remembers what to
     // restore; it blocks until the hide command was applied.
@@ -979,6 +1039,7 @@ fn request_capture_owned(
         virtual_rect: screen,
         image,
         scale,
+        pressed_at,
     };
     if !coordinator.attach_overlay(lease, session) {
         bail!("capture: the overlay session disappeared before it could be attached");
@@ -1016,6 +1077,151 @@ pub fn request_capture_in_background(app: &AppHandle) {
         });
     if let Err(error) = spawned {
         log::error!("capture: cannot spawn the capture worker thread: {error}");
+    }
+}
+
+/// Whether the left mouse button is currently down (global physical state, W1.6).
+fn left_button_down() -> bool {
+    // SAFETY: GetAsyncKeyState is a read-only query with no pointer arguments; the highest bit of
+    // the returned i16 means "currently down".
+    unsafe { (GetAsyncKeyState(VK_LBUTTON.0 as i32) as u16 & 0x8000) != 0 }
+}
+
+/// W1.6: the physical cursor position when the capture was requested, only while the left button
+/// is already down (otherwise there is no press to replay).
+///
+/// `GetCursorPos` returns virtual-desktop coordinates in physical pixels for this per-monitor-DPI
+/// aware process, the same space as the overlay and the `capture-ready` payload.
+fn pressed_at_request() -> Option<PressedAt> {
+    if !left_button_down() {
+        return None;
+    }
+    let mut point = POINT::default();
+    // SAFETY: GetCursorPos writes exactly one POINT; the pointer is valid for the call.
+    match unsafe { GetCursorPos(&mut point) } {
+        Ok(()) => Some(PressedAt {
+            x: point.x,
+            y: point.y,
+        }),
+        Err(error) => {
+            log::warn!("capture: cannot read the cursor position for the make-up press: {error}");
+            None
+        }
+    }
+}
+
+/// W1.6: a recorded make-up press is only handed to the overlay while the button is still down;
+/// a button released during the overlay load would otherwise start a synthetic selection.
+fn pressed_at_when_ready(recorded: Option<PressedAt>) -> Option<PressedAt> {
+    filter_pressed_at(recorded, left_button_down())
+}
+
+/// Pure half of [`pressed_at_when_ready`]: keep the press only while `still_down` (unit-tested).
+fn filter_pressed_at(recorded: Option<PressedAt>, still_down: bool) -> Option<PressedAt> {
+    recorded.filter(|_| still_down)
+}
+
+/// W1.6: hands the mouse capture to the overlay window so the held button's moves/up reach the
+/// webview. The press happened on another window, which still owns Windows' implicit capture;
+/// without this the overlay only sees the release (or nothing).
+///
+/// `SetCapture` must run on the window's UI thread, so it is marshalled through
+/// `run_on_main_thread`. Any failure is logged only: the capture must never block the screenshot.
+fn capture_mouse(app: &AppHandle, window: &WebviewWindow, pressed_at: PressedAt) {
+    if MOUSE_CAPTURED.load(Ordering::Acquire) {
+        log::debug!("capture: the make-up-press mouse capture is already claimed; keeping it");
+        return;
+    }
+    if !window.is_visible().unwrap_or(false) {
+        log::warn!("capture: overlay is not visible; not capturing the mouse for pressedAt");
+        return;
+    }
+    let hwnd = match window.hwnd() {
+        Ok(hwnd) => hwnd,
+        Err(error) => {
+            log::warn!("capture: cannot resolve the overlay HWND for SetCapture: {error}");
+            return;
+        }
+    };
+    // `HWND` is not `Send`; pass the raw value through the main-thread closure and rebuild it
+    // there (the window lives on the UI thread for the whole closure's lifetime).
+    let hwnd_value = hwnd.0 as usize;
+    // Optimistic flag: the main-thread closure below performs the actual capture; the watchdog and
+    // every ending path then see "a capture is (being) claimed" and its ReleaseCapture is queued
+    // after the SetCapture in main-thread order.
+    MOUSE_CAPTURED.store(true, Ordering::Release);
+    let scheduled = app.run_on_main_thread(move || {
+        let hwnd = HWND(hwnd_value as *mut std::ffi::c_void);
+        // SAFETY: called on the overlay window's UI thread; SetCapture has no pointer arguments.
+        let previous = unsafe { SetCapture(hwnd) };
+        log::info!(
+            "capture: pressedAt ({}, {}) captured by the overlay (SetCapture; previous {:?})",
+            pressed_at.x,
+            pressed_at.y,
+            previous
+        );
+    });
+    if let Err(error) = scheduled {
+        MOUSE_CAPTURED.store(false, Ordering::Release);
+        log::warn!("capture: cannot schedule SetCapture on the UI thread: {error}");
+        return;
+    }
+    arm_mouse_capture_watchdog(app);
+}
+
+/// Releases the W1.6 mouse capture if Hangline still owns it (idempotent; never fails a command).
+///
+/// `ReleaseCapture` is thread/window-owned exactly like `SetCapture`, so it is marshalled to the
+/// UI thread. `reason` is logged for the real-machine regression (finish/cancel/window/timeout).
+pub(crate) fn release_mouse_capture(app: &AppHandle, reason: &'static str) {
+    if !MOUSE_CAPTURED.swap(false, Ordering::AcqRel) {
+        return;
+    }
+    let scheduled = app.run_on_main_thread(move || {
+        // SAFETY: called on the overlay window's UI thread; ReleaseCapture has no arguments.
+        match unsafe { ReleaseCapture() } {
+            Ok(()) => log::info!("capture: pressedAt mouse capture released ({reason})"),
+            Err(error) => {
+                log::warn!("capture: cannot release the make-up-press mouse capture ({reason}): {error}")
+            }
+        }
+    });
+    if let Err(error) = scheduled {
+        log::warn!("capture: cannot schedule ReleaseCapture on the UI thread: {error}");
+    }
+}
+
+/// Safety net for the W1.6 capture: releases it when the held button comes up without a selection,
+/// or after [`MOUSE_CAPTURE_TIMEOUT`]. A modal/stuck overlay must never keep the mouse captured.
+fn arm_mouse_capture_watchdog(app: &AppHandle) {
+    let app = app.clone();
+    let spawned = std::thread::Builder::new()
+        .name("hangline-capture-uncapture".to_string())
+        .spawn(move || {
+            let started = Instant::now();
+            loop {
+                if !MOUSE_CAPTURED.load(Ordering::Acquire) {
+                    return;
+                }
+                if !left_button_down() {
+                    log::info!(
+                        "capture: the make-up press was released without a selection; releasing the mouse capture"
+                    );
+                    release_mouse_capture(&app, "button up");
+                    return;
+                }
+                if started.elapsed() >= MOUSE_CAPTURE_TIMEOUT {
+                    log::warn!(
+                        "capture: make-up-press mouse capture timed out; releasing it"
+                    );
+                    release_mouse_capture(&app, "timeout");
+                    return;
+                }
+                std::thread::sleep(MOUSE_CAPTURE_POLL);
+            }
+        });
+    if let Err(error) = spawned {
+        log::warn!("capture: cannot spawn the mouse-capture watchdog: {error}");
     }
 }
 
@@ -1167,11 +1373,19 @@ pub fn report_overlay_ready(app: &AppHandle) -> anyhow::Result<()> {
     let Some(window) = app.get_webview_window(OVERLAY_LABEL) else {
         bail!("capture: the overlay window is not open");
     };
+    let mut payload = payload;
+    // W1.6: only a press that is still held can continue into the overlay's selection. When it is,
+    // the overlay also needs the mouse capture (the press went to another window).
+    payload.pressed_at = pressed_at_when_ready(payload.pressed_at);
+    if let Some(pressed_at) = payload.pressed_at {
+        capture_mouse(app, &window, pressed_at);
+    }
     log::info!(
-        "capture: capture-ready ({}x{} px frozen frame, scale {:.3})",
+        "capture: capture-ready ({}x{} px frozen frame, scale {:.3}, pressedAt {:?})",
         payload.width,
         payload.height,
-        payload.scale
+        payload.scale,
+        payload.pressed_at
     );
     window
         .emit("capture-ready", payload)
@@ -1186,7 +1400,11 @@ pub fn report_overlay_ready(app: &AppHandle) -> anyhow::Result<()> {
 /// controller) → the controller decides the new-item peek. Requesting the reveal before cleanup was
 /// wrong: the line must never be shown over the frozen screen, and a controller peek that is already
 /// running must not be clobbered.
-pub fn finish_capture(app: &AppHandle, rect: PhysicalRect) -> anyhow::Result<()> {
+///
+/// W1.5: a successful save optionally copies the file (`captureCopyOnFinish`); when the save fails
+/// the cropped image is copied to the clipboard instead (`copiedFallback`), so a selection is never
+/// silently lost. W1.6: this is also the normal end of the make-up-press mouse capture.
+pub fn finish_capture(app: &AppHandle, rect: PhysicalRect) -> anyhow::Result<CaptureOutcome> {
     let Some(coordinator) = app.try_state::<CaptureCoordinator>() else {
         bail!("capture: the capture coordinator is not managed");
     };
@@ -1194,17 +1412,23 @@ pub fn finish_capture(app: &AppHandle, rect: PhysicalRect) -> anyhow::Result<()>
         log::warn!("capture: finish_capture with no live overlay session (already handled?)");
         bail!("capture: no selection is waiting for confirmation");
     };
-    let result = save_finished_capture(app, &session, rect);
+    release_mouse_capture(app, "finish");
+    let result = finish_capture_owned(app, &session, rect);
     cleanup_session(app, &session);
     coordinator.release_owned(generation);
     // The controller restores the pre-freeze visibility/pending deadline and, for a new capture
     // item, runs the same newItem peek path as the watchers — now that the overlay is gone.
-    let new_item_hung = matches!(&result, Ok(true));
+    let new_item_hung = matches!(&result, Ok(outcome) if outcome.saved);
     reveal::resume_after_capture(app, new_item_hung);
     match result {
-        Ok(_) => {
-            log::info!("capture: finished; overlay closed and the line controller resumed");
-            Ok(())
+        Ok(outcome) => {
+            log::info!(
+                "capture: finished (saved={}, copiedFallback={}); overlay closed and the line \
+                 controller resumed",
+                outcome.saved,
+                outcome.copied_fallback
+            );
+            Ok(outcome)
         }
         Err(error) => {
             log::error!("capture: finish failed: {error:#}");
@@ -1214,12 +1438,58 @@ pub fn finish_capture(app: &AppHandle, rect: PhysicalRect) -> anyhow::Result<()>
     }
 }
 
-/// Crop + persist + hang one confirmed selection; `Ok(true)` when an item was added.
-fn save_finished_capture(
+/// Crops the selection, saves + hangs it, and applies the W1.5 copy/fallback contract.
+fn finish_capture_owned(
     app: &AppHandle,
     session: &CaptureSession,
     rect: PhysicalRect,
-) -> anyhow::Result<bool> {
+) -> anyhow::Result<CaptureOutcome> {
+    let image = crop_selection(session, rect)?;
+    let copy_on_finish = app
+        .try_state::<AppState>()
+        .map(|state| state.snapshot().settings.capture_copy_on_finish)
+        .unwrap_or(false);
+    match save_and_hang(app, &image, rect) {
+        Ok(saved) => {
+            if copy_on_finish {
+                // W1.5 "copy after screenshot": copy the saved file with the standard verified
+                // image formats. A failed copy is logged only — the save already succeeded.
+                match clipboard_io::copy_image(&saved.path, crate::clipboard_owner(app)) {
+                    Ok(()) => log::info!(
+                        "capture: saved {} and copied it (captureCopyOnFinish)",
+                        saved.path.display()
+                    ),
+                    Err(error) => log::warn!(
+                        "capture: saved {} but cannot copy it (captureCopyOnFinish): {error:#}",
+                        saved.path.display()
+                    ),
+                }
+            }
+            Ok(CaptureOutcome {
+                saved: true,
+                copied_fallback: false,
+            })
+        }
+        Err(save_error) => {
+            log::warn!(
+                "capture: the save failed ({save_error:#}); trying the clipboard fallback so the \
+                 selection is not lost"
+            );
+            match copy_capture_fallback(app, &image) {
+                Ok(()) => Ok(CaptureOutcome {
+                    saved: false,
+                    copied_fallback: true,
+                }),
+                Err(copy_error) => Err(save_error.context(format!(
+                    "capture: the save and the clipboard fallback both failed ({copy_error:#})"
+                ))),
+            }
+        }
+    }
+}
+
+/// Validates and crops the confirmed selection from the frozen frame.
+fn crop_selection(session: &CaptureSession, rect: PhysicalRect) -> anyhow::Result<RgbaImage> {
     if !is_valid_selection(rect) {
         bail!(
             "capture: the selection is empty ({}x{} physical px)",
@@ -1231,10 +1501,18 @@ fn save_finished_capture(
     if image.width() == 0 || image.height() == 0 {
         bail!("capture: the selection {rect:?} does not overlap the frozen screen");
     }
+    Ok(image)
+}
 
+/// Persists the cropped image and hangs it; returns the written file metadata.
+fn save_and_hang(
+    app: &AppHandle,
+    image: &RgbaImage,
+    rect: PhysicalRect,
+) -> anyhow::Result<SavedCapture> {
     let dir = screenshots_dir().context("capture: the screenshot folder is unavailable")?;
     let deduper = app.state::<Deduper>();
-    let saved = save_capture_image(&dir, &image, &deduper)
+    let saved = save_capture_image(&dir, image, &deduper)
         .context("capture: cannot save the selected region")?;
 
     let mut item = Item::new(
@@ -1246,7 +1524,7 @@ fn save_finished_capture(
     );
     // P2-7: build the preview from the decoded crop that is already in memory (no second 4K PNG
     // decode) before the first state snapshot; a failure keeps `thumb_path = None`.
-    crate::thumbnails::attach_from_image(&mut item, &image);
+    crate::thumbnails::attach_from_image(&mut item, image);
     let item_id = item.id.clone();
     let state = app.state::<AppState>();
     match state.add_item(item) {
@@ -1268,7 +1546,7 @@ fn save_finished_capture(
                 saved.height,
                 saved.hash
             );
-            Ok(true)
+            Ok(saved)
         }
         Err(error) => {
             // `add_item` mutated memory before the persist failure. The PNG stays in the screenshots
@@ -1278,6 +1556,30 @@ fn save_finished_capture(
             Err(error.context("capture: failed to persist the new item"))
         }
     }
+}
+
+/// W1.5 save-failure fallback: temp PNG → clipboard image → delete the temp file.
+///
+/// The temporary file lives under `%TEMP%` (never in the screenshots folder, so a broken save can
+/// never look like a hung capture) and is removed on every path, including a failed clipboard
+/// write. The panel is told via `CaptureOutcome::copied_fallback` instead of losing the selection.
+fn copy_capture_fallback(app: &AppHandle, image: &RgbaImage) -> anyhow::Result<()> {
+    let dir = std::env::temp_dir().join("hangline-capture-fallback");
+    fs::create_dir_all(&dir).context("capture: cannot create the fallback temp folder")?;
+    let path = save_png_to(&dir, image).context("capture: cannot write the fallback PNG")?;
+    let copied = clipboard_io::copy_image(&path, crate::clipboard_owner(app));
+    match remove_file_if_exists(&path) {
+        Ok(_) => {}
+        Err(error) => log::warn!(
+            "capture: cannot remove the fallback temp PNG {}: {error}",
+            path.display()
+        ),
+    }
+    copied.context("capture: cannot copy the fallback image to the clipboard")?;
+    log::info!(
+        "capture: the selection was copied to the clipboard instead of being saved (fallback)"
+    );
+    Ok(())
 }
 
 /// Cancels the overlay (Esc / right click): no file, no item; restores the line.
@@ -1290,6 +1592,7 @@ pub fn cancel_capture(app: &AppHandle) {
         log::info!("capture: cancel ignored (no live overlay session)");
         return;
     };
+    release_mouse_capture(app, "cancel");
     cleanup_session(app, &session);
     coordinator.release_owned(generation);
     reveal::resume_after_capture(app, false);
@@ -1308,6 +1611,7 @@ fn abandon_overlay(app: &AppHandle) {
         log::debug!("capture: overlay window destroyed after the session was already handled");
         return;
     };
+    release_mouse_capture(app, "window destroyed");
     cleanup_session(app, &session);
     coordinator.release_owned(generation);
     reveal::resume_after_capture(app, false);
@@ -1954,6 +2258,7 @@ mod tests {
             },
             image: RgbaImage::new(4, 3),
             scale: 1.5,
+            pressed_at: None,
         }
     }
 
@@ -2484,6 +2789,8 @@ mod tests {
         assert!(coordinator.try_begin().is_some());
     }
 
+    /// The `capture-ready` wire shape is the frontend contract (W1.6 adds `pressedAt`, `null` when
+    /// the button is not held at ready time).
     #[test]
     fn capture_ready_payload_serializes_for_the_overlay_frontend() {
         let payload = session().ready_payload();
@@ -2495,7 +2802,50 @@ mod tests {
                 "scale": 1.5,
                 "width": 4,
                 "height": 3,
+                "pressedAt": null,
             })
+        );
+
+        let mut pressed = session();
+        pressed.pressed_at = Some(PressedAt { x: -1920, y: 0 });
+        assert_eq!(
+            serde_json::to_value(pressed.ready_payload()).expect("serialize pressed capture-ready")["pressedAt"],
+            serde_json::json!({ "x": -1920, "y": 0 })
+        );
+    }
+
+    /// W1.6: the recorded press is only emitted while the button is still down at ready time.
+    #[test]
+    fn pressed_at_is_only_emitted_while_the_button_is_still_down() {
+        let press = Some(PressedAt { x: 120, y: 340 });
+        assert_eq!(filter_pressed_at(press, true), press);
+        assert_eq!(
+            filter_pressed_at(press, false),
+            None,
+            "a button released during the overlay load must not start a synthetic selection"
+        );
+        assert_eq!(filter_pressed_at(None, true), None);
+        assert_eq!(filter_pressed_at(None, false), None);
+    }
+
+    /// W1.5: the `finish_capture` reply is the `{ saved, copiedFallback }` camelCase contract.
+    #[test]
+    fn capture_outcome_serializes_as_the_frontend_contract() {
+        assert_eq!(
+            serde_json::to_value(CaptureOutcome {
+                saved: true,
+                copied_fallback: false,
+            })
+            .expect("serialize the saved outcome"),
+            serde_json::json!({ "saved": true, "copiedFallback": false })
+        );
+        assert_eq!(
+            serde_json::to_value(CaptureOutcome {
+                saved: false,
+                copied_fallback: true,
+            })
+            .expect("serialize the fallback outcome"),
+            serde_json::json!({ "saved": false, "copiedFallback": true })
         );
     }
 

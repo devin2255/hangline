@@ -209,8 +209,14 @@ pub struct TrayStrings {
     pub hide_line: &'static str,
     /// "Take everything down" action.
     pub take_everything_down: &'static str,
+    /// W1.7 confirmation title for "Take everything down".
+    pub take_all_down_confirm_title: &'static str,
+    /// W1.7 confirmation body (`{}` = item count; explains the Recycle Bin/kept files).
+    pub take_all_down_confirm_body: &'static str,
     /// "Take screenshot…" action (wired to the capture request until Task 16).
     pub capture: &'static str,
+    /// W1.5 switch: copy a confirmed screenshot to the clipboard after saving.
+    pub capture_copy_on_finish: &'static str,
     /// System-screenshot directory watcher switch.
     pub handle_screenshots: &'static str,
     /// Recordings directory watcher switch.
@@ -247,6 +253,10 @@ pub struct TrayStrings {
     pub keep_for_30: &'static str,
     /// Keep the last 90 days.
     pub keep_for_90: &'static str,
+    /// W1.7 disabled explanation row inside the "Keep on line" submenu.
+    pub keep_info: &'static str,
+    /// W1.7 disabled explanation row inside the "Keep for" submenu.
+    pub keep_for_info: &'static str,
     /// Card-size submenu title.
     pub size_menu: &'static str,
     /// Small cards.
@@ -261,6 +271,8 @@ pub struct TrayStrings {
     pub shortcut_capture: &'static str,
     /// Show/hide shortcut row (followed by the accelerator).
     pub shortcut_toggle: &'static str,
+    /// W1.8 "edit the newest card" shortcut row (followed by the accelerator).
+    pub shortcut_edit_latest: &'static str,
     /// Opens the change-shortcut window.
     pub shortcut_change: &'static str,
     /// Disabled status row when every shortcut is registered.
@@ -289,6 +301,14 @@ pub struct TrayStrings {
     pub picker_title: &'static str,
     /// Title of the minimal change-shortcut window.
     pub shortcut_window_title: &'static str,
+    /// W1.7 startup warning title (a global shortcut could not be registered).
+    pub hotkey_error_title: &'static str,
+    /// W1.7 startup warning intro line.
+    pub hotkey_error_intro: &'static str,
+    /// W1.7 one failure row (`{}` = label, `{}` = accelerator, `{}` = reason).
+    pub hotkey_error_detail: &'static str,
+    /// W1.7 startup warning hint (where the shortcut can be changed).
+    pub hotkey_error_hint: &'static str,
 }
 
 /// English strings (the fallback language).
@@ -298,7 +318,10 @@ pub const EN: TrayStrings = TrayStrings {
     show_line: "Show line",
     hide_line: "Hide line",
     take_everything_down: "Take everything down",
+    take_all_down_confirm_title: "Take everything down?",
+    take_all_down_confirm_body: "Take all {} card(s) off the line?\n\nHangline's own screenshots go to the Recycle Bin (you can restore them); files from watched folders and system folders are not deleted.",
     capture: "Take screenshot…",
+    capture_copy_on_finish: "Copy after screenshot",
     handle_screenshots: "Handle system screenshots",
     handle_recordings: "Handle recordings",
     hang_copied_images: "Hang copied images",
@@ -317,6 +340,8 @@ pub const EN: TrayStrings = TrayStrings {
     keep_for_7: "Keep last 7 days",
     keep_for_30: "Keep last 30 days",
     keep_for_90: "Keep last 90 days",
+    keep_info: "Cards only leave the line; files are not deleted",
+    keep_for_info: "Expired Hangline screenshots go to the Recycle Bin (undoable)",
     size_menu: "Size",
     size_small: "Small",
     size_medium: "Medium",
@@ -324,6 +349,7 @@ pub const EN: TrayStrings = TrayStrings {
     shortcut_menu: "Shortcut",
     shortcut_capture: "Capture",
     shortcut_toggle: "Show/hide line",
+    shortcut_edit_latest: "Edit latest",
     shortcut_change: "Change Shortcut…",
     hotkeys_ok: "Hotkeys are active",
     hotkey_unavailable: "Shortcut unavailable",
@@ -338,6 +364,10 @@ pub const EN: TrayStrings = TrayStrings {
     quit: "Quit Hangline",
     picker_title: "Choose a folder to watch",
     shortcut_window_title: "Hangline — Change shortcut",
+    hotkey_error_title: "Hangline — Shortcut unavailable",
+    hotkey_error_intro: "Hangline could not register these global shortcuts:",
+    hotkey_error_detail: "• {} ({}): {}",
+    hotkey_error_hint: "Change a shortcut in the tray menu → Shortcut.",
 };
 
 /// Simplified Chinese strings (`zh-Hans`).
@@ -347,7 +377,10 @@ pub const ZH_HANS: TrayStrings = TrayStrings {
     show_line: "显示线",
     hide_line: "隐藏线",
     take_everything_down: "全部取下线",
+    take_all_down_confirm_title: "全部取下线？",
+    take_all_down_confirm_body: "将把 {} 张卡片全部从线上取下。\n\nHangline 自有目录中的截图会进入回收站（可撤销）；监视文件夹与系统文件不会被删除。",
     capture: "截图…",
+    capture_copy_on_finish: "截图后自动复制",
     handle_screenshots: "处理系统截图",
     handle_recordings: "挂起录屏",
     hang_copied_images: "挂起复制的图片",
@@ -366,6 +399,8 @@ pub const ZH_HANS: TrayStrings = TrayStrings {
     keep_for_7: "保留最近 7 天",
     keep_for_30: "保留最近 30 天",
     keep_for_90: "保留最近 90 天",
+    keep_info: "卡片只从线上移除，文件不会被删除",
+    keep_for_info: "到期的自有截图会进入回收站（可撤销）",
     size_menu: "尺寸",
     size_small: "小",
     size_medium: "中",
@@ -373,6 +408,7 @@ pub const ZH_HANS: TrayStrings = TrayStrings {
     shortcut_menu: "快捷键",
     shortcut_capture: "截图",
     shortcut_toggle: "显示/隐藏线",
+    shortcut_edit_latest: "编辑最新一张",
     shortcut_change: "修改快捷键…",
     hotkeys_ok: "快捷键已启用",
     hotkey_unavailable: "快捷键不可用",
@@ -387,6 +423,10 @@ pub const ZH_HANS: TrayStrings = TrayStrings {
     quit: "退出 Hangline",
     picker_title: "选择要监听的文件夹",
     shortcut_window_title: "Hangline — 修改快捷键",
+    hotkey_error_title: "Hangline — 快捷键不可用",
+    hotkey_error_intro: "Hangline 无法注册以下全局快捷键：",
+    hotkey_error_detail: "• {}（{}）：{}",
+    hotkey_error_hint: "可在托盘菜单 → 快捷键 中修改。",
 };
 
 impl TrayStrings {
@@ -411,7 +451,10 @@ impl TrayStrings {
             ("show_line", self.show_line),
             ("hide_line", self.hide_line),
             ("take_everything_down", self.take_everything_down),
+            ("take_all_down_confirm_title", self.take_all_down_confirm_title),
+            ("take_all_down_confirm_body", self.take_all_down_confirm_body),
             ("capture", self.capture),
+            ("capture_copy_on_finish", self.capture_copy_on_finish),
             ("handle_screenshots", self.handle_screenshots),
             ("handle_recordings", self.handle_recordings),
             ("hang_copied_images", self.hang_copied_images),
@@ -430,6 +473,8 @@ impl TrayStrings {
             ("keep_for_7", self.keep_for_7),
             ("keep_for_30", self.keep_for_30),
             ("keep_for_90", self.keep_for_90),
+            ("keep_info", self.keep_info),
+            ("keep_for_info", self.keep_for_info),
             ("size_menu", self.size_menu),
             ("size_small", self.size_small),
             ("size_medium", self.size_medium),
@@ -437,6 +482,7 @@ impl TrayStrings {
             ("shortcut_menu", self.shortcut_menu),
             ("shortcut_capture", self.shortcut_capture),
             ("shortcut_toggle", self.shortcut_toggle),
+            ("shortcut_edit_latest", self.shortcut_edit_latest),
             ("shortcut_change", self.shortcut_change),
             ("hotkeys_ok", self.hotkeys_ok),
             ("hotkey_unavailable", self.hotkey_unavailable),
@@ -451,7 +497,30 @@ impl TrayStrings {
             ("quit", self.quit),
             ("picker_title", self.picker_title),
             ("shortcut_window_title", self.shortcut_window_title),
+            ("hotkey_error_title", self.hotkey_error_title),
+            ("hotkey_error_intro", self.hotkey_error_intro),
+            ("hotkey_error_detail", self.hotkey_error_detail),
+            ("hotkey_error_hint", self.hotkey_error_hint),
         ]
+    }
+
+    /// W1.7 "take everything down" confirmation body with the item count filled in.
+    pub fn take_all_down_body(&self, count: usize) -> String {
+        self.take_all_down_confirm_body
+            .replacen("{}", &count.to_string(), 1)
+    }
+
+    /// W1.7 one startup-warning row: `• <label> (<accelerator>): <reason>`.
+    pub fn hotkey_error_detail_line(
+        &self,
+        label: &str,
+        accelerator: &str,
+        reason: &str,
+    ) -> String {
+        self.hotkey_error_detail
+            .replacen("{}", label, 1)
+            .replacen("{}", accelerator, 1)
+            .replacen("{}", reason, 1)
     }
 }
 
@@ -575,5 +644,32 @@ mod tests {
         let strings = tray_strings(Lang::ZhHans);
         assert_eq!(strings.show_line, "显示线");
         assert_eq!(tray_strings(Lang::En).show_line, "Show line");
+    }
+
+    /// W1.7: the dialog formatters fill every placeholder, and both frozen tables own the new rows
+    /// (the parity/all() test above already guarantees no missing or blank entry).
+    #[test]
+    fn w1_7_dialog_formatters_fill_placeholders() {
+        for strings in [tray_strings(Lang::En), tray_strings(Lang::ZhHans)] {
+            let body = strings.take_all_down_body(3);
+            assert!(body.contains('3'), "count must be filled in: {body:?}");
+            assert!(
+                !body.contains("{}"),
+                "count placeholder must be replaced: {body:?}"
+            );
+            let line = strings.hotkey_error_detail_line("Capture", "Ctrl+Alt+S", "busy");
+            assert_eq!(
+                line.matches("{}").count(),
+                0,
+                "detail placeholders must be replaced: {line:?}"
+            );
+            assert!(line.contains("Capture"), "got {line:?}");
+            assert!(line.contains("Ctrl+Alt+S"), "got {line:?}");
+            assert!(line.contains("busy"), "got {line:?}");
+        }
+        assert_eq!(EN.shortcut_edit_latest, "Edit latest");
+        assert_eq!(ZH_HANS.shortcut_edit_latest, "编辑最新一张");
+        assert!(!EN.keep_info.is_empty() && !ZH_HANS.keep_info.is_empty());
+        assert!(!EN.keep_for_info.is_empty() && !ZH_HANS.keep_for_info.is_empty());
     }
 }

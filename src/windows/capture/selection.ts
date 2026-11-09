@@ -40,6 +40,72 @@ export interface PhysicalSize {
   h: number;
 }
 
+/** A point in virtual-desktop physical pixels (Rust `capture-ready.pressedAt`). */
+export interface PhysicalPoint {
+  x: number;
+  y: number;
+}
+
+/**
+ * How long the overlay waits for the first input after a borrowed press (ms).
+ *
+ * Wave 1.6 ("空窗补按"): the hotkey was pressed while the left button was already down, so Rust
+ * hands the physical press point to the overlay instead of replaying a `pointerdown` the overlay
+ * never received. If no `pointermove`/`pointerup` arrives within this window, the user already
+ * released the button outside the overlay; the borrowed selection is dropped so no stale rectangle
+ * is left on the frozen frame.
+ */
+export const PRESSED_SELECTION_DROP_MS = 150;
+
+/**
+ * Converts a virtual-desktop physical point into overlay CSS pixels, clamped to the viewport.
+ *
+ * `origin` is the captured virtual-screen origin (`virtualRect.x/y`, negative on a monitor left of
+ * / above the primary) and `scale` the physical-pixels-per-CSS-pixel factor
+ * ([`viewportScale`]). The result is clamped to `[0, viewportWidth] × [0, viewportHeight]`: the
+ * borrowed press point can sit on another monitor edge, and a selection start outside the frozen
+ * frame would render off-screen and fail the "real drag" check unpredictably.
+ *
+ * Malformed inputs never throw: a non-finite point becomes 0, a non-positive scale becomes 1 and a
+ * non-positive/unmeasurable viewport clamps only at the lower edge.
+ */
+export function physicalPointToCss(
+  point: PhysicalPoint,
+  origin: PhysicalPoint,
+  scale: number,
+  viewportWidth: number,
+  viewportHeight: number,
+): SelectionPoint {
+  const safeScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
+  const rawX = (point.x - origin.x) / safeScale;
+  const rawY = (point.y - origin.y) / safeScale;
+  const clampAxis = (value: number, max: number): number => {
+    if (!Number.isFinite(value)) return 0;
+    const lower = Math.max(value, 0);
+    if (Number.isFinite(max) && max > 0) return Math.min(lower, max);
+    return lower;
+  };
+  return {
+    x: clampAxis(rawX, viewportWidth),
+    y: clampAxis(rawY, viewportHeight),
+  };
+}
+
+/**
+ * Whether the overlay should drop a borrowed press selection.
+ *
+ * `elapsedMs` is the time since the borrowed press was applied, `sawInput` whether any
+ * pointermove/pointerup was observed for it. A finished drag is never dropped; the drop only covers
+ * the "the button was already released before the overlay was ready" case, where no further input
+ * will ever arrive.
+ */
+export function shouldDropPressedSelection(elapsedMs: number, sawInput: boolean): boolean {
+  if (sawInput) return false;
+  if (!Number.isFinite(elapsedMs)) return false;
+  if (elapsedMs < 0) return false;
+  return elapsedMs >= PRESSED_SELECTION_DROP_MS;
+}
+
 /**
  * Smallest selection (CSS pixels) that is a real drag, not an accidental click.
  *

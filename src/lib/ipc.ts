@@ -8,6 +8,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   AppState,
+  CaptureFinishResult,
   EditorStateSnapshot,
   EditorTarget,
   FlyReady,
@@ -79,7 +80,10 @@ export function reportPanelReady(label: string): Promise<void> {
  * shortcut and rolls the previous value back when the combination is owned by another application;
  * the rejection reason is the promise's error message (shown in the shortcut window).
  */
-export function setHotkey(target: "capture" | "toggle", accelerator: string): Promise<void> {
+export function setHotkey(
+  target: "capture" | "toggle" | "editLatest",
+  accelerator: string,
+): Promise<void> {
   return invoke("set_hotkey", { target, accelerator });
 }
 
@@ -208,14 +212,16 @@ export function reportCaptureReady(): Promise<void> {
 }
 
 /**
- * Confirms the overlay selection and hangs the capture on the line (Task 16).
+ * Confirms the overlay selection and hangs the capture on the line (Task 16, Wave 1.5 contract).
  *
  * `rect` is in virtual-desktop physical pixels (CSS selection × `devicePixelRatio` + the virtual
  * origin from `capture-ready`); Rust clamps it to the frozen frame, saves through the dedupe claim
- * order and destroys the overlay.
+ * order and destroys the overlay. The result distinguishes a saved capture from the clipboard
+ * fallback (`saved = false, copiedFallback = true`); the overlay closes in both cases, so callers
+ * only need it for diagnostics.
  */
-export function finishCapture(rect: PhysicalRect): Promise<void> {
-  return invoke("finish_capture", { rect });
+export function finishCapture(rect: PhysicalRect): Promise<CaptureFinishResult> {
+  return invoke<CaptureFinishResult>("finish_capture", { rect });
 }
 
 /** Cancels the capture overlay (Esc / right click): no file, no item, line restored. */

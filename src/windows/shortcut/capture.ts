@@ -111,3 +111,17 @@ export function acceleratorFromEvent(event: ShortcutKeyEvent): CaptureResult {
 export function formatAccelerator(accelerator: string): string {
   return accelerator.trim();
 }
+
+/** Which global shortcut a change-shortcut window edits (W1.8 adds the third one). */
+export type ShortcutTarget = "capture" | "toggle" | "editLatest";
+
+/**
+ * Parses the `?target=` query parameter / `shortcut-target` payload.
+ *
+ * Unknown values fall back to the capture shortcut (the historical behaviour): a malformed URL must
+ * still open a usable window, and it must never silently edit a different shortcut than the one the
+ * tray row claims.
+ */
+export function parseShortcutTarget(value: string | null | undefined): ShortcutTarget {
+  return value === "toggle" || value === "editLatest" ? value : "capture";
+}

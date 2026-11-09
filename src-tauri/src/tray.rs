@@ -25,6 +25,9 @@ use std::sync::Mutex;
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, Wry};
+use windows::Win32::UI::WindowsAndMessaging::{
+    IDYES, MB_DEFBUTTON2, MB_ICONWARNING, MB_SETFOREGROUND, MB_TOPMOST, MB_YESNO,
+};
 
 use crate::actions;
 use crate::app_state::AppState;
@@ -43,6 +46,8 @@ pub const ID_TOGGLE: &str = "tray.toggle";
 pub const ID_TAKE_ALL_DOWN: &str = "tray.take_all_down";
 /// "Take screenshot…" (Task 16 replaces the temporary capture request).
 pub const ID_CAPTURE: &str = "tray.capture";
+/// "Copy after screenshot" switch (`captureCopyOnFinish`, Wave 1 W1.5).
+pub const ID_CAPTURE_COPY_ON_FINISH: &str = "tray.capture_copy_on_finish";
 /// "Handle system screenshots" switch (`watchSystemScreenshots`).
 pub const ID_HANDLE_SCREENSHOTS: &str = "tray.handle_screenshots";
 /// "Hang copied images" switch (`watchClipboard`).
@@ -73,6 +78,10 @@ pub const ID_KEEP_FOR_7: &str = "tray.keep_for.7";
 pub const ID_KEEP_FOR_30: &str = "tray.keep_for.30";
 /// "Keep for ▸ Keep last 90 days".
 pub const ID_KEEP_FOR_90: &str = "tray.keep_for.90";
+/// W1.7 disabled explanation row inside "Keep on line" (read-only).
+pub const ID_KEEP_INFO: &str = "tray.keep.info";
+/// W1.7 disabled explanation row inside "Keep for" (read-only).
+pub const ID_KEEP_FOR_INFO: &str = "tray.keep_for.info";
 /// "Size ▸ Small".
 pub const ID_SIZE_SMALL: &str = "tray.size.small";
 /// "Size ▸ Medium".
@@ -83,6 +92,8 @@ pub const ID_SIZE_LARGE: &str = "tray.size.large";
 pub const ID_HOTKEY_CAPTURE: &str = "tray.hotkey.capture";
 /// "Shortcut ▸ Show/hide: <accel>" row (opens the change window for toggle).
 pub const ID_HOTKEY_TOGGLE: &str = "tray.hotkey.toggle";
+/// "Shortcut ▸ Edit latest: <accel>" row (Wave 1 W1.8; opens the change window for editLatest).
+pub const ID_HOTKEY_EDIT_LATEST: &str = "tray.hotkey.edit_latest";
 /// "Shortcut ▸ <status>" disabled hint row (shows a registration failure).
 pub const ID_HOTKEY_STATUS: &str = "tray.hotkey.status";
 /// "Open screenshots folder".
@@ -116,6 +127,8 @@ pub enum TrayAction {
     TakeEverythingDown,
     /// Request a region screenshot (temporary wiring until Task 16).
     TakeScreenshot,
+    /// Toggle `captureCopyOnFinish` (copy a confirmed screenshot to the clipboard; W1.5).
+    ToggleCaptureCopyOnFinish,
     /// Toggle `watchSystemScreenshots` (restarts the folder watchers).
     ToggleWatchSystemScreenshots,
     /// Toggle `watchRecordings` (restarts the folder watchers).
@@ -163,6 +176,7 @@ impl TrayAction {
             Self::ToggleLine => "toggle line",
             Self::TakeEverythingDown => "take everything down",
             Self::TakeScreenshot => "take screenshot",
+            Self::ToggleCaptureCopyOnFinish => "toggle capture copy on finish",
             Self::ToggleWatchSystemScreenshots => "toggle system screenshots",
             Self::ToggleWatchRecordings => "toggle recordings",
             Self::ToggleWatchClipboard => "toggle clipboard",
@@ -205,6 +219,7 @@ pub fn action_for(id: &str) -> Option<TrayAction> {
         ID_TOGGLE => TrayAction::ToggleLine,
         ID_TAKE_ALL_DOWN => TrayAction::TakeEverythingDown,
         ID_CAPTURE => TrayAction::TakeScreenshot,
+        ID_CAPTURE_COPY_ON_FINISH => TrayAction::ToggleCaptureCopyOnFinish,
         ID_HANDLE_SCREENSHOTS => TrayAction::ToggleWatchSystemScreenshots,
         ID_HANG_COPIED => TrayAction::ToggleWatchClipboard,
         ID_HANDLE_RECORDINGS => TrayAction::ToggleWatchRecordings,
@@ -225,6 +240,7 @@ pub fn action_for(id: &str) -> Option<TrayAction> {
         ID_SIZE_LARGE => TrayAction::SetCardSize(CardSize::Large),
         ID_HOTKEY_CAPTURE => TrayAction::ChangeShortcut(Target::Capture),
         ID_HOTKEY_TOGGLE => TrayAction::ChangeShortcut(Target::Toggle),
+        ID_HOTKEY_EDIT_LATEST => TrayAction::ChangeShortcut(Target::EditLatest),
         ID_OPEN_SCREENSHOTS => TrayAction::OpenScreenshotsFolder,
         ID_SOUND => TrayAction::ToggleSound,
         ID_START_AT_LOGIN => TrayAction::ToggleStartAtLogin,
@@ -263,6 +279,10 @@ pub struct MenuState {
     pub capture_hotkey: String,
     /// Whether the line's show/hide accelerator is shown.
     pub toggle_hotkey: String,
+    /// Whether the line's "edit latest" accelerator is shown (W1.8).
+    pub edit_latest_hotkey: String,
+    /// Whether a confirmed screenshot is copied to the clipboard (`captureCopyOnFinish`, W1.5).
+    pub capture_copy_on_finish: bool,
     /// "Take everything down" is enabled only when something is on the line.
     pub take_everything_down_enabled: bool,
     /// Whether the system screenshot folder is watched.
@@ -318,6 +338,8 @@ pub fn menu_state(
         },
         capture_hotkey: settings.capture_hotkey.clone(),
         toggle_hotkey: settings.toggle_hotkey.clone(),
+        edit_latest_hotkey: settings.edit_latest_hotkey.clone(),
+        capture_copy_on_finish: settings.capture_copy_on_finish,
         take_everything_down_enabled: item_count > 0,
         handle_screenshots: settings.watch_system_screenshots,
         hang_copied_images: settings.watch_clipboard,
@@ -354,16 +376,12 @@ pub fn tooltip(strings: &TrayStrings, state: &MenuState) -> String {
 fn hotkey_status_text(strings: &TrayStrings, state: &MenuState) -> String {
     match &state.hotkey_error {
         None => strings.hotkeys_ok.to_string(),
-        Some(failure) => {
-            let target = match failure.target {
-                Target::Capture => strings.shortcut_capture,
-                Target::Toggle => strings.shortcut_toggle,
-            };
-            format!(
-                "⚠ {}: {target} — {}",
-                strings.hotkey_unavailable, failure.message
-            )
-        }
+        Some(failure) => format!(
+            "⚠ {}: {} — {}",
+            strings.hotkey_unavailable,
+            failure.target.label(strings),
+            failure.message
+        ),
     }
 }
 
@@ -381,6 +399,7 @@ struct Items {
     toggle: MenuItem<Wry>,
     take_all_down: MenuItem<Wry>,
     capture: MenuItem<Wry>,
+    capture_copy_on_finish: CheckMenuItem<Wry>,
     handle_screenshots: CheckMenuItem<Wry>,
     hang_copied: CheckMenuItem<Wry>,
     handle_recordings: CheckMenuItem<Wry>,
@@ -398,11 +417,14 @@ struct Items {
     keep_for_7: CheckMenuItem<Wry>,
     keep_for_30: CheckMenuItem<Wry>,
     keep_for_90: CheckMenuItem<Wry>,
+    keep_info: MenuItem<Wry>,
+    keep_for_info: MenuItem<Wry>,
     size_small: CheckMenuItem<Wry>,
     size_medium: CheckMenuItem<Wry>,
     size_large: CheckMenuItem<Wry>,
     hotkey_capture: MenuItem<Wry>,
     hotkey_toggle: MenuItem<Wry>,
+    hotkey_edit_latest: MenuItem<Wry>,
     hotkey_status: MenuItem<Wry>,
     open_screenshots: MenuItem<Wry>,
     sound: CheckMenuItem<Wry>,
@@ -570,6 +592,15 @@ fn build_menu(
         true,
         Some(state.capture_hotkey.as_str()),
     )?;
+    // W1.5: the only capture-completion switch (default off keeps the v1.1 save-only behaviour).
+    let capture_copy_on_finish = CheckMenuItem::with_id(
+        app,
+        ID_CAPTURE_COPY_ON_FINISH,
+        strings.capture_copy_on_finish,
+        true,
+        state.capture_copy_on_finish,
+        None::<&str>,
+    )?;
 
     let handle_screenshots = CheckMenuItem::with_id(
         app,
@@ -673,11 +704,20 @@ fn build_menu(
         state.keep_on_line == KeepOnLine::Limit(100),
         None::<&str>,
     )?;
+    // W1.7: a disabled explanation row inside each retention submenu (files are never hidden).
+    let keep_info = MenuItem::with_id(app, ID_KEEP_INFO, strings.keep_info, false, None::<&str>)?;
     let keep_menu = Submenu::with_items(
         app,
         strings.keep_menu,
         true,
-        &[&keep_fit, &keep_25, &keep_50, &keep_100],
+        &[
+            &keep_fit,
+            &keep_25,
+            &keep_50,
+            &keep_100,
+            &PredefinedMenuItem::separator(app)?,
+            &keep_info,
+        ],
     )?;
 
     let keep_forever = CheckMenuItem::with_id(
@@ -712,11 +752,25 @@ fn build_menu(
         state.keep_for_days == KeepForDays::Days(90),
         None::<&str>,
     )?;
+    let keep_for_info = MenuItem::with_id(
+        app,
+        ID_KEEP_FOR_INFO,
+        strings.keep_for_info,
+        false,
+        None::<&str>,
+    )?;
     let keep_for_menu = Submenu::with_items(
         app,
         strings.keep_for_menu,
         true,
-        &[&keep_forever, &keep_for_7, &keep_for_30, &keep_for_90],
+        &[
+            &keep_forever,
+            &keep_for_7,
+            &keep_for_30,
+            &keep_for_90,
+            &PredefinedMenuItem::separator(app)?,
+            &keep_for_info,
+        ],
     )?;
 
     let size_small = CheckMenuItem::with_id(
@@ -758,6 +812,10 @@ fn build_menu(
         .hotkey_error
         .as_ref()
         .is_some_and(|failure| failure.target == Target::Toggle);
+    let failed_edit_latest = state
+        .hotkey_error
+        .as_ref()
+        .is_some_and(|failure| failure.target == Target::EditLatest);
     let hotkey_capture = MenuItem::with_id(
         app,
         ID_HOTKEY_CAPTURE,
@@ -780,6 +838,18 @@ fn build_menu(
         true,
         None::<&str>,
     )?;
+    // W1.8: the third shortcut row, same change-window behavior as the first two.
+    let hotkey_edit_latest = MenuItem::with_id(
+        app,
+        ID_HOTKEY_EDIT_LATEST,
+        hotkey_row_label(
+            strings.shortcut_edit_latest,
+            &state.edit_latest_hotkey,
+            failed_edit_latest,
+        ),
+        true,
+        None::<&str>,
+    )?;
     let hotkey_status = MenuItem::with_id(
         app,
         ID_HOTKEY_STATUS,
@@ -791,7 +861,13 @@ fn build_menu(
         app,
         strings.shortcut_menu,
         true,
-        &[&hotkey_capture, &hotkey_toggle, &PredefinedMenuItem::separator(app)?, &hotkey_status],
+        &[
+            &hotkey_capture,
+            &hotkey_toggle,
+            &hotkey_edit_latest,
+            &PredefinedMenuItem::separator(app)?,
+            &hotkey_status,
+        ],
     )?;
 
     let open_screenshots =
@@ -850,6 +926,7 @@ fn build_menu(
         toggle,
         take_all_down,
         capture,
+        capture_copy_on_finish,
         handle_screenshots,
         hang_copied,
         handle_recordings,
@@ -867,11 +944,14 @@ fn build_menu(
         keep_for_7,
         keep_for_30,
         keep_for_90,
+        keep_info,
+        keep_for_info,
         size_small,
         size_medium,
         size_large,
         hotkey_capture,
         hotkey_toggle,
+        hotkey_edit_latest,
         hotkey_status,
         open_screenshots,
         sound,
@@ -890,6 +970,7 @@ fn build_menu(
             &items.toggle,
             &items.take_all_down,
             &items.capture,
+            &items.capture_copy_on_finish,
             &PredefinedMenuItem::separator(app)?,
             &items.handle_screenshots,
             &items.hang_copied,
@@ -975,6 +1056,12 @@ fn apply_state(
         .capture
         .set_accelerator(Some(state.capture_hotkey.as_str()))?;
     items
+        .capture_copy_on_finish
+        .set_text(strings.capture_copy_on_finish)?;
+    items
+        .capture_copy_on_finish
+        .set_checked(state.capture_copy_on_finish)?;
+    items
         .take_all_down
         .set_enabled(state.take_everything_down_enabled)?;
 
@@ -1021,6 +1108,9 @@ fn apply_state(
     items.keep_for_7.set_text(strings.keep_for_7)?;
     items.keep_for_30.set_text(strings.keep_for_30)?;
     items.keep_for_90.set_text(strings.keep_for_90)?;
+    // W1.7: the disabled explanation rows follow the language rebuild as well.
+    items.keep_info.set_text(strings.keep_info)?;
+    items.keep_for_info.set_text(strings.keep_for_info)?;
     items
         .keep_forever
         .set_checked(state.keep_for_days == KeepForDays::Forever)?;
@@ -1051,6 +1141,10 @@ fn apply_state(
         .hotkey_error
         .as_ref()
         .is_some_and(|failure| failure.target == Target::Toggle);
+    let failed_edit_latest = state
+        .hotkey_error
+        .as_ref()
+        .is_some_and(|failure| failure.target == Target::EditLatest);
     items.hotkey_capture.set_text(hotkey_row_label(
         strings.shortcut_capture,
         &state.capture_hotkey,
@@ -1060,6 +1154,11 @@ fn apply_state(
         strings.shortcut_toggle,
         &state.toggle_hotkey,
         failed_toggle,
+    ))?;
+    items.hotkey_edit_latest.set_text(hotkey_row_label(
+        strings.shortcut_edit_latest,
+        &state.edit_latest_hotkey,
+        failed_edit_latest,
     ))?;
     items.hotkey_status.set_text(hotkey_status_text(strings, state))?;
 
@@ -1106,6 +1205,36 @@ fn start_at_login_target(effective: Option<bool>, setting: bool) -> bool {
     !effective.unwrap_or(setting)
 }
 
+/// W1.7 confirmation before "Take everything down" (native Yes/No box, default **No**).
+///
+/// The action recycles Hangline-owned screenshots into the Recycle Bin, so the body says so (and
+/// that watched-folder/system files stay on disk) in the resolved UI language. An empty line shows
+/// no dialog at all; a failed box is treated as "not confirmed" so nothing destructive can run
+/// without an explicit Yes.
+fn confirm_take_everything_down(app: &AppHandle) -> bool {
+    let Some(state) = app.try_state::<AppState>() else {
+        return false;
+    };
+    let count = state.item_count();
+    if count == 0 {
+        log::info!("tray: take everything down with an empty line; nothing to confirm");
+        return false;
+    }
+    let strings = i18n::tray_strings(i18n::app_language(app));
+    let body = strings.take_all_down_body(count);
+    let result = crate::message_box(
+        strings.take_all_down_confirm_title,
+        &body,
+        MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2 | MB_SETFOREGROUND | MB_TOPMOST,
+    );
+    let confirmed = result == IDYES;
+    log::info!(
+        "tray: take everything down confirmation for {count} card(s) -> {}",
+        if confirmed { "yes" } else { "no (default)" }
+    );
+    confirmed
+}
+
 /// Menu event entry point (main thread): dispatches the pure action on the right thread.
 fn handle_menu(app: &AppHandle, id: &str) {
     let Some(action) = action_for(id) else {
@@ -1130,7 +1259,10 @@ fn handle_menu(app: &AppHandle, id: &str) {
         // Everything below mutates settings / starts watchers / runs the shell: never on the main
         // thread (a watcher restart joins threads and the modal folder picker blocks until closed).
         TrayAction::TakeEverythingDown => spawn(app, "hangline-tray-take-down", |app| {
-            actions::take_everything_down(&app);
+            // W1.7: a destructive-with-undo action asks first (native Yes/No, default No).
+            if confirm_take_everything_down(&app) {
+                actions::take_everything_down(&app);
+            }
         }),
         TrayAction::AddFolder => spawn(app, "hangline-tray-add-folder", |app| {
             actions::add_watched_folder(&app);
@@ -1186,6 +1318,10 @@ fn apply_menu_action(app: &AppHandle, action: TrayAction) {
             serde_json::json!(!settings.show_over_full_screen),
         )),
         TrayAction::ToggleSound => Some(("sound", serde_json::json!(!settings.sound))),
+        TrayAction::ToggleCaptureCopyOnFinish => Some((
+            "captureCopyOnFinish",
+            serde_json::json!(!settings.capture_copy_on_finish),
+        )),
         TrayAction::ToggleStartAtLogin => {
             let target = start_at_login_target(
                 crate::autostart::effective_enabled(app),
@@ -1285,6 +1421,8 @@ mod tests {
         settings.keep_on_line = KeepOnLine::Limit(50);
         settings.keep_for_days = KeepForDays::Days(30);
         settings.card_size = CardSize::Large;
+        settings.capture_copy_on_finish = true;
+        settings.edit_latest_hotkey = "Ctrl+Shift+E".to_string();
         settings.extra_folders = vec![r"C:\Shots".to_string()];
         let state = menu_state(&settings, false, 1, None, true, Lang::En);
         assert!(!state.handle_screenshots);
@@ -1295,6 +1433,8 @@ mod tests {
         assert!(state.show_over_full_screen);
         assert!(!state.sound);
         assert!(state.start_at_login);
+        assert!(state.capture_copy_on_finish);
+        assert_eq!(state.edit_latest_hotkey, "Ctrl+Shift+E");
         assert_eq!(state.keep_on_line, KeepOnLine::Limit(50));
         assert_eq!(state.keep_for_days, KeepForDays::Days(30));
         assert_eq!(state.card_size, CardSize::Large);
@@ -1349,6 +1489,13 @@ mod tests {
             Some(TrayAction::TakeEverythingDown)
         );
         assert_eq!(action_for(ID_CAPTURE), Some(TrayAction::TakeScreenshot));
+        assert_eq!(
+            action_for(ID_CAPTURE_COPY_ON_FINISH),
+            Some(TrayAction::ToggleCaptureCopyOnFinish)
+        );
+        // W1.7: the explanation rows are read-only (disabled) and map to no action.
+        assert_eq!(action_for(ID_KEEP_INFO), None);
+        assert_eq!(action_for(ID_KEEP_FOR_INFO), None);
         assert_eq!(
             action_for(ID_HANDLE_SCREENSHOTS),
             Some(TrayAction::ToggleWatchSystemScreenshots)
@@ -1425,6 +1572,10 @@ mod tests {
         assert_eq!(
             action_for(ID_HOTKEY_TOGGLE),
             Some(TrayAction::ChangeShortcut(Target::Toggle))
+        );
+        assert_eq!(
+            action_for(ID_HOTKEY_EDIT_LATEST),
+            Some(TrayAction::ChangeShortcut(Target::EditLatest))
         );
         assert_eq!(action_for(ID_HOTKEY_STATUS), None);
         assert_eq!(
@@ -1534,6 +1685,31 @@ mod tests {
         assert_eq!(
             state.hotkey_error.as_ref().map(|failure| failure.target),
             Some(Target::Toggle)
+        );
+
+        // W1.8: the third shortcut row/status covers "edit latest" with its own label.
+        let edit_failure = HotkeyFailure {
+            target: Target::EditLatest,
+            accelerator: "Ctrl+Alt+E".to_string(),
+            message: "edit latest busy".to_string(),
+        };
+        let edit_state = menu_state(
+            &Settings::default(),
+            false,
+            0,
+            Some(edit_failure),
+            false,
+            Lang::En,
+        );
+        assert_eq!(
+            hotkey_row_label(strings.shortcut_edit_latest, "Ctrl+Alt+E", true),
+            "Edit latest: Ctrl+Alt+E ⚠"
+        );
+        let edit_status = hotkey_status_text(strings, &edit_state);
+        assert!(edit_status.contains("Edit latest"), "got {edit_status:?}");
+        assert!(
+            edit_status.contains("edit latest busy"),
+            "got {edit_status:?}"
         );
     }
 

@@ -5,7 +5,7 @@
 //! captures the key combination, validates it against the same accelerator grammar as
 //! [`crate::hotkeys::normalize`], and saves it through the shared settings path (`set_hotkey` →
 //! `actions::apply`), which re-registers the global shortcut, persists it and rolls back on a
-//! conflict.
+//! conflict. Targets are `capture` / `toggle` / `editLatest` (W1.8).
 //!
 //! One window is reused: opening it again for a different target focuses the existing window and
 //! emits `shortcut-target` so the frontend switches which shortcut it edits.
@@ -92,11 +92,12 @@ pub fn close(app: &AppHandle) {
 mod tests {
     use super::*;
 
-    /// The query-string form is the frontend contract; both targets and every theme must be
-    /// carried explicitly (a missing/renamed theme silently degrades to system).
+    /// The query-string form is the frontend contract; every target (including the W1.8
+    /// `editLatest`) and every theme must be carried explicitly (a missing/renamed theme silently
+    /// degrades to system).
     #[test]
     fn window_url_carries_the_target_and_theme() {
-        for target in [Target::Capture, Target::Toggle] {
+        for target in [Target::Capture, Target::Toggle, Target::EditLatest] {
             for (theme, wire) in [
                 (Theme::System, "system"),
                 (Theme::Light, "light"),

@@ -25,10 +25,13 @@ import {
 import { themeSettingFromLocation, useResolvedTheme } from "../../lib/theme";
 import type { CaptureReady } from "../../lib/types";
 import {
+  PRESSED_SELECTION_DROP_MS,
   clampSelection,
   frozenFrameCssSize,
   isSelectionLargeEnough,
   normalizeSelection,
+  physicalPointToCss,
+  shouldDropPressedSelection,
   toPhysicalRect,
   viewportScale,
   type CssRect,
@@ -86,6 +89,26 @@ export function Capture() {
   /** Current DPR at the moment of confirm (the state value can lag one render). */
   const dprRef = useRef(dpr);
 
+  // --- W1.6 "空窗补按": a hotkey press that happened before the overlay could receive it ---------
+  /** The borrowed press is being replayed as an in-flight drag. */
+  const pressedRef = useRef(false);
+  /** Any pointermove/pointerup was observed for the borrowed press (the drop timer then no-ops). */
+  const pressedSawInputRef = useRef(false);
+  /** `performance.now()` when the borrowed press was applied. */
+  const pressedStartedAtRef = useRef(0);
+  /** 150 ms drop timer for a borrowed press that no input ever continued. */
+  const pressedTimerRef = useRef<number | null>(null);
+  /** Removes the window-level listeners installed for the borrowed drag. */
+  const pressedCleanupRef = useRef<(() => void) | null>(null);
+  /**
+   * Latest begin/end helpers for the borrowed press.
+   *
+   * The `capture-ready` listener is registered before the drag helpers exist (hooks and their
+   * dependency arrays cannot reference later declarations), so the listener calls through refs.
+   */
+  const beginPressedDragRef = useRef<(point: SelectionPoint) => void>(() => {});
+  const endPressedDragRef = useRef<() => void>(() => {});
+
   useEffect(() => {
     readyRef.current = ready;
   }, [ready]);
@@ -117,6 +140,30 @@ export function Capture() {
           viewportScale(payload.virtualRect.w, window.innerWidth, payload.scale || 1).toFixed(4) +
           ` (physical ${payload.virtualRect.w} px / CSS viewport ${window.innerWidth} px)`,
       );
+      // W1.6 "空窗补按": the hotkey can be pressed with the left button already down; the press is
+      // consumed before this window exists. Rust hands it back as a virtual-screen physical point;
+      // start the drag from there instead of waiting for a `pointerdown` that will never arrive.
+      const pressedAt = payload.pressedAt;
+      if (pressedAt && Number.isFinite(pressedAt.x) && Number.isFinite(pressedAt.y)) {
+        const overlayScale = viewportScale(
+          payload.virtualRect.w,
+          window.innerWidth,
+          payload.scale || 1,
+        );
+        const cssPoint = physicalPointToCss(
+          pressedAt,
+          { x: payload.virtualRect.x, y: payload.virtualRect.y },
+          overlayScale,
+          window.innerWidth,
+          window.innerHeight,
+        );
+        console.info(
+          `Hangline capture: replaying a pressed-at drag from physical ` +
+            `(${pressedAt.x}, ${pressedAt.y}) -> CSS (${cssPoint.x.toFixed(1)}, ` +
+            `${cssPoint.y.toFixed(1)}), scale ${overlayScale.toFixed(4)}`,
+        );
+        beginPressedDragRef.current(cssPoint);
+      }
     });
     const handshake = async () => {
       for (const delay of READY_RETRY_DELAYS_MS) {
@@ -190,6 +237,10 @@ export function Capture() {
   const cancel = useCallback(() => {
     if (settledRef.current) return;
     settledRef.current = true;
+    // A borrowed press may still be in flight: drop its listeners/timer before the window is torn
+    // down so no late pointerup can confirm after an Esc.
+    endPressedDragRef.current();
+    setSelection(null);
     console.info("Hangline capture: cancelled (Esc/right click)");
     void cancelCapture().catch((error: unknown) => {
       console.warn("Hangline capture: cancel_capture failed", error);
@@ -233,11 +284,22 @@ export function Capture() {
       `Hangline capture: confirm CSS ${rect.x},${rect.y} ${rect.w}x${rect.h} -> ` +
         `physical ${physical.x},${physical.y} ${physical.w}x${physical.h} (scale ${scale})`,
     );
-    void finishCapture(physical).catch((error: unknown) => {
-      console.warn("Hangline capture: finish_capture failed", error);
-      // Rust destroys the overlay on failure; if it did not (shutdown race), allow Esc to cancel.
-      settledRef.current = false;
-    });
+    void finishCapture(physical)
+      .then((result) => {
+        // W1.5 return contract: the overlay closes either way; `saved = false` with
+        // `copiedFallback = true` means the capture reached the clipboard instead of the disk.
+        if (result && !result.saved) {
+          console.info(
+            "Hangline capture: finish_capture saved=false, copiedFallback=" +
+              `${Boolean(result.copiedFallback)} (the capture is in the clipboard)`,
+          );
+        }
+      })
+      .catch((error: unknown) => {
+        console.warn("Hangline capture: finish_capture failed", error);
+        // Rust destroys the overlay on failure; if it did not (shutdown race), allow Esc to cancel.
+        settledRef.current = false;
+      });
     return true;
   }, []);
 
@@ -247,7 +309,135 @@ export function Capture() {
     [],
   );
 
+  /**
+   * Removes the borrowed press's window listeners and pending drop timer.
+   *
+   * Never touches `settledRef`: an accepted drag keeps the overlay closed, while a dropped/cancelled
+   * one returns the overlay to its idle state.
+   */
+  const endPressedDrag = useCallback(() => {
+    pressedCleanupRef.current?.();
+    pressedCleanupRef.current = null;
+    if (pressedTimerRef.current !== null) {
+      window.clearTimeout(pressedTimerRef.current);
+      pressedTimerRef.current = null;
+    }
+    pressedRef.current = false;
+    pressedSawInputRef.current = false;
+    pointerRef.current = null;
+    startRef.current = null;
+  }, []);
+
+  /**
+   * Starts a drag from a borrowed hotkey press (Wave 1.6).
+   *
+   * The overlay was not the target of the original `pointerdown`, so no React `onPointerDown` fires
+   * for it and pointer capture is impossible. Window-level `pointermove`/`pointerup` listeners take
+   * over until the drag ends; the pointer id is adopted from the first event (the original one is
+   * unknown). The 150 ms timer covers the "button was released before the overlay became ready"
+   * race, where no further input will ever arrive. The normal (non-borrowed) flow is untouched:
+   * these listeners exist only while `pressedRef` is true.
+   */
+  const beginPressedDrag = useCallback(
+    (point: SelectionPoint) => {
+      if (settledRef.current || pressedRef.current) return;
+      endPressedDrag();
+      startRef.current = point;
+      pressedRef.current = true;
+      pressedSawInputRef.current = false;
+      pressedStartedAtRef.current = performance.now();
+      setSelection(
+        clampSelection(normalizeSelection(point, point), window.innerWidth, window.innerHeight),
+      );
+      const markInput = () => {
+        pressedSawInputRef.current = true;
+        if (pressedTimerRef.current !== null) {
+          window.clearTimeout(pressedTimerRef.current);
+          pressedTimerRef.current = null;
+        }
+      };
+      const drop = (reason: string) => {
+        console.info(`Hangline capture: ${reason}; dropping the borrowed selection`);
+        endPressedDrag();
+        setSelection(null);
+      };
+      const onMove = (event: PointerEvent) => {
+        if (!pressedRef.current) return;
+        // The button was released before a pointerup could be delivered: nothing more will arrive.
+        if ((event.buttons & 1) === 0) {
+          drop("borrowed press ended without a pointerup");
+          return;
+        }
+        markInput();
+        if (pointerRef.current === null) pointerRef.current = event.pointerId;
+        else if (event.pointerId !== pointerRef.current) return;
+        const startPoint = startRef.current;
+        if (!startPoint) return;
+        event.preventDefault();
+        setSelection(viewportSelection(startPoint, pointFrom(event)));
+      };
+      const onUp = (event: PointerEvent) => {
+        if (!pressedRef.current) return;
+        if (pointerRef.current !== null && event.pointerId !== pointerRef.current) return;
+        markInput();
+        const startPoint = startRef.current;
+        const rect = startPoint ? viewportSelection(startPoint, pointFrom(event)) : null;
+        endPressedDrag();
+        if (!rect) {
+          setSelection(null);
+          return;
+        }
+        setSelection(rect);
+        if (!confirm(rect)) {
+          // Click without a real drag: the overlay stays open for a normal drag.
+          setSelection(null);
+        }
+      };
+      const onCancel = () => {
+        if (!pressedRef.current) return;
+        drop("borrowed press cancelled by the OS");
+      };
+      window.addEventListener("pointermove", onMove, true);
+      window.addEventListener("pointerup", onUp, true);
+      window.addEventListener("pointercancel", onCancel, true);
+      pressedCleanupRef.current = () => {
+        window.removeEventListener("pointermove", onMove, true);
+        window.removeEventListener("pointerup", onUp, true);
+        window.removeEventListener("pointercancel", onCancel, true);
+      };
+      pressedTimerRef.current = window.setTimeout(() => {
+        pressedTimerRef.current = null;
+        if (!pressedRef.current) return;
+        if (
+          shouldDropPressedSelection(
+            performance.now() - pressedStartedAtRef.current,
+            pressedSawInputRef.current,
+          )
+        ) {
+          drop("no input after the borrowed press");
+        }
+      }, PRESSED_SELECTION_DROP_MS);
+    },
+    [confirm, endPressedDrag, viewportSelection],
+  );
+
+  // The ready listener runs before these helpers are declared, so it calls through the refs.
+  beginPressedDragRef.current = beginPressedDrag;
+  endPressedDragRef.current = endPressedDrag;
+
+  // A torn-down overlay must not keep window-level drag listeners alive.
+  useEffect(() => {
+    return () => {
+      endPressedDragRef.current();
+    };
+  }, []);
+
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    // A new press inside the overlay takes over from a borrowed press the user is still holding.
+    if (pressedRef.current) {
+      endPressedDrag();
+      setSelection(null);
+    }
     // Left button only: right click cancels through the context menu below.
     if (event.button !== 0) return;
     event.preventDefault();
@@ -259,6 +449,8 @@ export function Capture() {
   };
 
   const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    // A borrowed press is driven by its own window-level listeners.
+    if (pressedRef.current) return;
     const start = startRef.current;
     if (!start || event.pointerId !== pointerRef.current) return;
     // Only a pressed drag may move the selection: an idle OS pointer moving over the full-screen
@@ -269,6 +461,7 @@ export function Capture() {
   };
 
   const onPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (pressedRef.current) return;
     if (event.pointerId !== pointerRef.current) return;
     // Read the press position before clearing it: using the cleared ref would turn every drag
     // into a zero-size "click" and silently ignore it.
@@ -288,6 +481,7 @@ export function Capture() {
   };
 
   const onPointerCancel = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (pressedRef.current) return;
     if (event.pointerId !== pointerRef.current) return;
     startRef.current = null;
     pointerRef.current = null;

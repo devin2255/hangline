@@ -5,18 +5,25 @@
 //! shortcut stays live, which is the rollback behaviour required by the design spec.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, MutexGuard};
 
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use thiserror::Error;
+use windows::Win32::UI::WindowsAndMessaging::{
+    MB_ICONWARNING, MB_OK, MB_SETFOREGROUND, MB_TOPMOST,
+};
 
+use crate::i18n;
 use crate::reveal::{self, RevealReason};
 
 /// Default capture accelerator (design spec 3.6).
 pub const DEFAULT_CAPTURE: &str = "Ctrl+Alt+S";
 /// Default show/hide accelerator (design spec 3.6).
 pub const DEFAULT_TOGGLE: &str = "Ctrl+Alt+T";
+/// Default "edit the newest card" accelerator (Wave 1 W1.8; avoids QQ/WeChat/Snipaste defaults).
+pub const DEFAULT_EDIT_LATEST: &str = "Ctrl+Alt+E";
 
 /// Which action a global shortcut is bound to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -25,6 +32,8 @@ pub enum Target {
     Capture,
     /// Show or hide the Hangline panel.
     Toggle,
+    /// Open the newest card in its editor (markup for images, trim for recordings; W1.8).
+    EditLatest,
 }
 
 impl Target {
@@ -33,6 +42,7 @@ impl Target {
         match self {
             Self::Capture => "capture",
             Self::Toggle => "toggle",
+            Self::EditLatest => "editLatest",
         }
     }
 
@@ -41,6 +51,7 @@ impl Target {
         match self {
             Self::Capture => DEFAULT_CAPTURE,
             Self::Toggle => DEFAULT_TOGGLE,
+            Self::EditLatest => DEFAULT_EDIT_LATEST,
         }
     }
 
@@ -49,7 +60,17 @@ impl Target {
         match value {
             "capture" => Some(Self::Capture),
             "toggle" => Some(Self::Toggle),
+            "editLatest" => Some(Self::EditLatest),
             _ => None,
+        }
+    }
+
+    /// The user-facing label from the frozen tray table (tray rows + W1.7 failure dialog).
+    pub fn label(self, strings: &i18n::TrayStrings) -> &'static str {
+        match self {
+            Self::Capture => strings.shortcut_capture,
+            Self::Toggle => strings.shortcut_toggle,
+            Self::EditLatest => strings.shortcut_edit_latest,
         }
     }
 }
@@ -243,34 +264,43 @@ impl Hotkeys {
             .remove(&target);
     }
 
-    /// The current failures, capture before toggle (deterministic tray hint order).
+    /// The current failures, in target order (capture → toggle → edit latest) for deterministic
+    /// tray hint and startup-dialog order.
     fn failures(&self) -> Vec<HotkeyFailure> {
         let failures = self
             .failures
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        [Target::Capture, Target::Toggle]
+        [Target::Capture, Target::Toggle, Target::EditLatest]
             .iter()
             .filter_map(|target| failures.get(target).cloned())
             .collect()
     }
 }
 
-/// Returns the first registration failure (capture before toggle), for the tray hint/tooltip.
+/// Returns the first registration failure (capture before toggle before edit latest), for the tray
+/// hint/tooltip.
 pub fn failure(app: &AppHandle) -> Option<HotkeyFailure> {
-    app.try_state::<Hotkeys>()
-        .and_then(|state| state.failures().into_iter().next())
+    all_failures(app).into_iter().next()
 }
 
-/// The two `(target, accelerator)` pairs a startup must register, from the persisted settings.
+/// Every registration failure, in target order (W1.8/W1.7 startup dialog lists them all).
+pub fn all_failures(app: &AppHandle) -> Vec<HotkeyFailure> {
+    app.try_state::<Hotkeys>()
+        .map(|state| state.failures())
+        .unwrap_or_default()
+}
+
+/// The three `(target, accelerator)` pairs a startup must register, from the persisted settings.
 ///
 /// This is the Task 15 fix for Task 3's "register the in-memory defaults": the source is now the
-/// user's `settings.json` (`captureHotkey`/`toggleHotkey`, normalized by `Settings::set_json` when
-/// they were written).
-pub fn configured_accelerators(settings: &crate::settings::Settings) -> [(Target, String); 2] {
+/// user's `settings.json` (`captureHotkey`/`toggleHotkey`/`editLatestHotkey`, normalized by
+/// `Settings::set_json` when they were written).
+pub fn configured_accelerators(settings: &crate::settings::Settings) -> [(Target, String); 3] {
     [
         (Target::Capture, settings.capture_hotkey.clone()),
         (Target::Toggle, settings.toggle_hotkey.clone()),
+        (Target::EditLatest, settings.edit_latest_hotkey.clone()),
     ]
 }
 
@@ -397,6 +427,13 @@ fn handle_action(app: &AppHandle, target: Target) {
             log::info!("hotkeys: toggle line");
             reveal::toggle(app, RevealReason::Toggle);
         }
+        Target::EditLatest => {
+            // Window creation dispatches to the event loop and waits, so the request must never run
+            // on the global-shortcut/event-loop thread; the worker also runs the media duration
+            // probe for a recording. The target is resolved there from the live state.
+            log::info!("hotkeys: edit latest requested (dispatching to the editor worker thread)");
+            crate::actions::edit_latest_in_background(app);
+        }
     }
 }
 
@@ -420,6 +457,61 @@ fn emit_error(app: &AppHandle, target: Target, accelerator: &str, message: &str)
     // No consumer today: kept for Wave 1 settings explainability, not for the IPC count.
     if let Err(err) = app.emit("hotkey-error", payload) {
         log::warn!("hotkeys: failed to emit hotkey-error: {err}");
+    }
+}
+
+/// Builds the one-shot startup warning body (pure; the frozen table owns every label).
+///
+/// One `• <label> (<accelerator>): <reason>` line per failed shortcut, then the tray hint. The
+/// dialog and the tray status row therefore explain the same failures with the same wording.
+fn failure_dialog_body(strings: &i18n::TrayStrings, failures: &[HotkeyFailure]) -> String {
+    let mut body = String::from(strings.hotkey_error_intro);
+    for failure in failures {
+        body.push('\n');
+        body.push_str(&strings.hotkey_error_detail_line(
+            failure.target.label(strings),
+            &failure.accelerator,
+            &failure.message,
+        ));
+    }
+    body.push_str("\n\n");
+    body.push_str(strings.hotkey_error_hint);
+    body
+}
+
+/// W1.7: one proactive native warning per run when startup registration failed.
+///
+/// The tray's disabled hint row and tooltip stay the persistent surface (and `hotkey-error` stays
+/// emitted); this dialog is the *proactive* one: it names every failed shortcut, the OS error and
+/// where to change it. At most once per process, on a worker thread, so a modal box can never block
+/// startup or window creation. An empty failure list shows nothing.
+pub fn notify_startup_failures(app: &AppHandle) {
+    static SHOWN: AtomicBool = AtomicBool::new(false);
+    if SHOWN.swap(true, Ordering::Relaxed) {
+        return;
+    }
+    let failures = all_failures(app);
+    if failures.is_empty() {
+        return;
+    }
+    let strings = i18n::tray_strings(i18n::app_language(app));
+    let title = strings.hotkey_error_title.to_string();
+    let body = failure_dialog_body(strings, &failures);
+    log::warn!(
+        "hotkeys: {} shortcut(s) could not be registered; showing the startup warning dialog",
+        failures.len()
+    );
+    let spawned = std::thread::Builder::new()
+        .name("hangline-hotkey-warning".to_string())
+        .spawn(move || {
+            crate::message_box(
+                &title,
+                &body,
+                MB_OK | MB_ICONWARNING | MB_SETFOREGROUND | MB_TOPMOST,
+            );
+        });
+    if let Err(error) = spawned {
+        log::error!("hotkeys: cannot spawn the startup warning dialog thread: {error}");
     }
 }
 
@@ -467,11 +559,13 @@ mod tests {
         let mut settings = crate::settings::Settings::default();
         settings.capture_hotkey = "Ctrl+Shift+F9".to_string();
         settings.toggle_hotkey = "Ctrl+Alt+Shift+T".to_string();
+        settings.edit_latest_hotkey = "Ctrl+Shift+E".to_string();
         assert_eq!(
             configured_accelerators(&settings),
             [
                 (Target::Capture, "Ctrl+Shift+F9".to_string()),
                 (Target::Toggle, "Ctrl+Alt+Shift+T".to_string()),
+                (Target::EditLatest, "Ctrl+Shift+E".to_string()),
             ]
         );
         // The defaults remain the fallback source for an unmanaged/first-run state.
@@ -481,10 +575,53 @@ mod tests {
             [
                 (Target::Capture, DEFAULT_CAPTURE.to_string()),
                 (Target::Toggle, DEFAULT_TOGGLE.to_string()),
+                (Target::EditLatest, DEFAULT_EDIT_LATEST.to_string()),
             ]
         );
         assert_eq!(Target::Capture.default_accelerator(), DEFAULT_CAPTURE);
         assert_eq!(Target::Toggle.default_accelerator(), DEFAULT_TOGGLE);
+        assert_eq!(Target::EditLatest.default_accelerator(), DEFAULT_EDIT_LATEST);
+    }
+
+    /// W1.8: the third target uses the same wire names and `set_hotkey` parsing as the first two.
+    #[test]
+    fn edit_latest_target_round_trips_through_the_wire_names() {
+        for target in [Target::Capture, Target::Toggle, Target::EditLatest] {
+            assert_eq!(Target::parse(target.as_str()), Some(target));
+        }
+        assert_eq!(Target::EditLatest.as_str(), "editLatest");
+        assert_eq!(Target::parse("edit_latest"), None);
+        assert_eq!(Target::parse("EditLatest"), None);
+        assert_eq!(Target::parse(""), None);
+    }
+
+    /// The W1.7 startup dialog lists every failed shortcut (with its own label) and the tray hint,
+    /// in the deterministic target order.
+    #[test]
+    fn failure_dialog_body_names_each_failed_shortcut() {
+        let strings = i18n::tray_strings(i18n::Lang::En);
+        let failures = vec![
+            HotkeyFailure {
+                target: Target::Capture,
+                accelerator: "Ctrl+Alt+S".to_string(),
+                message: "already registered".to_string(),
+            },
+            HotkeyFailure {
+                target: Target::EditLatest,
+                accelerator: "Ctrl+Alt+E".to_string(),
+                message: "access denied".to_string(),
+            },
+        ];
+        let body = failure_dialog_body(strings, &failures);
+        assert!(body.starts_with(strings.hotkey_error_intro), "got {body:?}");
+        assert!(body.contains("Capture (Ctrl+Alt+S): already registered"), "got {body:?}");
+        assert!(
+            body.contains("Edit latest (Ctrl+Alt+E): access denied"),
+            "got {body:?}"
+        );
+        assert!(body.ends_with(strings.hotkey_error_hint), "got {body:?}");
+        // No failures means no dialog at all (the caller skips the box before building the body).
+        assert!(Hotkeys::default().failures().is_empty());
     }
 
     /// M15: saving the persisted accelerator again must still re-attempt registration, because a
@@ -505,7 +642,8 @@ mod tests {
         assert!(!is_registration_retry("banana", "banana"));
     }
 
-    /// The tray hint shows capture first, then toggle, and a later success clears its own failure.
+    /// The tray hint shows capture first, then toggle, then edit latest; a later success clears its
+    /// own failure only.
     #[test]
     fn recorded_failures_are_ordered_and_cleared_per_target() {
         let hotkeys = Hotkeys::default();
@@ -515,18 +653,25 @@ mod tests {
             message: "toggle busy".to_string(),
         });
         hotkeys.record_failure(HotkeyFailure {
+            target: Target::EditLatest,
+            accelerator: "Ctrl+Alt+E".to_string(),
+            message: "edit busy".to_string(),
+        });
+        hotkeys.record_failure(HotkeyFailure {
             target: Target::Capture,
             accelerator: "Ctrl+Alt+S".to_string(),
             message: "capture busy".to_string(),
         });
         let failures = hotkeys.failures();
-        assert_eq!(failures.len(), 2);
+        assert_eq!(failures.len(), 3);
         assert_eq!(failures[0].target, Target::Capture);
         assert_eq!(failures[1].target, Target::Toggle);
+        assert_eq!(failures[2].target, Target::EditLatest);
 
         hotkeys.clear_failure(Target::Capture);
         let failures = hotkeys.failures();
-        assert_eq!(failures.len(), 1);
+        assert_eq!(failures.len(), 2);
         assert_eq!(failures[0].target, Target::Toggle);
+        assert_eq!(failures[1].target, Target::EditLatest);
     }
 }

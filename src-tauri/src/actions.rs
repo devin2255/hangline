@@ -36,6 +36,8 @@ pub enum SettingAction {
     ReRegisterCaptureHotkey,
     /// Re-register the toggle shortcut from the new setting.
     ReRegisterToggleHotkey,
+    /// Re-register the "edit latest" shortcut from the new setting (Wave 1 W1.8).
+    ReRegisterEditLatestHotkey,
     /// Stop and restart the folder watchers (watch switches / extra folders changed).
     RestartFolderWatchers,
     /// Start the clipboard listener (`watchClipboard` turned on).
@@ -58,6 +60,7 @@ impl SettingAction {
         match self {
             Self::ReRegisterCaptureHotkey => "re-register capture hotkey",
             Self::ReRegisterToggleHotkey => "re-register toggle hotkey",
+            Self::ReRegisterEditLatestHotkey => "re-register edit-latest hotkey",
             Self::RestartFolderWatchers => "restart folder watchers",
             Self::StartClipboardListener => "start clipboard listener",
             Self::StopClipboardListener => "stop clipboard listener",
@@ -77,6 +80,7 @@ impl SettingAction {
             self,
             Self::ReRegisterCaptureHotkey
                 | Self::ReRegisterToggleHotkey
+                | Self::ReRegisterEditLatestHotkey
                 | Self::EnableAutostart
                 | Self::DisableAutostart
         )
@@ -99,6 +103,9 @@ pub fn actions_for_change(key: &str, old: &Settings, new: &Settings) -> Vec<Sett
         }
         "toggleHotkey" if old.toggle_hotkey != new.toggle_hotkey => {
             actions.push(SettingAction::ReRegisterToggleHotkey);
+        }
+        "editLatestHotkey" if old.edit_latest_hotkey != new.edit_latest_hotkey => {
+            actions.push(SettingAction::ReRegisterEditLatestHotkey);
         }
         "watchSystemScreenshots"
             if old.watch_system_screenshots != new.watch_system_screenshots =>
@@ -151,6 +158,7 @@ pub fn hotkey_target_for_key(key: &str) -> Option<hotkeys::Target> {
     match key {
         "captureHotkey" => Some(hotkeys::Target::Capture),
         "toggleHotkey" => Some(hotkeys::Target::Toggle),
+        "editLatestHotkey" => Some(hotkeys::Target::EditLatest),
         _ => None,
     }
 }
@@ -233,6 +241,17 @@ fn run_actions(
                 hotkeys::register(app, hotkeys::Target::Toggle, &settings.toggle_hotkey)
                     .map_err(|err| format!("show/hide shortcut {}: {err}", settings.toggle_hotkey))
             }
+            SettingAction::ReRegisterEditLatestHotkey => hotkeys::register(
+                app,
+                hotkeys::Target::EditLatest,
+                &settings.edit_latest_hotkey,
+            )
+            .map_err(|err| {
+                format!(
+                    "edit-latest shortcut {}: {err}",
+                    settings.edit_latest_hotkey
+                )
+            }),
             SettingAction::RestartFolderWatchers => {
                 crate::watchers::restart_folder_watchers(app);
                 Ok(())
@@ -353,6 +372,59 @@ pub fn take_everything_down(app: &AppHandle) -> usize {
     crate::sound::discarded(app);
     log::info!("take_everything_down: {removed} card(s) taken off the line");
     removed
+}
+
+/// The card the `editLatest` hotkey opens: the newest row of the line.
+///
+/// `PublicState::items` is ordered by `added_at` ascending (the newest hangs on the right), so the
+/// newest card is the last row. Pure, so the W1.8 selection is unit-tested without a state.
+pub fn newest_item(items: &[crate::item::Item]) -> Option<&crate::item::Item> {
+    items.last()
+}
+
+/// Opens the editor for the newest card on the line (W1.8 `editLatest` hotkey).
+///
+/// Runs on a named worker thread: window creation dispatches to the event loop and waits (the
+/// global-shortcut handler thread must not block) and a recording's duration probe blocks on the
+/// media stack. An empty line is only logged — the spec asks for no dialog here.
+pub fn edit_latest_in_background(app: &AppHandle) {
+    let app = app.clone();
+    let spawned = std::thread::Builder::new()
+        .name("hangline-edit-latest".to_string())
+        .spawn(move || {
+            if let Err(error) = edit_latest(&app) {
+                log::warn!("edit latest: cannot open the editor: {error:#}");
+            }
+        });
+    if let Err(error) = spawned {
+        log::error!("edit latest: cannot spawn the editor worker thread: {error}");
+    }
+}
+
+/// Body of [`edit_latest_in_background`]: recordings open the trim window, every image kind opens
+/// the markup editor.
+fn edit_latest(app: &AppHandle) -> anyhow::Result<()> {
+    let Some(state) = app.try_state::<AppState>() else {
+        return Err(anyhow::anyhow!("edit latest: the app state is not managed"));
+    };
+    let items = state.snapshot().items;
+    let Some(item) = newest_item(&items).cloned() else {
+        log::info!("edit latest: the line is empty; nothing to open");
+        return Ok(());
+    };
+    log::info!(
+        "edit latest: opening {} ({:?})",
+        item.path.display(),
+        item.kind
+    );
+    if item.kind == crate::item::ItemKind::Recording {
+        // Resolving the target blocks on the WinRT duration probe; this worker thread may block.
+        let target = crate::trim::target(app, &item.id)?;
+        let lang = state.snapshot().resolved_language;
+        crate::trim::open(app, target, &lang)
+    } else {
+        crate::annotate::open(app, &item.id)
+    }
 }
 
 /// Serializes the `extraFolders` add/remove mutations (Task 15 review fix).
@@ -711,6 +783,10 @@ mod tests {
             vec![SettingAction::ReRegisterToggleHotkey]
         );
         assert_eq!(
+            actions("editLatestHotkey", json!("Ctrl+Shift+E")),
+            vec![SettingAction::ReRegisterEditLatestHotkey]
+        );
+        assert_eq!(
             actions("startAtLogin", json!(true)),
             vec![SettingAction::EnableAutostart]
         );
@@ -774,6 +850,7 @@ mod tests {
         for key in [
             "captureHotkey",
             "toggleHotkey",
+            "editLatestHotkey",
             "watchSystemScreenshots",
             "watchRecordings",
             "watchClipboard",
@@ -811,6 +888,7 @@ mod tests {
         for action in [
             SettingAction::ReRegisterCaptureHotkey,
             SettingAction::ReRegisterToggleHotkey,
+            SettingAction::ReRegisterEditLatestHotkey,
             SettingAction::EnableAutostart,
             SettingAction::DisableAutostart,
         ] {
@@ -841,13 +919,45 @@ mod tests {
             hotkey_target_for_key("toggleHotkey"),
             Some(hotkeys::Target::Toggle)
         );
+        assert_eq!(
+            hotkey_target_for_key("editLatestHotkey"),
+            Some(hotkeys::Target::EditLatest)
+        );
         assert_eq!(hotkey_target_for_key("cardSize"), None);
         assert_eq!(hotkey_target_for_key("watchClipboard"), None);
         // The shortcut window/set_hotkey use the same mapping; the enum is stable.
         assert_eq!(hotkeys::Target::Capture.as_str(), "capture");
         assert_eq!(hotkeys::Target::Toggle.as_str(), "toggle");
+        assert_eq!(hotkeys::Target::EditLatest.as_str(), "editLatest");
         // Touch the unused-import-adjacent types so this test also covers their defaults.
         assert_eq!(CardSize::default(), CardSize::Medium);
         assert_eq!(KeepOnLine::default(), KeepOnLine::Fit);
+    }
+
+    /// W1.8: the newest card is the last row of the ascending `added_at` line; an empty line has
+    /// nothing to open.
+    #[test]
+    fn newest_item_is_the_last_row_of_the_line() {
+        use crate::item::{Item, ItemKind};
+        let older = Item::new(
+            PathBuf::from(r"C:\shots\older.png"),
+            ItemKind::Capture,
+            1,
+            10,
+            10,
+        );
+        let newer = Item::new(
+            PathBuf::from(r"C:\shots\newer.mp4"),
+            ItemKind::Recording,
+            2,
+            20,
+            20,
+        );
+        let items = vec![older, newer.clone()];
+        assert_eq!(
+            newest_item(&items).map(|item| item.id.as_str()),
+            Some(newer.id.as_str())
+        );
+        assert!(newest_item(&[]).is_none());
     }
 }

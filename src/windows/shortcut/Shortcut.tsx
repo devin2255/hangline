@@ -14,16 +14,18 @@ import { t } from "../../lib/i18n";
 import { closeShortcutWindow, setHotkey } from "../../lib/ipc";
 import { initAppState, useAppStore } from "../../lib/state";
 import { themeSettingFromLocation, useResolvedTheme } from "../../lib/theme";
-import { acceleratorFromEvent, type CaptureFailure } from "./capture";
+import {
+  acceleratorFromEvent,
+  parseShortcutTarget,
+  type CaptureFailure,
+  type ShortcutTarget,
+} from "./capture";
 import "./Shortcut.css";
 
-/** Which shortcut this window edits. */
-type Target = "capture" | "toggle";
+/** Which shortcut this window edits (W1.8 adds the third one). */
+type Target = ShortcutTarget;
 
-/** Parses the target query parameter (unknown values fall back to the capture shortcut). */
-function parseTarget(value: string | null): Target {
-  return value === "toggle" ? "toggle" : "capture";
-}
+
 
 /** Human message for a capture failure (all labels come from the shared i18n table). */
 function failureMessage(reason: CaptureFailure): string {
@@ -47,15 +49,24 @@ export function Shortcut() {
       delete document.documentElement.dataset.theme;
     };
   }, [theme]);
-  const [target, setTarget] = useState<Target>(() => parseTarget(query.get("target")));
+  const [target, setTarget] = useState<Target>(() => parseShortcutTarget(query.get("target")));
   const state = useAppStore((store) => store.state);
   const [captured, setCaptured] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const current =
-    target === "capture" ? state?.settings.captureHotkey : state?.settings.toggleHotkey;
-  const targetLabel = target === "capture" ? t("Capture") : t("Show/hide line");
+    target === "capture"
+      ? state?.settings.captureHotkey
+      : target === "toggle"
+        ? state?.settings.toggleHotkey
+        : state?.settings.editLatestHotkey;
+  const targetLabel =
+    target === "capture"
+      ? t("Capture")
+      : target === "toggle"
+        ? t("Show/hide line")
+        : t("Edit latest");
 
   // Full-state handshake so the window can show the current accelerator and follow a language
   // switch while it is open (the store picks the i18n table before re-rendering).
@@ -66,7 +77,7 @@ export function Shortcut() {
   // A reused window is re-targeted by the tray without being recreated.
   useEffect(() => {
     const pending = listen<string>("shortcut-target", ({ payload }) => {
-      setTarget(parseTarget(payload));
+      setTarget(parseShortcutTarget(payload));
       setCaptured(null);
       setError(null);
     });

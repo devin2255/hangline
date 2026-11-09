@@ -5,7 +5,8 @@
 //!
 //! The 18 design-spec keys are serialized in camelCase (`captureHotkey`, `keepOnLine`, ...) so the
 //! JSON file and the IPC payloads share the same names as the TypeScript `Settings` interface; the
-//! `keepForDays` age-retention extension follows the same rule. Unknown keys
+//! `keepForDays` age-retention extension follows the same rule, as do the Wave 1 additions
+//! `captureCopyOnFinish` (W1.5) and `editLatestHotkey` (W1.8). Unknown keys
 //! in an existing file are ignored and missing keys fall back to [`Settings::default`]
 //! (`#[serde(default)]`), which is the migration path for files written by older builds.
 //!
@@ -194,7 +195,8 @@ impl<'de> Deserialize<'de> for KeepForDays {
     }
 }
 
-/// The 18 design-spec user settings plus the `keepForDays` age-retention extension.
+/// The 18 design-spec user settings plus the `keepForDays` age-retention extension and the Wave 1
+/// additions (`captureCopyOnFinish`, `editLatestHotkey`).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Settings {
@@ -202,6 +204,10 @@ pub struct Settings {
     pub capture_hotkey: String,
     /// Global show/hide accelerator.
     pub toggle_hotkey: String,
+    /// Global "edit the newest card" accelerator (Wave 1 W1.8).
+    pub edit_latest_hotkey: String,
+    /// Copy a confirmed screenshot to the clipboard after saving it (Wave 1 W1.5, default off).
+    pub capture_copy_on_finish: bool,
     /// Watch `%USERPROFILE%\Pictures\Screenshots`.
     pub watch_system_screenshots: bool,
     /// Watch image data copied to the clipboard.
@@ -243,6 +249,8 @@ impl Default for Settings {
         Self {
             capture_hotkey: hotkeys::DEFAULT_CAPTURE.to_string(),
             toggle_hotkey: hotkeys::DEFAULT_TOGGLE.to_string(),
+            edit_latest_hotkey: hotkeys::DEFAULT_EDIT_LATEST.to_string(),
+            capture_copy_on_finish: false,
             watch_system_screenshots: true,
             watch_clipboard: true,
             watch_recordings: true,
@@ -267,7 +275,7 @@ impl Default for Settings {
 /// Why a `set_setting` write was rejected.
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum SettingsError {
-    /// The key is not one of the 18 spec keys (camelCase only).
+    /// The key is not one of the accepted camelCase keys.
     #[error("unknown setting key: {0}")]
     UnknownKey(String),
     /// The value has the wrong JSON type or is outside the accepted range.
@@ -289,6 +297,8 @@ impl Settings {
         match key {
             "captureHotkey" => self.capture_hotkey = normalized_hotkey(key, &value)?,
             "toggleHotkey" => self.toggle_hotkey = normalized_hotkey(key, &value)?,
+            "editLatestHotkey" => self.edit_latest_hotkey = normalized_hotkey(key, &value)?,
+            "captureCopyOnFinish" => self.capture_copy_on_finish = expected_bool(key, &value)?,
             "watchSystemScreenshots" => {
                 self.watch_system_screenshots = expected_bool(key, &value)?;
             }
@@ -862,9 +872,15 @@ mod tests {
     #[test]
     fn defaults_match_spec() {
         let s = Settings::default();
-        // All 18 design-spec keys (spec 3.6) plus the age-retention extension, in table order.
+        // All 18 design-spec keys (spec 3.6) plus the age-retention extension and Wave 1 additions,
+        // in table order.
         assert_eq!(s.capture_hotkey, "Ctrl+Alt+S");
         assert_eq!(s.toggle_hotkey, "Ctrl+Alt+T");
+        assert_eq!(s.edit_latest_hotkey, "Ctrl+Alt+E");
+        assert!(
+            !s.capture_copy_on_finish,
+            "W1.5 must not change the existing save-only behaviour by default"
+        );
         assert!(s.watch_system_screenshots);
         assert!(s.watch_clipboard);
         assert!(s.watch_recordings);
@@ -885,17 +901,19 @@ mod tests {
     }
 
     #[test]
-    fn default_json_has_exactly_the_nineteen_camel_case_keys() {
+    fn default_json_has_exactly_the_twenty_one_camel_case_keys() {
         let value = serde_json::to_value(Settings::default()).expect("serialize defaults");
         let object = value.as_object().expect("settings must be a JSON object");
         assert_eq!(
             object.len(),
-            19,
-            "18 design-spec keys plus the keepForDays extension"
+            21,
+            "18 design-spec keys + keepForDays + captureCopyOnFinish + editLatestHotkey"
         );
         for key in [
             "captureHotkey",
             "toggleHotkey",
+            "editLatestHotkey",
+            "captureCopyOnFinish",
             "watchSystemScreenshots",
             "watchClipboard",
             "watchRecordings",
@@ -917,6 +935,8 @@ mod tests {
             assert!(object.contains_key(key), "missing camelCase key {key}");
         }
         assert_eq!(object["captureHotkey"], json!("Ctrl+Alt+S"));
+        assert_eq!(object["editLatestHotkey"], json!("Ctrl+Alt+E"));
+        assert_eq!(object["captureCopyOnFinish"], json!(false));
         assert_eq!(object["keepOnLine"], json!("fit"));
         assert_eq!(object["keepForDays"], json!("forever"));
         assert_eq!(object["cardSize"], json!("medium"));
@@ -944,10 +964,19 @@ mod tests {
         s.set_json("captureHotkey", json!("ctrl+alt+shift+f5"))
             .expect("valid accelerator");
         assert_eq!(s.capture_hotkey, "Ctrl+Alt+Shift+F5");
+        // W1.8: the third shortcut shares the same grammar/validation as the first two.
+        s.set_json("editLatestHotkey", json!("shift+ctrl+e"))
+            .expect("valid third accelerator");
+        assert_eq!(s.edit_latest_hotkey, "Ctrl+Shift+E");
+        s.set_json("editLatestHotkey", json!("Ctrl+Alt+E"))
+            .expect("the spec default is a valid accelerator");
+        assert_eq!(s.edit_latest_hotkey, "Ctrl+Alt+E");
 
         let before = s.clone();
         assert!(s.set_json("toggleHotkey", json!("T")).is_err());
         assert!(s.set_json("toggleHotkey", json!(42)).is_err());
+        assert!(s.set_json("editLatestHotkey", json!("E")).is_err());
+        assert!(s.set_json("editLatestHotkey", json!(null)).is_err());
         assert_eq!(
             s, before,
             "an invalid hotkey must not mutate settings"
@@ -961,6 +990,8 @@ mod tests {
         for (key, value) in [
             ("watchClipboard", json!(1)),
             ("watchClipboard", json!("true")),
+            ("captureCopyOnFinish", json!(1)),
+            ("captureCopyOnFinish", json!("true")),
             ("revealOnNew", json!(null)),
             ("cardSize", json!("huge")),
             ("cardSize", json!(2)),
@@ -1090,6 +1121,8 @@ mod tests {
         settings.watch_clipboard = false;
         settings.extra_folders = vec!["C:\\Shots".to_string()];
         settings.keep_on_line = KeepOnLine::Limit(100);
+        settings.capture_copy_on_finish = true;
+        settings.edit_latest_hotkey = "Ctrl+Shift+E".to_string();
         save_atomic(&dir, &settings).expect("save settings");
 
         let path = dir.join("settings.json");
@@ -1102,6 +1135,8 @@ mod tests {
             serde_json::from_slice(&fs::read(&path).expect("read settings")).expect("valid JSON");
         assert_eq!(json["watchClipboard"], json!(false));
         assert_eq!(json["extraFolders"], json!(["C:\\Shots"]));
+        assert_eq!(json["captureCopyOnFinish"], json!(true));
+        assert_eq!(json["editLatestHotkey"], json!("Ctrl+Shift+E"));
 
         assert_eq!(load(&dir), settings);
 
@@ -1313,8 +1348,11 @@ mod tests {
         let loaded = load(&dir);
         assert!(!loaded.watch_clipboard);
         assert_eq!(loaded.keep_on_line, KeepOnLine::Limit(50));
-        // Everything else must keep the spec default (settings migration path).
+        // Everything else must keep the spec default (settings migration path), including the
+        // Wave 1 additions: an old file must migrate to save-only with the "Ctrl+Alt+E" shortcut.
         assert_eq!(loaded.capture_hotkey, "Ctrl+Alt+S");
+        assert_eq!(loaded.edit_latest_hotkey, "Ctrl+Alt+E");
+        assert!(!loaded.capture_copy_on_finish);
         assert_eq!(loaded.reveal_peek_ms, 2500);
         assert!(loaded.reveal_on_new);
         assert_eq!(
@@ -1384,6 +1422,8 @@ mod tests {
         assert!(affects_panel_geometry("keepOnLine"));
         for key in [
             "captureHotkey",
+            "editLatestHotkey",
+            "captureCopyOnFinish",
             "theme",
             "watchClipboard",
             "language",

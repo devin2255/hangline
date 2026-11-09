@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — Wave 1 batch 1 (card action surface)
+## Unreleased — Wave 1 (card action surface)
 
 - **Card context menu** (right-click): copy image / copy as file / open / show in Explorer /
   markup (or trim recording) / "Take down ▸" with move-to-Recycle-Bin, remove-from-line and
@@ -14,6 +14,18 @@
 - **Rust**: `copy_item_as_file`, `show_in_explorer` (spec-promised, previously missing) and
   `take_down_side` (batch take-down, never deletes files; one persist + one broadcast).
 - 51 new frontend tests (210 → 261) and 7 new Rust tests (369 → 376).
+- **Capture finish action**: new `captureCopyOnFinish` setting (+ tray check item) copies a confirmed
+  screenshot to the clipboard; if saving fails the cropped image is copied instead of being lost.
+- **Pressed-at capture**: the first mouse press of a hotkey-triggered capture is no longer dropped —
+  the overlay takes OS mouse capture and continues the already-started drag (`capture-ready.pressedAt`).
+- **Tray explainability**: real disabled explanation rows in both retention submenus, a Yes/No
+  confirmation before "Take everything down" (count and file semantics in the text, localized), and
+  a one-per-run warning when a global shortcut fails to register.
+- **Third global shortcut**: `editLatestHotkey` (default `Ctrl+Alt+E`) opens the newest card in the
+  markup editor (recordings in the trim window); tray shortcut row + the change-shortcut window
+  support the new target (commands 40 → 43 in total across batches).
+- 4 new frontend tests (261 → 270, including the shortcut-target parser) and 6 new Rust tests
+  (376 → 382).
 ## 1.1.1 — 2026-11-09
 
 > Wave 0 debt paydown plus the first real-machine acceptance pass. Still **unsigned**: see the

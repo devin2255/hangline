@@ -131,6 +131,13 @@ export interface Settings {
   captureHotkey: string;
   /** Global show/hide accelerator, normalized (`Ctrl+Alt+T`). */
   toggleHotkey: string;
+  /**
+   * Wave 1 third global hotkey: opens the markup editor for the newest item (normalized, `""` =
+   * unbound). Mirrors Rust `edit_latest_hotkey`.
+   */
+  editLatestHotkey: string;
+  /** Wave 1.5: also put the finished capture on the clipboard (in addition to saving/hanging it). */
+  captureCopyOnFinish: boolean;
   watchSystemScreenshots: boolean;
   watchClipboard: boolean;
   watchRecordings: boolean;
@@ -224,6 +231,24 @@ export interface CaptureReady {
   width: number;
   /** Frozen-frame height in physical pixels. */
   height: number;
+  /**
+   * Wave 1.6 "空窗补按": the physical virtual-screen point where the hotkey's left-button press
+   * happened, when the button was still held as the overlay became ready. The overlay converts it
+   * to CSS pixels and starts the drag from it instead of waiting for a `pointerdown` that was
+   * consumed before the window existed. `null`/absent means a normal capture.
+   */
+  pressedAt?: PixelPosition | null;
+}
+
+/** Result of the `finish_capture` command (Wave 1.5 return contract). */
+export interface CaptureFinishResult {
+  /** True when the capture was saved to disk and hung on the line. */
+  saved: boolean;
+  /**
+   * True when saving failed but the image was copied to the clipboard instead. The overlay closes
+   * in both cases; this only distinguishes the fallback for diagnostics (no extra UI).
+   */
+  copiedFallback: boolean;
 }
 
 /**

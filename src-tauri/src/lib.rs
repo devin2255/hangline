@@ -1,8 +1,10 @@
 use std::os::windows::process::CommandExt;
 
 use tauri::Manager;
+use windows::core::PCWSTR;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::Input::KeyboardAndMouse::GetDoubleClickTime;
+use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MESSAGEBOX_RESULT, MESSAGEBOX_STYLE};
 
 mod app_state;
 mod actions;
@@ -71,6 +73,30 @@ fn get_scale_factor(app: tauri::AppHandle) -> Result<f64, String> {
     panel.scale_factor().map_err(|err| err.to_string())
 }
 
+/// Native message box seam for the W1.7 explanations (no new dependency: `MessageBoxW`).
+///
+/// Callers pass an owner-less box (the app has no focused window, or the action runs on a worker
+/// thread, exactly like the capture error box) and must run it on a thread that may block until the
+/// user answers — never the main event loop.
+pub(crate) fn message_box(
+    title: &str,
+    body: &str,
+    flags: MESSAGEBOX_STYLE,
+) -> MESSAGEBOX_RESULT {
+    let title: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
+    let body: Vec<u16> = body.encode_utf16().chain(std::iter::once(0)).collect();
+    // SAFETY: both buffers are NUL-terminated and outlive the call; the box is owner-less on
+    // purpose (the same pattern as the capture error box in `capture::show_capture_error`).
+    unsafe {
+        MessageBoxW(
+            None,
+            PCWSTR(body.as_ptr()),
+            PCWSTR(title.as_ptr()),
+            flags,
+        )
+    }
+}
+
 /// Starts Hangline's own freeze-frame region capture (design spec §3.2 A, `Ctrl+Alt+S`).
 ///
 /// The command returns once the frozen frame is saved and the overlay window is up; the selection
@@ -100,8 +126,15 @@ async fn report_capture_ready(app: tauri::AppHandle) -> Result<(), String> {
 /// `rect` is in virtual-desktop physical pixels (CSS selection × `devicePixelRatio` + the virtual
 /// origin the `capture-ready` payload carries); Rust clamps it to the frozen frame. Async because
 /// cleanup destroys/moves windows through the event loop.
+///
+/// W1.5 reply contract: `{ saved, copiedFallback }` (serde camelCase). `saved` means the file was
+/// written and hung; `copiedFallback` means the save failed and the crop was copied to the
+/// clipboard instead, so the panel must not report a lost capture.
 #[tauri::command]
-async fn finish_capture(app: tauri::AppHandle, rect: PhysicalRect) -> Result<(), String> {
+async fn finish_capture(
+    app: tauri::AppHandle,
+    rect: PhysicalRect,
+) -> Result<capture::CaptureOutcome, String> {
     capture::finish_capture(&app, rect).map_err(|error| error.to_string())
 }
 
@@ -639,10 +672,11 @@ fn take_down_side(app: tauri::AppHandle, id: String, side: String) -> Result<u32
 /// Changes one global shortcut.
 ///
 /// Task 15 routes this through the shared settings path: the accelerator is persisted in
-/// `settings.captureHotkey`/`toggleHotkey` (the shortcut window's save), re-registered with the
-/// conflict-safe rollback in [`hotkeys::register`], broadcast as a new full state and reflected in
-/// the tray. On a conflict the previous shortcut stays live and the previous setting is restored;
-/// the error string is returned to the caller (design spec 4.4 `set_hotkey` / §3.11).
+/// `settings.captureHotkey`/`toggleHotkey`/`editLatestHotkey` (the shortcut window's save),
+/// re-registered with the conflict-safe rollback in [`hotkeys::register`], broadcast as a new full
+/// state and reflected in the tray. On a conflict the previous shortcut stays live and the previous
+/// setting is restored; the error string is returned to the caller (design spec 4.4 `set_hotkey` /
+/// §3.11). W1.8 adds the third `"editLatest"` target on exactly the same contract.
 ///
 /// Saving the accelerator that is already persisted is handled here as a registration *retry*
 /// (M15): [`actions::apply`] only schedules a re-registration when the setting changes, so after a
@@ -660,6 +694,7 @@ fn set_hotkey(
     let key = match target {
         hotkeys::Target::Capture => "captureHotkey",
         hotkeys::Target::Toggle => "toggleHotkey",
+        hotkeys::Target::EditLatest => "editLatestHotkey",
     };
     debug_assert_eq!(actions::hotkey_target_for_key(key), Some(target));
 
@@ -668,6 +703,7 @@ fn set_hotkey(
         .map(|state| match target {
             hotkeys::Target::Capture => state.snapshot().settings.capture_hotkey,
             hotkeys::Target::Toggle => state.snapshot().settings.toggle_hotkey,
+            hotkeys::Target::EditLatest => state.snapshot().settings.edit_latest_hotkey,
         })
         .unwrap_or_default();
     if hotkeys::is_registration_retry(&persisted, &accelerator) {
@@ -1010,6 +1046,9 @@ pub fn run() {
             // Task 15: register the *persisted* accelerators (Task 3 only registered defaults),
             // then build the full tray menu so an initial registration failure is visible in it.
             hotkeys::init(&handle);
+            // W1.7: the one-shot proactive warning for a startup registration conflict (the tray's
+            // disabled hint row/tooltip stays the persistent surface). Shows on a worker thread.
+            hotkeys::notify_startup_failures(&handle);
             tray::create(&handle)?;
 
             // P5-2: the updater keeps the last announcement so a panel that loads later can query
@@ -1055,6 +1094,8 @@ pub fn run() {
             watchers::shutdown(handle);
             // P4-2: stop the full-screen poller so its thread cannot outlive the app.
             fullscreen::shutdown(handle);
+            // W1.6: a make-up-press mouse capture must never outlive the process.
+            capture::release_mouse_capture(handle, "app exit");
             // A transparent fullscreen overlay must never outlive the app (it would keep painting
             // over the desktop for the fraction of a second between window teardown and exit).
             fly::hide_on_exit(handle);
