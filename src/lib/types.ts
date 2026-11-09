@@ -238,15 +238,6 @@ export interface DragEndedEvent {
   error?: string;
 }
 
-/**
- * Payload of the Rust → panel `clipboard-copied` event (Task 12, spec §4.4): the opaque id of the
- * item whose file was just published to the clipboard.
- *
- * The card gesture shows its `Copied` pill from the successful `copy_item` return, so no listener
- * is required today; this type keeps the event contract mirrored for future listeners.
- */
-export type ClipboardCopiedEvent = string;
-
 /** Which overlay animation to play (`fly` = new card in, `fall` = taken-down card out). */
 export type FlyKind = "fly" | "fall";
 

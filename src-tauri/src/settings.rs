@@ -12,9 +12,13 @@
 //! # Persistence
 //!
 //! `settings.json` is written through a `.tmp` file + rename (the rename is atomic on NTFS), with
-//! a best-effort `fsync` before the rename. Writes only happen on change or on first run; reads
-//! never rewrite a healthy file. A missing file is seeded with defaults, an unreadable file is
-//! preserved as `settings.json.corrupt` and replaced with defaults.
+//! a best-effort `fsync` before the rename and the previous good file rotated to
+//! `settings.json.bak` (its own `.tmp` + rename, so the backup is never partial). The backup is the
+//! second layer: `load` recovers a corrupt main file from it and writes the recovered settings back
+//! to the main file. Only when there is no usable backup does the corrupt file get preserved as
+//! `settings.json.corrupt` and replaced with defaults (the third layer); a missing file is seeded
+//! with defaults. A main file that exists but cannot be read is never overwritten — the write is
+//! refused with a diagnostic error and the session stays read-only for that document.
 
 use std::fs;
 use std::io::{self, Write};
@@ -405,11 +409,16 @@ pub fn settings_path(dir: &Path) -> PathBuf {
     dir.join(SETTINGS_FILE)
 }
 
-/// Reads `settings.json`, falling back to defaults on missing/corrupt files.
+/// Reads `settings.json` with the three-layer fallback: main file, last good `.bak`, defaults.
 ///
-/// A missing file is seeded with the defaults (first run); an unreadable file is preserved as
-/// `settings.json.corrupt` and replaced with defaults so the next start is healthy. Read I/O
-/// errors other than "not found" never write (the disk is probably not writable either).
+/// A healthy file is returned untouched. A corrupt (readable but unparsable) file is tried against
+/// `settings.json.bak`: a valid backup is restored *and* written back to the main file, so the next
+/// read is healthy again; the corrupt file itself is kept as `settings.json.corrupt` for diagnosis.
+/// With no usable backup the corrupt file is replaced with defaults (same `.corrupt` preservation).
+/// A missing file is seeded with defaults (first run).
+///
+/// Read I/O errors other than "not found" never write: the session runs on in-memory defaults and
+/// the unreadable file is left alone ([`write_atomic`] refuses to overwrite it as well).
 pub fn load(dir: &Path) -> Settings {
     let path = settings_path(dir);
     match fs::read(&path) {
@@ -420,13 +429,10 @@ pub fn load(dir: &Path) -> Settings {
             }
             Err(err) => {
                 log::error!(
-                    "settings: {} is not valid settings JSON ({err}); using defaults",
+                    "settings: {} is not valid settings JSON ({err})",
                     path.display()
                 );
-                backup_corrupt(&path);
-                let settings = Settings::default();
-                persist_defaults(dir, &settings);
-                settings
+                recover_settings(dir, &path)
             }
         },
         Err(err) if err.kind() == io::ErrorKind::NotFound => {
@@ -440,11 +446,35 @@ pub fn load(dir: &Path) -> Settings {
         }
         Err(err) => {
             log::error!(
-                "settings: failed to read {} ({err}); using in-memory defaults",
+                "settings: failed to read {} ({err}); using in-memory defaults (the file is left \
+                 untouched and later writes are refused)",
                 path.display()
             );
             Settings::default()
         }
+    }
+}
+
+/// Repairs a corrupt `settings.json` from the last good `.bak`, or falls back to defaults.
+///
+/// The corrupt main file is moved aside *before* the recovered settings are written, so the write
+/// does not rotate the corrupt bytes over the good backup.
+fn recover_settings(dir: &Path, path: &Path) -> Settings {
+    if let Some(recovered) = read_backup::<Settings>(path) {
+        backup_corrupt(path);
+        if let Err(err) = save_atomic(dir, &recovered) {
+            log::error!(
+                "settings: failed to write the recovered settings back to {}: {err:#}",
+                path.display()
+            );
+        }
+        recovered
+    } else {
+        log::warn!("settings: no usable backup; using defaults");
+        backup_corrupt(path);
+        let settings = Settings::default();
+        persist_defaults(dir, &settings);
+        settings
     }
 }
 
@@ -461,9 +491,11 @@ fn persist_defaults(dir: &Path, settings: &Settings) {
     }
 }
 
-/// Moves an unreadable file aside so the next read starts from a clean state.
+/// Moves a corrupt (readable but unparsable) file aside so the next read starts from a clean state.
 ///
-/// Used for both `settings.json` and `state.json`; returns the backup path on success.
+/// Used for both `settings.json` and `state.json` when no usable `.bak` exists; the file is kept as
+/// `<name>.corrupt` for diagnosis and the caller then writes defaults/empty data. Returns the backup
+/// path on success.
 pub(crate) fn backup_corrupt(path: &Path) -> Option<PathBuf> {
     let Some(name) = path.file_name() else {
         log::warn!("persistence: {} has no file name to back up", path.display());
@@ -489,7 +521,63 @@ pub(crate) fn backup_corrupt(path: &Path) -> Option<PathBuf> {
     }
 }
 
+/// Returns the sibling path holding the previous good copy of a persisted document.
+///
+/// Used for both `settings.json.bak` and `state.json.bak`; `None` when `path` has no file name.
+pub(crate) fn backup_path(path: &Path) -> Option<PathBuf> {
+    let name = path.file_name()?;
+    Some(path.with_file_name(format!("{}.bak", name.to_string_lossy())))
+}
+
+/// Reads the last good copy (`<name>.bak`) of a persisted document, if there is a usable one.
+///
+/// Returns `None` when the backup is missing, unreadable or corrupt: callers then fall back to
+/// defaults/empty exactly as before. The backup is validated with the same parser as the main
+/// document, because it is only *expected* to be a previous good file (a hand edit or a partial
+/// copy must not be trusted blindly).
+pub(crate) fn read_backup<T: DeserializeOwned>(path: &Path) -> Option<T> {
+    let backup = backup_path(path)?;
+    let bytes = match fs::read(&backup) {
+        Ok(bytes) => bytes,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return None,
+        Err(err) => {
+            log::warn!(
+                "persistence: failed to read the backup {} ({err})",
+                backup.display()
+            );
+            return None;
+        }
+    };
+    match serde_json::from_slice::<T>(&bytes) {
+        Ok(value) => {
+            log::info!(
+                "persistence: recovered {} from the previous good copy {}",
+                path.display(),
+                backup.display()
+            );
+            Some(value)
+        }
+        Err(err) => {
+            log::warn!(
+                "persistence: the backup {} is not valid either ({err})",
+                backup.display()
+            );
+            None
+        }
+    }
+}
+
 /// Writes one JSON document atomically: `<name>.tmp` then rename over `<name>`.
+///
+/// Before the rename the current file is rotated into `<name>.bak` (using the bytes read for the
+/// guard below, written through its own `.tmp` + rename so the backup is never partial). The
+/// rotation is best effort — a save must not fail because the backup slot is unusable; the main
+/// file is the authoritative copy.
+///
+/// A target that exists but cannot be read (any error but `NotFound`) is a hard stop: overwriting it
+/// would permanently destroy a file this process could not even inspect, so the write is refused
+/// with a diagnostic error and the file is left in place. A corrupt *readable* file keeps following
+/// the normal backup-and-rebuild path.
 ///
 /// The temporary file is removed when anything fails, so a `.tmp` never masquerades as data.
 pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
@@ -500,17 +588,37 @@ pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
     let Some(name) = path.file_name() else {
         bail!("path has no file name: {}", path.display());
     };
+    // One read serves both the unreadable-target guard and the backup rotation, so the file that is
+    // preserved is exactly the one whose readability was checked.
+    let previous = match fs::read(path) {
+        Ok(bytes) => Some(bytes),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => None,
+        Err(err) => {
+            return Err(anyhow!(
+                "refusing to overwrite the unreadable file {}: it exists but cannot be read \
+                 ({err}); move it away or fix its permissions to resume saving",
+                path.display()
+            ));
+        }
+    };
     let tmp = path.with_file_name(format!("{}.tmp", name.to_string_lossy()));
 
-    let result = write_then_rename(&tmp, path, bytes);
+    let result = write_file_synced(&tmp, bytes)
+        .and_then(|()| {
+            if let Some(previous) = previous.as_deref() {
+                rotate_backup(path, previous);
+            }
+            Ok(())
+        })
+        .and_then(|()| rename_file(&tmp, path));
     if result.is_err() {
         let _ = fs::remove_file(&tmp);
     }
     result
 }
 
-/// Writes `bytes` to `tmp`, flushes it, and renames it over `path`.
-fn write_then_rename(tmp: &Path, path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
+/// Writes `bytes` to a temporary file and flushes it before it is renamed into place.
+fn write_file_synced(tmp: &Path, bytes: &[u8]) -> anyhow::Result<()> {
     let mut file =
         fs::File::create(tmp).with_context(|| format!("failed to create {}", tmp.display()))?;
     file.write_all(bytes)
@@ -521,8 +629,37 @@ fn write_then_rename(tmp: &Path, path: &Path, bytes: &[u8]) -> anyhow::Result<()
         log::warn!("persistence: fsync of {} failed: {err}", tmp.display());
     }
     drop(file);
-    fs::rename(tmp, path)
-        .with_context(|| format!("failed to rename {} to {}", tmp.display(), path.display()))
+    Ok(())
+}
+
+/// Renames `from` over `to`, publishing the content with one atomic replace.
+fn rename_file(from: &Path, to: &Path) -> anyhow::Result<()> {
+    fs::rename(from, to)
+        .with_context(|| format!("failed to rename {} to {}", from.display(), to.display()))
+}
+
+/// Rotates the previous content of `path` into `<name>.bak` (own `.tmp` + rename).
+///
+/// Best effort: a save must not fail just because the backup slot is unusable; a warning is enough
+/// for diagnosis and the new main file is still written losslessly.
+fn rotate_backup(path: &Path, previous: &[u8]) {
+    let Some(backup) = backup_path(path) else {
+        log::warn!("persistence: {} has no backup name", path.display());
+        return;
+    };
+    let Some(name) = backup.file_name() else {
+        return;
+    };
+    let tmp = backup.with_file_name(format!("{}.tmp", name.to_string_lossy()));
+    let result = write_file_synced(&tmp, previous).and_then(|()| rename_file(&tmp, &backup));
+    if let Err(err) = result {
+        let _ = fs::remove_file(&tmp);
+        log::warn!(
+            "persistence: failed to keep the previous {} as {}: {err:#}",
+            path.display(),
+            backup.display()
+        );
+    }
 }
 
 /// Builds the error for a rejected value.
@@ -1009,6 +1146,158 @@ mod tests {
             Settings::default(),
             "a valid defaults file must replace the corrupt one"
         );
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// Three-layer persistence, layer 1: every successful save rotates the previous settings file
+    /// into `settings.json.bak` before publishing the new one, so the last good generation survives
+    /// a corrupt main file. Only one generation is kept, and no `.tmp` is left behind.
+    #[test]
+    fn save_rotates_the_previous_settings_into_bak() {
+        let dir = test_dir("rotate-bak");
+        let main = dir.join("settings.json");
+        let backup = dir.join("settings.json.bak");
+        let mut first = Settings::default();
+        first.watch_clipboard = false;
+        first.keep_on_line = KeepOnLine::Limit(25);
+        save_atomic(&dir, &first).expect("first save");
+        assert!(main.is_file());
+        assert!(
+            !backup.exists(),
+            "the first save has no previous file to rotate"
+        );
+
+        let mut second = first.clone();
+        second.watch_clipboard = true;
+        second.card_size = CardSize::Large;
+        save_atomic(&dir, &second).expect("second save");
+        assert_eq!(
+            serde_json::from_slice::<Settings>(&fs::read(&backup).expect("read the bak"))
+                .expect("the backup is a complete settings document"),
+            first,
+            "the previous good settings must be rotated into settings.json.bak"
+        );
+        assert_eq!(load(&dir), second);
+        assert!(!dir.join("settings.json.bak.tmp").exists());
+
+        // Only one generation is kept: the third save replaces the backup with the second file.
+        let mut third = second.clone();
+        third.sound = false;
+        save_atomic(&dir, &third).expect("third save");
+        assert_eq!(
+            serde_json::from_slice::<Settings>(&fs::read(&backup).unwrap()).unwrap(),
+            second
+        );
+        assert_eq!(load(&dir), third);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// Three-layer persistence, layer 2: a corrupt main file is recovered from the last good
+    /// `.bak`, kept as `settings.json.corrupt` for diagnosis, and written back so the next start
+    /// reads a healthy file again.
+    #[test]
+    fn load_recovers_a_corrupt_settings_file_from_the_backup() {
+        let dir = test_dir("recover-bak");
+        let mut good = Settings::default();
+        good.capture_hotkey = "Ctrl+Shift+F9".to_string();
+        good.keep_for_days = KeepForDays::Days(30);
+        save_atomic(&dir, &good).expect("first save");
+        let mut next = good.clone();
+        next.watch_clipboard = false;
+        save_atomic(&dir, &next).expect("second save"); // settings.json.bak == good
+
+        let corrupt = b"{ this is still not json".to_vec();
+        fs::write(dir.join("settings.json"), &corrupt).expect("corrupt the main file");
+
+        assert_eq!(load(&dir), good, "the last good copy must be recovered");
+        assert_eq!(
+            fs::read(dir.join("settings.json.corrupt")).expect("corrupt file backup"),
+            corrupt,
+            "the corrupt file must still be preserved for diagnosis"
+        );
+        assert_eq!(
+            serde_json::from_slice::<Settings>(&fs::read(dir.join("settings.json")).unwrap())
+                .expect("the recovered settings must be written back as valid JSON"),
+            good
+        );
+        assert_eq!(
+            serde_json::from_slice::<Settings>(&fs::read(dir.join("settings.json.bak")).unwrap())
+                .expect("the good backup stays readable"),
+            good,
+            "the corrupt main file must be moved aside before the write-back, so the good .bak survives"
+        );
+        assert_eq!(
+            load(&dir),
+            good,
+            "the second load must read a healthy file (no recovery needed)"
+        );
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// Three-layer persistence, layer 3: a corrupt main file whose `.bak` is also unusable falls
+    /// back to defaults exactly like before, keeping the corrupt bytes as `settings.json.corrupt`.
+    #[test]
+    fn load_falls_back_to_defaults_when_the_settings_backup_is_unusable() {
+        let dir = test_dir("bad-bak");
+        let path = dir.join("settings.json");
+        let corrupt = b"{ this is not json".to_vec();
+        fs::write(&path, &corrupt).expect("write corrupt settings");
+        fs::write(dir.join("settings.json.bak"), b"also not json").expect("write corrupt backup");
+
+        assert_eq!(load(&dir), Settings::default());
+        assert_eq!(
+            fs::read(dir.join("settings.json.corrupt")).expect("corrupt file backup"),
+            corrupt
+        );
+        assert_eq!(
+            fs::read(dir.join("settings.json.bak")).expect("the unusable backup is left alone"),
+            b"also not json",
+            "a bad backup is not deleted; the next save rotates a good generation over it"
+        );
+        assert_eq!(
+            serde_json::from_slice::<Settings>(&fs::read(&path).unwrap()).unwrap(),
+            Settings::default(),
+            "defaults must replace the corrupt file"
+        );
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// Three-layer persistence, read-only session rule: a target that exists but cannot be read
+    /// must never be overwritten, because it could hold recoverable user data.
+    ///
+    /// Windows cannot make a plain file unreadable without ACLs (and this test sandbox may not
+    /// allow changing them), so a *directory* is placed at the settings path: `fs::read` then fails
+    /// with a non-`NotFound` I/O error on every supported platform (`PermissionDenied` on Windows,
+    /// `IsADirectory`/`Other` on Unix) — exactly the "exists but unreadable" condition.
+    #[test]
+    fn save_refuses_to_overwrite_a_settings_file_it_cannot_read() {
+        let dir = test_dir("read-failure");
+        let path = dir.join("settings.json");
+        fs::create_dir(&path).expect("a directory at the settings path blocks reads");
+
+        let error = save_atomic(&dir, &Settings::default()).expect_err("the write must be refused");
+        let message = format!("{error:#}");
+        assert!(
+            message.contains("refusing to overwrite"),
+            "the error must be diagnostic: {message}"
+        );
+        assert!(
+            message.contains("settings.json"),
+            "the error names the path: {message}"
+        );
+        assert!(path.is_dir(), "the unreadable target must be left in place");
+        assert!(
+            !dir.join("settings.json.tmp").exists(),
+            "a refused write must not leave a .tmp file"
+        );
+        assert!(
+            !dir.join("settings.json.bak").exists(),
+            "a refused write must not rotate a backup"
+        );
+
+        // The read side is a read-only session too: in-memory defaults, no write at all.
+        assert_eq!(load(&dir), Settings::default());
+        assert!(path.is_dir(), "load must not touch the unreadable file");
         let _ = fs::remove_dir_all(dir);
     }
 

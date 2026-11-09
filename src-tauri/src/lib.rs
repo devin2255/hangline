@@ -1,4 +1,4 @@
-use tauri::{Emitter, Manager};
+use tauri::Manager;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::Input::KeyboardAndMouse::GetDoubleClickTime;
 
@@ -399,9 +399,7 @@ fn clipboard_owner(app: &tauri::AppHandle) -> Option<HWND> {
 
 /// Copies one card: images publish PNG + DIBV5 + HDROP, recordings only HDROP (spec §4.7).
 ///
-/// The file itself is only read. A successful return makes the frontend show the `Copied` pill; on
-/// success the spec §4.4 `clipboard-copied` event is also emitted, but it is informational because
-/// the card gesture already reacts to this command's return value.
+/// The file itself is only read. A successful return makes the frontend show the `Copied` pill.
 #[tauri::command]
 fn copy_item(app: tauri::AppHandle, id: String) -> Result<(), String> {
     let item = item_by_id(&app, &id)?;
@@ -413,10 +411,6 @@ fn copy_item(app: tauri::AppHandle, id: String) -> Result<(), String> {
         );
         error.to_string()
     })?;
-    if let Err(error) = app.emit("clipboard-copied", &id) {
-        // The copy already succeeded; a failed event must not turn it into an error.
-        log::warn!("copy_item: clipboard-copied could not be emitted for {id}: {error}");
-    }
     // Design spec §3.5 "声音": copy/discard feedback, gated by the `sound` setting.
     sound::copied(&app);
     Ok(())
@@ -776,9 +770,6 @@ pub fn run() {
             // before the panel frontend reports ready, the reveal controller queues the toggle.
             log::info!("single-instance: second launch detected, toggling the panel");
             reveal::toggle(app, reveal::RevealReason::SecondInstance);
-            if let Err(err) = app.emit("second-instance", ()) {
-                log::warn!("single-instance: failed to emit second-instance: {err}");
-            }
         }))
         .plugin(tauri_plugin_log::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
@@ -823,7 +814,6 @@ pub fn run() {
             updater::install_update,
             updater::get_pending_update,
             dragout::start_drag,
-            dragout::drag_demo_file,
             fly::start_fly,
             fly::start_fall,
             fly::fly_done,

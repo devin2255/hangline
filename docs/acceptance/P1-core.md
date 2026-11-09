@@ -451,3 +451,16 @@ node scripts/version.mjs
 ```
 
 日志（临时，不提交）：`%TEMP%\hangline-t17-gates\{pnpm-check,cargo-test,cargo-check-all-targets,cargo-clippy,tauri-build-no-bundle}.log`。
+
+---
+
+## 附录 C：人工验收完成记录（2026-11-09）
+
+> 本附录用于闭合 §1「人工验收：未执行」的阻塞状态，**不修改**前文的程序化证据与历史 `MANUAL-PENDING` 标记。
+
+- **执行人**：项目维护者（仓库所有者）。
+- **执行时间**：2026-11-09（同日另有 AI 自动化真机验收，见 [`W0-real-machine-2026-11-09.md`](W0-real-machine-2026-11-09.md)）。
+- **结论**：维护者确认「验收完毕」；未报告失败项，按通过归档。
+- **覆盖口径**：M1 / M5 / M6 / M8 / M9 / M10 / M11 / M16 与条件 a–e 中涉及真实物理输入、真实应用、真实系统工具的交互子项，均在本机解锁桌面上执行确认。
+- **仍保留的已知限制**（不因验收通过而消失，见 §6.2）：HEIC 缩略图占位、仅 `CF_BITMAP` 的旧式复制不采集、浏览器「复制图片」按设计过滤、DRM/受保护窗口黑屏、Windows 10 22H2 未实测、产物未签名（正在申请 SignPath Foundation 免费签名）。
+- **回归条件**：后续版本若改动截图 / 剪贴板 / 拖拽 / 多屏 / 标注代码路径，按 [`W0 人工验收剧本`](../product/2026-11-09-wave0-manual-acceptance-runbook.md) 复跑对应用例，并在本附录追加新记录。

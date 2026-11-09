@@ -400,7 +400,10 @@ fn handle_action(app: &AppHandle, target: Target) {
     }
 }
 
-/// Payload of the `hotkey-error` event (the tray balloon is wired up in Task 15).
+/// Payload of the `hotkey-error` event: the machine-readable registration failure.
+///
+/// No webview listens to it today (the tray's disabled hint row and tooltip already show the
+/// failure); it is kept for the Wave 1 settings explainability instead of being deleted.
 #[derive(Clone, serde::Serialize)]
 struct HotkeyErrorPayload<'a> {
     target: &'a str,
@@ -414,6 +417,7 @@ fn emit_error(app: &AppHandle, target: Target, accelerator: &str, message: &str)
         accelerator,
         message,
     };
+    // No consumer today: kept for Wave 1 settings explainability, not for the IPC count.
     if let Err(err) = app.emit("hotkey-error", payload) {
         log::warn!("hotkeys: failed to emit hotkey-error: {err}");
     }

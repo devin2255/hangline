@@ -42,18 +42,16 @@
 //! The poller runs on its own named thread ([`THREAD_NAME`]) every [`POLL_INTERVAL_MS`] (100 ms).
 //! A change is applied after [`STABLE_MS`] of stability, measured from the poll that first saw it,
 //! so the worst case is 100 ms + 800 ms = 0.9 s: the M4 "back within 1 s" restore bound holds even
-//! when the full-screen app goes away immediately after a poll. It emits
-//! `fullscreen-state { suppressed, reason? }` whenever the applied state changes (debug/evidence
-//! only; no webview listens to it) and posts [`reveal::set_fullscreen_suppressed`] to the single
-//! reveal controller, which owns every window transition.
+//! when the full-screen app goes away immediately after a poll. Every applied change is logged and
+//! posted as [`reveal::set_fullscreen_suppressed`] to the single reveal controller, which owns every
+//! window transition.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 use windows::Win32::Foundation::RECT;
 use windows::Win32::Graphics::Gdi::{
     GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
@@ -116,9 +114,8 @@ pub const THREAD_NAME: &str = "hangline-fullscreen";
 /// full-screen app during startup; the reveal controller remains the owner of the state machine.
 static SUPPRESSED: AtomicBool = AtomicBool::new(false);
 
-/// Why the line is suppressed (serialized camelCase for the `fullscreen-state` event and logs).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
+/// Why the line is suppressed (stable name used in the log line).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SuppressReason {
     /// `SHQueryUserNotificationState` returned one of the suppressing QUNS values.
     QueryUserNotificationState(u32),
@@ -137,8 +134,7 @@ impl SuppressReason {
 }
 
 /// The two states of the full-screen gate (design spec §3.2).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FullscreenState {
     /// No full-screen app: every reveal path is allowed.
     Normal,
@@ -157,26 +153,6 @@ impl FullscreenState {
         match self {
             Self::Normal => None,
             Self::Suppressed(reason) => Some(reason),
-        }
-    }
-}
-
-/// Serialized payload of the debug `fullscreen-state` event.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FullscreenEvent {
-    /// Whether the reveal controller has been told to suppress the line.
-    pub suppressed: bool,
-    /// Why, when `suppressed` is `true`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reason: Option<SuppressReason>,
-}
-
-impl From<FullscreenState> for FullscreenEvent {
-    fn from(state: FullscreenState) -> Self {
-        Self {
-            suppressed: state.is_suppressed(),
-            reason: state.reason(),
         }
     }
 }
@@ -664,10 +640,6 @@ fn poll_loop(app: &AppHandle, stop: &AtomicBool) {
                     settings.show_over_full_screen
                 ),
             }
-            let event = FullscreenEvent::from(fullscreen);
-            if let Err(error) = app.emit("fullscreen-state", event) {
-                log::warn!("fullscreen: cannot emit fullscreen-state: {error}");
-            }
             reveal::set_fullscreen_suppressed(app, next_suppressed);
         }
 
@@ -1090,35 +1062,5 @@ mod tests {
         assert_eq!(apply_override(reason, true, true), None);
         assert_eq!(apply_override(reason, true, false), reason);
         assert_eq!(apply_override(reason, false, true), reason);
-    }
-
-    /// The event payload is the documented `{ suppressed, reason? }` shape.
-    #[test]
-    fn fullscreen_event_serializes_camel_case() {
-        assert_eq!(
-            serde_json::to_value(FullscreenEvent::from(FullscreenState::Normal)).unwrap(),
-            serde_json::json!({ "suppressed": false })
-        );
-        assert_eq!(
-            serde_json::to_value(FullscreenEvent::from(FullscreenState::Suppressed(
-                SuppressReason::QueryUserNotificationState(QUNS_BUSY)
-            )))
-            .unwrap(),
-            serde_json::json!({
-                "suppressed": true,
-                "reason": { "queryUserNotificationState": 2 }
-            })
-        );
-        assert_eq!(
-            serde_json::to_value(FullscreenState::Suppressed(
-                SuppressReason::ForegroundCoversMonitor
-            ))
-            .unwrap(),
-            serde_json::json!({ "suppressed": "foregroundCoversMonitor" })
-        );
-        assert_eq!(
-            serde_json::to_value(FullscreenState::Normal).unwrap(),
-            serde_json::json!("normal")
-        );
     }
 }

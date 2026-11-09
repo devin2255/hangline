@@ -11,11 +11,12 @@ Tauri 2 (Rust) + React 19 + TypeScript + Vite. Windows x64.
 
 Repository: <https://github.com/devin2255/hangline>
 
-> **Status: Hangline 1.1.0 release (P1 core + P2 visual + P3 markup/recording + P4 multi-monitor/settings + P5 packaging + age retention).**
+> **Status: Hangline 1.1.1 release (Wave 0: reliability, field diagnostics, release discipline; first real-machine acceptance pass on P1–P4).**
 > The public source repository is <https://github.com/devin2255/hangline>; a GitHub Release is produced by the
 > `v*` tag workflow when signing secrets are configured, and the installer/portable ZIP can always be built locally.
-> The installer is unsigned (SmartScreen may warn). Manual acceptance is documented in
-> [`docs/acceptance/P1-core.md`](docs/acceptance/P1-core.md) … [`P5-core.md`](docs/acceptance/P5-core.md).
+> The installer is currently unsigned (SmartScreen may warn); free code signing is being applied for
+> from SignPath Foundation — see [Code signing policy](CODE_SIGNING_POLICY.md). Manual acceptance is
+> documented in [`docs/acceptance/P1-core.md`](docs/acceptance/P1-core.md) … [`P5-core.md`](docs/acceptance/P5-core.md).
 
 ![Glass cards hanging on the line](docs/experiments/P1-panel-ui-100pct-3cards.png)
 
@@ -45,25 +46,39 @@ P4 multi-monitor placement under 100%/150% scaling (app UI only, neutral synthet
 More P4 evidence: [`docs/experiments/P4-multimon-settings.md`](docs/experiments/P4-multimon-settings.md),
 [`docs/acceptance/P4-core.md`](docs/acceptance/P4-core.md).
 
-## Install (1.1.0 release)
+## Install (1.1.1 release)
 
 Windows 10 22H2 or Windows 11, x64. Download the GitHub Release artifacts for the latest tag when available,
 or build the installer locally (see [Building](#building-from-source)) with
 `node scripts/release/build-release.mjs --sign`.
 
-- `Hangline_1.1.0_x64-setup.exe` — per-user install to `%LOCALAPPDATA%\Programs\Hangline` (no admin),
+- `Hangline_1.1.1_x64-setup.exe` — per-user install to `%LOCALAPPDATA%\Programs\Hangline` (no admin),
   Start-menu shortcut (desktop shortcut optional), HKCU uninstall entry, embedded WebView2
   bootstrapper (network needed only on a machine without WebView2). Uninstall asks whether to keep or delete your Hangline data
   (default: keep).
-- `Hangline_1.1.0_x64-portable.zip` — unpack anywhere and run `Hangline.exe`; data still lives in
+- `Hangline_1.1.1_x64-portable.zip` — unpack anywhere and run `Hangline.exe`; data still lives in
   `%LOCALAPPDATA%\Hangline` (a true portable mode is post-V1).
-- **Unsigned:** Windows SmartScreen shows an unknown publisher; verify the SHA-256 in
-  `SHA256SUMS.txt`. Code signing is planned post-V1.
+- **Authenticode status:** releases up to v1.1.1 are **unsigned** — Windows SmartScreen shows an
+  unknown publisher. Hangline is applying for free code signing from SignPath Foundation; once the
+  signing policy is enabled, releases will be Authenticode-signed. Until then, verify the SHA-256 in
+  `SHA256SUMS.txt`. See the [Code signing policy](CODE_SIGNING_POLICY.md).
 - **Network:** the app is local-only. The **only** request is the update check (daily if
   `autoCheckUpdates` is on, or manual from the tray); updates are signed and verified before install.
   The release endpoint/repository is a placeholder until the operator publishes a GitHub repo.
 
 Release/update/signing/privacy runbook: [`docs/RELEASE.md`](docs/RELEASE.md).
+
+## Code signing policy
+
+**Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org).**
+
+Release binaries are built from this repository by GitHub Actions. Once the SignPath Foundation
+signing policy is enabled, the installer (`Hangline_<version>_x64-setup.exe`) and the application
+executable inside the portable ZIP are Authenticode-signed with that certificate; the ZIP container
+itself has no Authenticode signature and is covered by `SHA256SUMS.txt`. The current release may
+still be unsigned — the full policy (signing scope, team roles and approvers, build provenance,
+artifact metadata, privacy policy, and how third-party components are handled) is in
+[**CODE_SIGNING_POLICY.md**](CODE_SIGNING_POLICY.md).
 
 
 ## What it does
@@ -214,7 +229,7 @@ Data lives under `%LOCALAPPDATA%\Hangline\` (`settings.json`,
 
 ## Known limitations
 
-Hangline 1.1.0 is a release build; the functional milestones P1–P5 are implemented and the
+Hangline 1.1.1 is a release build; the functional milestones P1–P5 are implemented and the
 remaining items are manual/deferred checks (the acceptance documents track them in detail):
 
 - **Manual acceptance is pending.** The following still need a real person on an
@@ -223,9 +238,11 @@ remaining items are manual/deferred checks (the acceptance documents track them 
   (WeChat/QQ/browser), real wheel/touchpad scrolling, real pointer cross-screen
   following, and the folder picker. They are marked `MANUAL-PENDING` — not
   "passed" — in [`docs/acceptance/P1-core.md`](docs/acceptance/P1-core.md).
-- **Unsigned.** The 1.1.0 installer/portable ZIP are built by the tag workflow and published on
-  GitHub Releases; there is no Authenticode signature (SmartScreen warns). Auto-update is wired and
-  signature-verified against the updater public key in `tauri.conf.json` (see `docs/RELEASE.md`).
+- **Unsigned (for now).** The 1.1.1 installer/portable ZIP are built by the tag workflow and published
+  on GitHub Releases; there is no Authenticode signature yet (SmartScreen warns). From v1.1.x on, code
+  signing is planned through SignPath Foundation — the current latest release may still be unsigned
+  until the signing policy is enabled; see [Code signing policy](CODE_SIGNING_POLICY.md). Auto-update is
+  wired and signature-verified against the updater public key in `tauri.conf.json` (see `docs/RELEASE.md`).
 - **Card right-click menu** is not implemented (V1.1). Today the card actions are
   click / double-click / drag / ×.
 - **Annotation/recording trim and full-screen suppression** are implemented in

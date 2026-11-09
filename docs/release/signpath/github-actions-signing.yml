@@ -1,0 +1,225 @@
+# =============================================================================
+# TEMPLATE — SignPath code signing for Hangline. NOT ACTIVE.
+#
+# This file lives under docs/release/signpath/ on purpose: it is NOT picked up by
+# GitHub Actions, so the current pipeline stays green while the SignPath
+# application is pending / until the secrets and slugs exist.
+#
+# To adopt it (only after SignPath has accepted the project):
+#   1. Copy the job below into .github/workflows/release.yml (or copy this file to
+#      .github/workflows/release-signing.yml) and keep the same `on: push: tags`.
+#   2. Configure repository settings:
+#        Secrets: SIGNPATH_API_TOKEN, TAURI_SIGNING_PRIVATE_KEY,
+#                 TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+#        Vars:    SIGNPATH_ORGANIZATION_ID (the org id shown in SignPath),
+#                 SIGNPATH_PROJECT_SLUG        (created by the SignPath project),
+#                 SIGNPATH_SIGNING_POLICY_SLUG (e.g. "release-signing"),
+#                 SIGNPATH_ARTIFACT_CONFIGURATION_SLUG (uploaded from
+#                 docs/release/signpath/artifact-configuration.xml)
+#   3. Install the SignPath GitHub App (https://github.com/apps/signpath) and grant
+#      it access to this repository (needed for audit-log evaluation).
+#
+# SIGNPATH OSS REQUIREMENTS THIS ENCODES
+#   * all jobs of the workflow must run on GitHub-hosted runners (windows-latest)
+#   * the artifact must be uploaded as a GitHub Actions artifact BEFORE signing
+#     (actions/upload-artifact; its default ZIP becomes the artifact root, which is
+#     why artifact-configuration.xml has a <zip-file> root)
+#   * every signing request needs a manual approval by the approver (@devin2255)
+#   * do not publish anything that was not built by this workflow
+#
+# *** ORDERING CONSTRAINT — THE ONE THING THAT BREAKS RELEASES ***
+#   Authenticode signing changes the setup .exe bytes. The Tauri updater manifest
+#   (latest.json) carries a minisign signature computed over the setup file. So the
+#   correct order is:
+#       build (unsigned) -> SignPath Authenticode -> recompute SHA256SUMS -> compute
+#       the updater (minisign) signature over the FINAL signed setup -> latest.json
+#   Signing after the manifest, or reusing the .sig produced before Authenticode,
+#   produces an update that every installed client refuses to install.
+#
+#   For the same reason the build step below runs WITHOUT `--sign`
+#   (`build-release.mjs --ci` writes an UNSIGNED-PLACEHOLDER manifest); latest.json
+#   and SHA256SUMS.txt are regenerated later in this workflow.
+#
+#   Note: build-release.mjs currently has no "re-sign only" mode. Either add one
+#   (e.g. `--resign <setup.exe>`) or keep the inline regeneration step below.
+# =============================================================================
+name: release-signing (TEMPLATE)
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  actions: read # the SignPath action reads the uploaded workflow artifact
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - uses: dtolnay/rust-toolchain@stable
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Read version and verify tag
+        id: version
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME.TrimStart("v")
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ($tag -ne $version) { throw "tag v$tag does not match package.json version $version" }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "releasing v$version"
+
+      - run: pnpm check
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      # Unsigned on purpose: Authenticode must come before the updater signature.
+      - name: Build unsigned release artifacts
+        run: node scripts/release/build-release.mjs --ci
+
+      # SignPath's GitHub integration requires the artifact to exist as a workflow
+      # artifact. upload-artifact packages the files into a ZIP by default; that ZIP
+      # is the root element of artifact-configuration.xml. Do not pass `archive: false`
+      # unless you also switch the configuration root to <pe-file> (setup only).
+      - name: Upload unsigned artifacts for signing
+        id: upload-unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: hangline-unsigned
+          path: |
+            release/Hangline_*_x64-setup.exe
+            release/Hangline_*_x64-portable.zip
+          if-no-files-found: error
+
+      # Blocks until the signing request has been approved and completed.
+      # Approval shows up in the SignPath UI and as a pending manual approval.
+      - name: Submit SignPath signing request
+        id: signpath
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
+          github-artifact-id: ${{ steps.upload-unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: release/signed
+          parameters: |
+            version: "${{ steps.version.outputs.version }}"
+
+      # With a <zip-file> root SignPath returns the re-packaged signed bundle. The
+      # exact shape (already extracted vs. a single .zip) depends on the action
+      # version — inspect this directory on the first real run; this is the main
+      # calibration point of the integration.
+      - name: Collect signed artifacts
+        shell: pwsh
+        run: |
+          Get-ChildItem -Recurse release/signed | Select-Object FullName, Length
+          $zip = Get-ChildItem release/signed -Filter *.zip -Recurse | Select-Object -First 1
+          if ($zip) {
+            Expand-Archive -LiteralPath $zip.FullName -DestinationPath release/signed/extracted -Force
+          }
+          $src = if (Test-Path release/signed/extracted) { "release/signed/extracted" } else { "release/signed" }
+          Copy-Item (Join-Path $src "Hangline_*_x64-setup.exe") release/ -Force
+          Copy-Item (Join-Path $src "Hangline_*_x64-portable.zip") release/ -Force
+
+      - name: Verify Authenticode signatures
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem release/Hangline_*_x64-setup.exe | Select-Object -First 1
+          $sig = Get-AuthenticodeSignature -LiteralPath $setup.FullName
+          if ($sig.Status -ne 'Valid') {
+            throw "setup is not validly signed: $($sig.Status) - $($sig.StatusMessage)"
+          }
+          if ($sig.SignerCertificate.Subject -notmatch 'SignPath Foundation') {
+            throw "unexpected signer certificate: $($sig.SignerCertificate.Subject)"
+          }
+          Write-Host "setup signer: $($sig.SignerCertificate.Subject)"
+
+          # The portable ZIP itself is not Authenticode-signed; its inner exe must be.
+          $tmp = Join-Path $env:RUNNER_TEMP "hangline-portable-check"
+          Expand-Archive -LiteralPath (Get-ChildItem release/Hangline_*_x64-portable.zip).FullName -DestinationPath $tmp -Force
+          $inner = Get-AuthenticodeSignature -LiteralPath (Join-Path $tmp "Hangline.exe")
+          if ($inner.Status -ne 'Valid') { throw "portable Hangline.exe is not validly signed: $($inner.Status)" }
+          Write-Host "portable exe signer: $($inner.SignerCertificate.Subject)"
+
+      # Authenticode adds a few KB. Keep the 8.5 MB gate and check it on the signed file.
+      - name: Re-check size budget on the signed setup
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem release/Hangline_*_x64-setup.exe | Select-Object -First 1
+          if ($setup.Length -gt 8500000) { throw "signed setup exceeds 8.5 MB: $($setup.Length) bytes" }
+          Write-Host "signed setup: $($setup.Length) bytes"
+
+      # SHA256SUMS must cover the final (signed) bytes. Keep the exact format of
+      # build-release.mjs: lower-case hex, two spaces, file name, trailing newline.
+      - name: Recompute SHA256SUMS.txt
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem release/Hangline_*_x64-setup.exe) +
+                   @(Get-ChildItem release/Hangline_*_x64-portable.zip)
+          $lines = foreach ($f in $files) {
+            '{0}  {1}' -f (Get-FileHash -LiteralPath $f.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $f.Name
+          }
+          $text = ($lines -join "`n") + "`n"
+          [System.IO.File]::WriteAllText((Join-Path $PWD 'release/SHA256SUMS.txt'), $text, (New-Object System.Text.UTF8Encoding($false)))
+          Get-Content release/SHA256SUMS.txt
+
+      # CRITICAL: the minisign signature must be computed over the FINAL signed setup.
+      - name: Regenerate updater signature and latest.json
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $setup = Get-ChildItem release/Hangline_*_x64-setup.exe | Select-Object -First 1
+          $sigPath = "$($setup.FullName).sig"
+          Remove-Item $sigPath -ErrorAction SilentlyContinue
+          # Same invocation as scripts/release/build-release.mjs::signSetup
+          pnpm tauri signer sign --app-version $version $setup.FullName
+          if (-not (Test-Path $sigPath)) { throw "updater signing produced no .sig file" }
+          $signature = (Get-Content $sigPath -Raw).Trim()
+          if ($signature.Length -lt 100) { throw "updater signature looks invalid" }
+
+          $downloadUrl = "https://github.com/devin2255/hangline/releases/download/v$version/$($setup.Name)"
+          $entry = [ordered]@{ signature = $signature; url = $downloadUrl }
+          $latest = [ordered]@{
+            version   = $version
+            notes     = "Hangline $version. See CHANGELOG.md and the release page for details."
+            pub_date  = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+            platforms = [ordered]@{
+              "windows-x86_64-nsis" = $entry
+              "windows-x86_64"      = $entry
+            }
+          }
+          $json = $latest | ConvertTo-Json -Depth 6
+          [System.IO.File]::WriteAllText((Join-Path $PWD 'release/latest.json'), $json + "`n", (New-Object System.Text.UTF8Encoding($false)))
+          Write-Host "latest.json regenerated over the signed setup"
+
+      - name: Create GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $notes = "Hangline $version. See CHANGELOG.md for details.`n`n" +
+            "This build is Authenticode-signed with a SignPath Foundation certificate " +
+            "(free code signing provided by SignPath.io, certificate by SignPath Foundation).`n" +
+            "Code signing policy: https://github.com/devin2255/hangline/blob/main/CODE_SIGNING_POLICY.md"
+          gh release create $env:GITHUB_REF_NAME `
+            (Get-ChildItem release/Hangline_*_x64-setup.exe).FullName `
+            (Get-ChildItem release/Hangline_*_x64-portable.zip).FullName `
+            release/latest.json `
+            release/SHA256SUMS.txt `
+            --title "Hangline $version" `
+            --notes $notes `
+            --verify-tag

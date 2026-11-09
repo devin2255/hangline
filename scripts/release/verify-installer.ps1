@@ -114,7 +114,8 @@ try {
   # ---------------------------------------------------------------- static production artifact checks
   $setupItem = Get-Item $Setup
   $portableItem = Get-Item $Portable
-  $sizeLimit = 15000000
+  # Must match SETUP_LIMIT_BYTES in build-release.mjs (W0.6: 8.5 MB).
+  $sizeLimit = 8500000
   Check "production-setup-exists" ($null -ne $setupItem) $Setup
   Check "production-setup-size" ($setupItem.Length -le $sizeLimit) @{ bytes = $setupItem.Length; limit = $sizeLimit }
   $setupHash = (Get-FileHash $Setup -Algorithm SHA256).Hash

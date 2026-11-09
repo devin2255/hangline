@@ -10,7 +10,7 @@
  *   5. scripts/release/fetch-tools.ps1 (official NSIS 3.13 + WebView2 bootstrapper, cached)
  *   6. makensis scripts/release/installer.nsi -> release/Hangline_<version>_x64-setup.exe
  *   7. portable ZIP -> release/Hangline_<version>_x64-portable.zip
- *   8. SHA-256, Authenticode status, hard <=15 MB setup size gate
+ *   8. SHA-256, Authenticode status, hard 8.5 MB setup size gate + four-item size budget
  *   9. release/latest.json (unsigned placeholder by default; real updater signature with --sign)
  *
  * Usage:
@@ -56,11 +56,18 @@ const PORTABLE_DIR = join(repoRoot, "src-tauri", "target", "p5-portable");
 const APP_EXE_SOURCE = join(repoRoot, "src-tauri", "target", "release", "hangline.exe");
 const APP_ICON_SOURCE = join(repoRoot, "src-tauri", "icons", "icon.ico");
 
-/** Spec §6.1 / P5 DoD: the NSIS setup must stay at or below 15 MB (decimal). */
-const SETUP_LIMIT_BYTES = 15_000_000;
 /**
- * The portable ZIP is not part of the 15 MB installer budget; it carries the ~20 MB exe and is
- * expected around 7-10 MB with deflate. 25 MB only catches a broken/oversized build.
+ * Installer size gate (W0.6, spec §6.1 / P5 DoD): the NSIS setup must stay at or below 8.5 MB
+ * (decimal). The 1.1.0 packaging build measured 7,315,272 B, so 8,500,000 B leaves ~1.18 MB
+ * (~16% over the current size) of headroom - enough that a refreshed ~1.9 MB WebView2 Evergreen
+ * bootstrapper does not fail unrelated changes, while still being a real gate (the old 15 MB limit
+ * tolerated a ~2x regression before failing).
+ */
+const SETUP_LIMIT_BYTES = 8_500_000;
+/**
+ * The portable ZIP is deliberately outside the installer budget: it carries the same ~20 MB
+ * uncompressed release exe (deflated to ~8-9 MB), so it may legitimately exceed the 8.5 MB setup
+ * gate. 25 MB only catches a broken/oversized build, not a product target.
  */
 const PORTABLE_ZIP_LIMIT_BYTES = 25_000_000;
 
@@ -302,6 +309,51 @@ function printArtifactTable(artifacts) {
   for (const row of rows) console.log(line(row));
 }
 
+/**
+ * Size budget report (W0.6). Four numbers explain what the 8.5 MB installer gate is made of: the
+ * uncompressed application exe, the compressed setup (which embeds the WebView2 bootstrapper), the
+ * bootstrapper source file (not separately measurable inside the setup) and the portable ZIP.
+ *
+ * Pure (plain data in, lines out) so the layout can be exercised without running a release build.
+ * `bytes === null` means "not present in this run" and is printed as `skipped`, never invented.
+ */
+function formatSizeBudget(entries, checks) {
+  const headers = ["Item", "Bytes", "MB", "Detail"];
+  const rows = entries.map((entry) => [
+    entry.label,
+    entry.bytes === null ? "skipped" : formatBytes(entry.bytes),
+    entry.bytes === null ? "-" : formatMb(entry.bytes),
+    entry.bytes === null ? `${entry.detail} [skipped: not present]` : entry.detail,
+  ]);
+  const widths = headers.map((header, index) =>
+    Math.max(header.length, ...rows.map((row) => row[index].length)),
+  );
+  const line = (columns) => columns.map((column, index) => column.padEnd(widths[index])).join("  ");
+  const lines = ["Size budget", line(headers), widths.map((width) => "-".repeat(width)).join("  ")];
+  for (const row of rows) lines.push(line(row));
+  lines.push("");
+  for (const check of checks) {
+    if (check.bytes === null) {
+      lines.push(`${check.label}: skipped (gate ${formatBytes(check.limitBytes)} bytes)`);
+      continue;
+    }
+    const usedPercent = (check.bytes / check.limitBytes) * 100;
+    const headroomBytes = check.limitBytes - check.bytes;
+    const headroomPercent = (headroomBytes / check.limitBytes) * 100;
+    lines.push(
+      `${check.label}: ${formatBytes(check.bytes)} / ${formatBytes(check.limitBytes)} bytes = ` +
+        `${usedPercent.toFixed(2)}% used, headroom ${formatBytes(headroomBytes)} bytes ` +
+        `(${headroomPercent.toFixed(2)}%) -> ${check.ok ? "PASS" : "FAIL"}`,
+    );
+  }
+  return lines;
+}
+
+function printSizeBudget(entries, checks) {
+  console.log("");
+  for (const line of formatSizeBudget(entries, checks)) console.log(line);
+}
+
 function main() {
   console.log(`Hangline release build${CI ? " (CI mode)" : ""}`);
   console.log(`Repository: ${repoRoot}`);
@@ -528,7 +580,7 @@ function signSetup(setupPath, version) {
   const portableBytes = statSync(portablePath).size;
 
   // ------------------------------------------------------------- checksums
-  logStep("8/9", "SHA-256, Authenticode and size gate");
+  logStep("8/9", "SHA-256, Authenticode and size budget");
   const setupSha = sha256File(setupPath);
   const portableSha = sha256File(portablePath);
   const artifacts = [
@@ -553,16 +605,52 @@ function signSetup(setupPath, version) {
 
   const setupOk = setupBytes <= SETUP_LIMIT_BYTES;
   const zipOk = portableBytes <= PORTABLE_ZIP_LIMIT_BYTES;
-  console.log("");
-  console.log(
-    `size gate: setup ${formatBytes(setupBytes)} / ${formatBytes(SETUP_LIMIT_BYTES)} bytes ` +
-      `(${setupOk ? "PASS" : "FAIL"}); portable ${formatBytes(portableBytes)} / ` +
-      `${formatBytes(PORTABLE_ZIP_LIMIT_BYTES)} bytes (${zipOk ? "PASS" : "FAIL"})`,
+  // NSIS embeds the bootstrapper inside the setup; the cached download is measured when present so
+  // the report can attribute its ~1.9 MB instead of hiding it inside the installer number.
+  const webview2Bytes = existsSync(tools.webview2.path)
+    ? statSync(tools.webview2.path).size
+    : null;
+  printSizeBudget(
+    [
+      {
+        label: "application exe",
+        bytes: appExeBytes,
+        detail: `uncompressed (${relative(repoRoot, APP_EXE_SOURCE)})`,
+      },
+      {
+        label: "NSIS setup",
+        bytes: setupBytes,
+        detail: `compressed, includes the WebView2 bootstrapper (${setupName})`,
+      },
+      {
+        label: "WebView2 bootstrapper",
+        bytes: webview2Bytes,
+        detail:
+          webview2Bytes === null
+            ? "embedded in setup, not separately measurable"
+            : "embedded in setup, not separately measurable " +
+              `(cached source ${relative(repoRoot, tools.webview2.path)})`,
+      },
+      {
+        label: "portable ZIP",
+        bytes: portableBytes,
+        detail: `deflated release exe + icon + README (${portableName})`,
+      },
+    ],
+    [
+      { label: "setup gate", bytes: setupBytes, limitBytes: SETUP_LIMIT_BYTES, ok: setupOk },
+      {
+        label: "portable guard",
+        bytes: portableBytes,
+        limitBytes: PORTABLE_ZIP_LIMIT_BYTES,
+        ok: zipOk,
+      },
+    ],
   );
   if (!setupOk) {
     fail(
-      `installer exceeds the 15,000,000-byte budget: ${formatBytes(setupBytes)} bytes ` +
-        `(${formatMb(setupBytes)} MB)`,
+      `installer exceeds the 8,500,000-byte (8.5 MB) budget: ${formatBytes(setupBytes)} bytes ` +
+        `(${formatMb(setupBytes)} MB); see the "Size budget" report above`,
     );
   }
   if (!zipOk) {

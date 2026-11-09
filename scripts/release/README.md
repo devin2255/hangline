@@ -21,7 +21,8 @@ node scripts/release/build-release.mjs --skip-build --skip-check --skip-tools
 
 Produces `Hangline_<version>_x64-setup.exe`, `Hangline_<version>_x64-portable.zip`,
 `SHA256SUMS.txt`, `build-info.json` and a **layout-only** `latest.json` (clearly marked
-`UNSIGNED-PLACEHOLDER`). The setup size gate is 15,000,000 bytes.
+`UNSIGNED-PLACEHOLDER`). The setup size gate is 8,500,000 bytes (W0.6: tightened from
+15,000,000; see `docs/RELEASE.md` §"Size budget").
 
 ## Local signed build
 
@@ -43,7 +44,7 @@ README/SmartScreen notes). The updater signature is independent of Authenticode.
 
 - `.github/workflows/ci.yml`: every push/PR runs `pnpm check`, `cargo test`, `pnpm build` (release
   instrumentation gate) and an **unsigned** `build-release.mjs --ci`, asserting the installer
-  exists and is ≤15 MB; artifacts are uploaded as `hangline-windows-unsigned`.
+  exists and is ≤8.5 MB; artifacts are uploaded as `hangline-windows-unsigned`.
 - `.github/workflows/release.yml`: on a `v*` tag it verifies tag == `package.json` version, runs
   the gates, builds with `--ci --sign` using repository secrets
   `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, verifies the signed

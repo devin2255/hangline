@@ -44,7 +44,8 @@ jobs:
         shell: pwsh
         run: |
           $setup = Get-ChildItem release/Hangline_*_x64-setup.exe | Select-Object -First 1
-          if (-not $setup -or $setup.Length -gt 15000000) { throw "installer missing or over 15 MB" }
+          # Must match SETUP_LIMIT_BYTES in scripts/release/build-release.mjs (W0.6: 8.5 MB).
+          if (-not $setup -or $setup.Length -gt 8500000) { throw "installer missing or over 8.5 MB" }
           $manifest = Get-Content release/latest.json -Raw | ConvertFrom-Json
           $entry = $manifest.platforms."windows-x86_64-nsis"
           if (-not $entry) { $entry = $manifest.platforms."windows-x86_64" }
@@ -60,7 +61,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
-          $notes = "Hangline $version. See CHANGELOG.md for details. Unsigned build: Windows SmartScreen may show an unknown publisher; verify SHA256SUMS.txt."
+          # Do not claim a signature: Authenticode signing via SignPath Foundation is not enabled yet.
+          # Once it is, the signing request must run before this step and the notes should say "signed".
+          $notes = "Hangline $version. See CHANGELOG.md for details.`n`n" +
+            "Authenticode status: this build may still be unsigned. Hangline is applying for free code " +
+            "signing from SignPath Foundation; until the signing policy is enabled, Windows SmartScreen " +
+            "may show an unknown publisher - verify SHA256SUMS.txt.`n" +
+            "Code signing policy: https://github.com/devin2255/hangline/blob/main/CODE_SIGNING_POLICY.md"
           gh release create $env:GITHUB_REF_NAME `
             (Get-ChildItem release/Hangline_*_x64-setup.exe).FullName `
             (Get-ChildItem release/Hangline_*_x64-portable.zip).FullName `

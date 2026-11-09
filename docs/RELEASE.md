@@ -8,13 +8,56 @@ runbook for producing and publishing a build, and records the release constraint
 
 | Artifact | Expectation |
 |---|---|
-| `Hangline_1.0.0_x64-setup.exe` | per-user NSIS installer, ≤15 MB (actual 7,315,272 B), Authenticode **NotSigned** |
+| `Hangline_1.0.0_x64-setup.exe` | per-user NSIS installer, **≤8.5 MB** decimal (`SETUP_LIMIT_BYTES = 8,500,000`; 1.0.0 build 7,315,272 B), Authenticode **NotSigned** for now (SignPath Foundation signing planned — see `CODE_SIGNING_POLICY.md`) |
 | `Hangline_1.0.0_x64-portable.zip` | `Hangline.exe`, `Hangline.ico`, empty `portable` marker, bilingual README |
 | `SHA256SUMS.txt` | SHA-256 of the two artifacts |
 | `latest.json` | Tauri v2 updater manifest; signed with the updater key (never the Authenticode key) |
 | `build-info.json` | build provenance (versions, tool hashes, sizes, signature source; no key material) |
 
 All artifacts are git-ignored under `release/`.
+
+## Size budget (W0.6)
+
+The installer gate is a hard **8,500,000-byte (8.5 MB decimal)** limit enforced by
+`SETUP_LIMIT_BYTES` in `scripts/release/build-release.mjs`. The 1.1.0 packaging baseline measured
+**7,315,272 B**: ~86% of the gate, ~1.18 MB / ~16% headroom over the current build. The old 15 MB
+limit would have tolerated a ~2x regression before failing, so it was not a real gate. The portable ZIP has a separate 25 MB sanity guard and is *not* compared against the 8.5 MB
+installer budget (it carries the uncompressed exe, so it can legitimately be larger).
+
+After the artifact table the script prints a **Size budget** block with the four numbers behind the
+gate (a missing optional input is reported as `skipped`, never invented):
+
+| Report item | What it measures | Notes |
+|---|---|---|
+| `application exe` | Uncompressed `src-tauri/target/release/hangline.exe` — the raw Rust + WebView2 app | Not gated; the first thing to compare when the setup grows |
+| `NSIS setup` | The compressed installer and the **gated** artifact; it **includes** the embedded WebView2 bootstrapper | Gate 8,500,000 B; 1.1.0 baseline 7,315,272 B (~86% used, ~1.18 MB headroom) |
+| `WebView2 bootstrapper` | The ~1.9 MB Microsoft Evergreen bootstrapper that NSIS embeds. It is not a separate release file, so it is measured from the cached download and labelled `embedded in setup, not separately measurable` | Already part of the setup number — do not subtract it twice |
+| `portable ZIP` | The same exe deflated with icon, `portable` marker and bilingual README | Guarded at 25 MB only; ~8.4 MB is normal and may exceed 8.5 MB |
+
+Each row shows `Bytes`, `MB` and a detail/status; the gate lines also show usage and headroom:
+
+```text
+setup gate: 7,315,272 / 8,500,000 bytes = 86.06% used, headroom 1,184,728 bytes (13.94%) -> PASS
+portable guard: 8,430,050 / 25,000,000 bytes = 33.72% used, headroom 16,569,950 bytes (66.28%) -> PASS
+```
+
+If the setup exceeds the gate the build **stops** with
+`installer exceeds the 8,500,000-byte (8.5 MB) budget` before signing, `SHA256SUMS.txt` and
+`latest.json`, so no over-budget artifact is treated as releasable. Diagnose in this order:
+
+1. **WebView2 bootstrapper** — a refreshed Microsoft bootstrapper is the usual legitimate jump
+   (+0.2–0.5 MB). Re-run `scripts/release/fetch-tools.ps1` and check `build-info.json`
+   (`webview2.bytes`) against the previous build.
+2. **Setup vs exe delta** — if the compressed setup grew but the uncompressed exe barely moved, the
+   change is packaging: `installer.nsi`, added/renamed embedded files, compression settings.
+3. **Application exe** — real code/dependency growth: new crates/Cargo features, newly bundled
+   fonts/images/frontend assets, or a debug/unstripped profile instead of the release profile.
+4. **Portable ZIP** — only fails its 25 MB guard when deflate is broken or extra files were staged;
+   a portable ZIP above 8.5 MB is expected.
+
+Do not raise `SETUP_LIMIT_BYTES` just to make a build pass: either shrink the regression or change
+the published budget deliberately in the same commit (script constant + this document + the
+acceptance notes).
 
 ## Install / uninstall behavior
 
@@ -32,9 +75,24 @@ All artifacts are git-ignored under `release/`.
 
 ## Signing and keys
 
-- **Authenticode:** V1 is unsigned (no commercial certificate). Windows SmartScreen shows
+- **Authenticode:** releases up to v1.1.1 are unsigned (no certificate yet). Windows SmartScreen shows
   “unknown publisher”; README/release notes disclose it and SHA-256 lets users verify downloads.
-  Signing with SignPath/Azure Trusted Signing is a post-V1 option; never fake a signature.
+  Hangline is preparing an application to the **SignPath Foundation** free OSS code signing program.
+  The policy for reviewers and users is [`CODE_SIGNING_POLICY.md`](../CODE_SIGNING_POLICY.md). Until a
+  SignPath signing policy is enabled and wired into the release workflow, the published binaries stay
+  unsigned — never fake a signature.
+- **Code signing policy (SignPath Foundation).** The public policy page is
+  [`CODE_SIGNING_POLICY.md`](../CODE_SIGNING_POLICY.md) (linked from both READMEs); it carries the
+  required statement *“Free code signing provided by SignPath.io, certificate by SignPath Foundation”*,
+  the role/approver list, signing scope, build provenance and metadata rules, and the project's
+  privacy policy. Supporting material for the application lives in `docs/release/`:
+  [`signpath-application.md`](release/signpath-application.md) (answers, evidence, risk, submission
+  steps), [`signpath/artifact-configuration.xml`](release/signpath/artifact-configuration.xml) (draft
+  SignPath artifact configuration) and
+  [`signpath/github-actions-signing.yml`](release/signpath/github-actions-signing.yml) (workflow
+  template — **not** installed in `.github/workflows/` until the account/project exists).
+  Open point to confirm with SignPath: the installer embeds Microsoft's WebView2 bootstrapper
+  (proprietary upstream redistributable) — see the application pack's *Open compliance question*.
 - **Updater signature:** `pnpm tauri signer generate -w .superpowers/release-keys/hangline.key`
   creates a minisign key pair; the public key lives in `src-tauri/tauri.conf.json`
   (`plugins.updater.pubkey`) and the private key/password stay in `.superpowers/release-keys/`
@@ -43,6 +101,9 @@ All artifacts are git-ignored under `release/`.
   `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`; the release script never
   prints them. The script signs with `--app-version 1.0.0`, so `requireSignedVersion` (if enabled
   later) binds the manifest version to the signature.
+  The updater signature and Authenticode are independent: Authenticode changes the setup bytes, so
+  once signing is enabled the updater signature must be computed **after** Authenticode over the
+  final setup (ordering documented in `docs/release/signpath/github-actions-signing.yml`).
 - `latest.json` carries the signature for both `windows-x86_64-nsis` and `windows-x86_64` (the
   updater probes the NSIS-specific key first, then the generic one) and points at the tagged
   release asset URL. The endpoint in `tauri.conf.json` is a placeholder
@@ -53,8 +114,10 @@ All artifacts are git-ignored under `release/`.
 1. Bump `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and `Cargo.lock` to the
    same x.y.z; update `CHANGELOG.md`; run `pnpm check` and `cargo test`.
 2. `node scripts/release/build-release.mjs --sign` (local key) and verify:
-   - setup size ≤15,000,000 bytes, SHA-256 in `SHA256SUMS.txt`;
-   - `Get-AuthenticodeSignature` is `NotSigned` (expected);
+   - setup size ≤8,500,000 bytes (8.5 MB; see *Size budget*), SHA-256 in `SHA256SUMS.txt`;
+   - `Get-AuthenticodeSignature` is `NotSigned` while SignPath signing is not yet enabled; after it is
+     enabled the setup must report `Signed` with the SignPath Foundation certificate (see
+     [`CODE_SIGNING_POLICY.md`](../CODE_SIGNING_POLICY.md));
    - `release/latest.json` has a real `dW50cnVzdGVk…` signature and the tagged URL.
 3. Commit, `git tag -a v<version>`, push tag; `.github/workflows/release.yml` rebuilds with CI
    secrets, verifies tag == version, signs the manifest, and creates the GitHub Release with setup,

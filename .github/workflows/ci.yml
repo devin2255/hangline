@@ -28,7 +28,8 @@ jobs:
         run: |
           $setup = Get-ChildItem release/Hangline_*_x64-setup.exe | Select-Object -First 1
           if (-not $setup) { throw "installer missing" }
-          if ($setup.Length -gt 15000000) { throw "installer exceeds 15 MB: $($setup.Length) bytes" }
+          # Must match SETUP_LIMIT_BYTES in scripts/release/build-release.mjs (W0.6: 8.5 MB).
+          if ($setup.Length -gt 8500000) { throw "installer exceeds 8.5 MB: $($setup.Length) bytes" }
           $portable = Get-ChildItem release/Hangline_*_x64-portable.zip | Select-Object -First 1
           if (-not $portable) { throw "portable zip missing" }
           Write-Host "setup=$($setup.Name) $($setup.Length) bytes; portable=$($portable.Name) $($portable.Length) bytes"

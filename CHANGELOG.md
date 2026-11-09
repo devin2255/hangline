@@ -1,5 +1,43 @@
 # Changelog
 
+## 1.1.1 — 2026-11-09
+
+> Wave 0 debt paydown plus the first real-machine acceptance pass. Still **unsigned**: see the
+> [Code signing policy](CODE_SIGNING_POLICY.md).
+
+### Reliability
+- Settings and state persistence gained a third fallback layer: every save rotates the previous
+  good file to `.bak`, a corrupt main file is recovered from that backup (and written back), and a
+  file that exists but **cannot be read is never overwritten** — the write is refused with a
+  diagnostic error instead of silently destroying a recoverable file. The corrupt sample is still
+  preserved as `<name>.corrupt`.
+
+### Diagnostics
+- New `hangline.exe --selftest` / `--selftest --json`: 10 field probes (data directory writability,
+  settings/state integrity, free disk, DPI awareness, monitors, WebView2 runtime, process memory,
+  autostart, version). No Tauri/window/tray/WebView2 is initialised, the exit code is the number of
+  failures, and the report is also appended to `%LOCALAPPDATA%\Hangline\logs\selftest.log`.
+
+### Release discipline
+- Installer size gate tightened from 15 MB to **8.5 MB** (1.1.0 measured 7,315,272 B), with a
+  four-item size budget report (application exe, NSIS setup, WebView2 bootstrapper, portable ZIP)
+  and matching gates in CI, `verify-installer.ps1` and the release docs.
+
+### Internal
+- IPC surface trimmed: removed the unconsumed `clipboard-copied`, `second-instance` and
+  `fullscreen-state` events and the P0 `drag_demo_file` scaffolding command (events 24 → 21,
+  commands 41 → 40). `hotkey-error` is deliberately kept (no consumer yet) for the upcoming
+  settings-explainability work.
+- 39 new unit tests: 8 for the persistence fallbacks, 31 for the diagnostics module.
+
+### Documentation and process
+- Code signing policy and SignPath Foundation application materials (`CODE_SIGNING_POLICY.md`,
+  `docs/release/signpath*`); the project is applying for free OSS signing, so releases up to
+  1.1.1 remain unsigned.
+- Real-machine acceptance record (`docs/acceptance/W0-real-machine-2026-11-09.md`) and a reusable
+  acceptance harness; Wave 0 status/runbook and the SnowAir benchmark decision documents under
+  `docs/product/`.
+
 ## 1.1.0 — 2026-11-05
 
 ### Age retention (`keepForDays`)

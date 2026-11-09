@@ -85,12 +85,6 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 use crate::panel;
 
-/// Directory (under `%TEMP%`) holding the P0-E4 demo file; never committed.
-pub const DEMO_DIR: &str = "hangline-e4-demo";
-
-/// Demo file name used by the placeholder card until real items land (Task 10).
-pub const DEMO_FILE: &str = "hangline-e4-demo.png";
-
 /// Event emitted to the panel when an OLE drag session finishes.
 ///
 /// Payload: [`DragEnded`]. The frontend clears its pressed-card state from this event, so it is
@@ -342,11 +336,6 @@ fn allowed_effects() -> DROPEFFECT {
     DROPEFFECT_COPY | DROPEFFECT_MOVE
 }
 
-/// Returns the absolute temp path of the P0 demo file.
-pub fn demo_file_path() -> PathBuf {
-    std::env::temp_dir().join(DEMO_DIR).join(DEMO_FILE)
-}
-
 /// Validates the drag source path.
 ///
 /// Only existing absolute regular files are accepted: `CF_HDROP` hands Explorer a path, so a
@@ -365,40 +354,6 @@ pub fn validate_path(path: &str) -> Result<PathBuf, String> {
         return Err(format!("drag path is not a file: {}", path.display()));
     }
     Ok(path)
-}
-
-/// Creates the demo PNG when missing and returns its path.
-fn ensure_demo_file(path: &Path) -> Result<(), String> {
-    if path.is_file() {
-        return Ok(());
-    }
-    let parent = path
-        .parent()
-        .ok_or_else(|| format!("demo file path has no parent: {}", path.display()))?;
-    std::fs::create_dir_all(parent)
-        .map_err(|err| format!("failed to create demo dir {}: {err}", parent.display()))?;
-
-    // Deterministic gradient so repeated experiments produce identical bytes (stable hash).
-    let img = image::RgbaImage::from_fn(320, 200, |x, y| {
-        let r = (x * 255 / 319) as u8;
-        let g = (y * 255 / 199) as u8;
-        image::Rgba([r, 128, 255u8.saturating_sub(g), 255])
-    });
-    image::DynamicImage::ImageRgba8(img)
-        .save_with_format(path, image::ImageFormat::Png)
-        .map_err(|err| format!("failed to create demo PNG {}: {err}", path.display()))
-}
-
-/// Returns a real temp PNG the placeholder card can offer to the drag engine.
-///
-/// This is P0 scaffolding: Task 10 replaces the placeholder card with real items and the path
-/// will come from the item store. The file is generated in `%TEMP%` and is never committed.
-#[tauri::command]
-pub fn drag_demo_file() -> Result<String, String> {
-    let path = demo_file_path();
-    ensure_demo_file(&path)?;
-    log::debug!("dragout: demo file ready at {}", path.display());
-    Ok(path.to_string_lossy().into_owned())
 }
 
 // ---------------------------------------------------------------------------------------------

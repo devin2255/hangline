@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Hangline — SignPath artifact configuration (DRAFT, not yet used by CI).
+
+  This file is a draft to be imported into the SignPath project/artifact-configuration editor and
+  calibrated against the real artifacts. It is NOT referenced by any workflow yet.
+
+  WHY THE ROOT IS <zip-file>
+  The official GitHub integration requires the artifact configuration root to match how the artifact
+  is stored. With `actions/upload-artifact` (SignPath's documented flow) the uploaded files are
+  packaged into a ZIP archive, so the root element must be <zip-file>.
+  See https://docs.signpath.io/trusted-build-systems/github ("ZIP archives" note).
+
+  WHAT GETS SIGNED
+    1. Hangline_<version>_x64-setup.exe                 -> Authenticode (the installer users run)
+    2. Hangline.exe inside Hangline_<version>_x64-portable.zip -> Authenticode (the app itself)
+  What does NOT get signed:
+    - the portable .zip container (ZIP has no Authenticode signature; SignPath re-zips it)
+    - latest.json / SHA256SUMS.txt / build-info.json (data files; latest.json carries the separate
+      Tauri/minisign updater signature instead)
+
+  CALIBRATION / FOLLOW-UPS before the first real signing request
+  a) Upload the artifacts once in the SignPath UI and compare the metadata it shows with the
+     restrictions below. Expected values come from scripts/release/installer.nsi:109-115
+     (setup) and from src-tauri/tauri.conf.json + tauri-build's Windows resource generation (app).
+  b) `original-filename` is deliberately NOT enforced yet: neither binary currently carries the
+     VERSIONINFO OriginalFilename field. NSIS only writes the keys listed in installer.nsi, and
+     tauri-build/tauri-winres does not set OriginalFilename unless configured. To enable the
+     restriction later: add `VIAddVersionKey "OriginalFilename" "Hangline_${version}_x64-setup.exe"`
+     to installer.nsi (scripts/release/installer.nsi) and re-import.
+  c) The portable Hangline.exe currently reports CompanyName "hangline" (lower case — tauri-build
+     derives it from the bundle identifier `app.hangline.Hangline`) and carries no LegalCopyright.
+     Set `bundle.publisher` and `bundle.copyright` in src-tauri/tauri.conf.json, then tighten the
+     `company-name`/`copyright` attributes here so both binaries carry identical metadata.
+  d) If the backend rejects nested <zip-file>, use two configurations instead:
+       - setup only:     root <pe-file path="Hangline_${version}_x64-setup.exe"> (upload with
+                         actions/upload-artifact `archive: false`)
+       - portable only:  root <zip-file path="Hangline_${version}_x64-portable.zip">
+     and submit two signing requests per release (two manual approvals).
+  e) The `description` metadata restriction is not enabled below because the exact attribute name
+     must be confirmed in the backend editor; descriptions are currently informational only.
+
+  Schema namespace: http://signpath.io/artifact-configuration/v1
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+
+  <parameters>
+    <!--
+      Supplied by the release workflow (version without the leading "v"), e.g. 1.1.1.
+      Required so a signing request cannot silently sign an artifact of a different version.
+    -->
+    <parameter name="version" required="true" />
+  </parameters>
+
+  <!-- Root ZIP = the archive actions/upload-artifact creates around both release artifacts. -->
+  <zip-file>
+
+    <!-- ================================================================== -->
+    <!-- 1) NSIS per-user installer                                        -->
+    <!--    Metadata: scripts/release/installer.nsi:109-115                -->
+    <!-- ================================================================== -->
+    <pe-file
+      path="Hangline_${version}_x64-setup.exe"
+      product-name="Hangline"
+      product-version="${version}"
+      file-version="${version}"
+      company-name="Hangline"
+      copyright="MIT License"
+    >
+      <!-- description="Hangline Setup"  (enable after confirming the attribute name) -->
+      <!-- original-filename="Hangline_${version}_x64-setup.exe"  (see follow-up b) -->
+      <authenticode-sign />
+    </pe-file>
+
+    <!-- ================================================================== -->
+    <!-- 2) Portable ZIP: sign the app executable inside it, not the ZIP   -->
+    <!--    The ZIP container has no Authenticode; SignPath re-packages it, -->
+    <!--    so the published ZIP bytes differ from the built ones (the     -->
+    <!--    workflow recomputes SHA256SUMS.txt afterwards).                 -->
+    <!-- ================================================================== -->
+    <zip-file path="Hangline_${version}_x64-portable.zip">
+      <pe-file
+        path="Hangline.exe"
+        product-name="Hangline"
+        product-version="${version}"
+        file-version="${version}"
+        company-name="hangline"
+      >
+        <!-- description="Hangline"  (enable after confirming the attribute name) -->
+        <!-- copyright="MIT License"  (see follow-up c: not set on the app exe today) -->
+        <!-- original-filename="Hangline.exe"  (see follow-up b) -->
+        <authenticode-sign />
+      </pe-file>
+    </zip-file>
+
+  </zip-file>
+</artifact-configuration>

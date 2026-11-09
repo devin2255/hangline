@@ -32,6 +32,12 @@ Thumbs.db
 
 # Local reference assets / controller workspace (never commit)
 .superpowers/
+
+# Read-only benchmark/reference checkouts used for product research (never commit)
+.research/
 # Updater signing keys/password (defense in depth: .superpowers/ above already covers them;
 # the explicit rule keeps the private key out even if the directory pattern is ever narrowed)
 .superpowers/release-keys/
+
+# Local real-machine acceptance evidence (screenshots/logs; never commit)
+.acceptance/

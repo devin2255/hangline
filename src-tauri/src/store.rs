@@ -6,7 +6,10 @@
 //! never re-hung (Tendedero baseline strategy).
 //!
 //! Writes go through the same atomic `.tmp` + rename path as the settings (see
-//! [`crate::settings::write_atomic`]).
+//! [`crate::settings::write_atomic`]), which also keeps the previous list as `state.json.bak`. A
+//! corrupt main file is recovered from that backup before the `.corrupt` backup-and-start-empty
+//! path; a main file that exists but cannot be read is preserved and later writes are refused
+//! (read-only session).
 
 use std::fs;
 use std::io;
@@ -15,7 +18,7 @@ use std::path::{Path, PathBuf};
 use anyhow::Context;
 
 use crate::item::Item;
-use crate::settings::{backup_corrupt, write_atomic};
+use crate::settings::{backup_corrupt, read_backup, write_atomic};
 
 /// File name of the item document inside the Hangline data directory.
 const STATE_FILE: &str = "state.json";
@@ -38,8 +41,11 @@ pub fn load(dir: &Path) -> Vec<Item> {
 ///
 /// Returns the remaining items sorted by `added_at` ascending (oldest left, newest right) and the
 /// ids of the dropped rows in file order. A missing file is a normal first run and yields an empty
-/// list; an unreadable file is preserved as `state.json.corrupt` (then treated as empty) so a bad
-/// file cannot wedge every subsequent start.
+/// list. A corrupt (readable but unparsable) file is recovered from `state.json.bak` when that
+/// backup is usable — the recovered list is written back as the main file — and only then falls back
+/// to `state.json.corrupt` plus an empty list, so a bad file cannot wedge every subsequent start.
+/// A file that exists but cannot be read is left untouched (read-only session): the list starts
+/// empty in memory and later writes refuse to overwrite the file.
 pub fn load_and_prune(dir: &Path) -> (Vec<Item>, Vec<String>) {
     let path = state_path(dir);
     let mut items = match fs::read(&path) {
@@ -53,12 +59,8 @@ pub fn load_and_prune(dir: &Path) -> (Vec<Item>, Vec<String>) {
                 items
             }
             Err(err) => {
-                log::error!(
-                    "store: {} is not a valid item list ({err}); starting empty",
-                    path.display()
-                );
-                backup_corrupt(&path);
-                Vec::new()
+                log::error!("store: {} is not a valid item list ({err})", path.display());
+                recover_or_start_empty(dir, &path)
             }
         },
         Err(err) if err.kind() == io::ErrorKind::NotFound => {
@@ -70,7 +72,8 @@ pub fn load_and_prune(dir: &Path) -> (Vec<Item>, Vec<String>) {
         }
         Err(err) => {
             log::error!(
-                "store: failed to read {} ({err}); starting empty",
+                "store: failed to read {} ({err}); starting empty (the file is left untouched and \
+                 later writes are refused)",
                 path.display()
             );
             Vec::new()
@@ -104,6 +107,28 @@ pub fn load_and_prune(dir: &Path) -> (Vec<Item>, Vec<String>) {
     // Spec 4.5: items are ordered by added_at ascending (the newest hangs on the right).
     items.sort_by_key(|item| item.added_at);
     (items, removed)
+}
+
+/// Repairs a corrupt `state.json` from the last good `.bak`, or preserves it and starts empty.
+///
+/// The corrupt main file is moved aside *before* the recovered list is written back, so the write
+/// does not rotate the corrupt bytes over the good backup. The recovered list is persisted
+/// immediately: the next start then reads a healthy `state.json` (the startup prune/retention pass
+/// may rewrite it again right after, which is the normal path).
+fn recover_or_start_empty(dir: &Path, path: &Path) -> Vec<Item> {
+    let Some(items) = read_backup::<Vec<Item>>(path) else {
+        log::warn!("store: no usable backup; starting empty");
+        backup_corrupt(path);
+        return Vec::new();
+    };
+    backup_corrupt(path);
+    if let Err(err) = save_atomic(dir, &items) {
+        log::error!(
+            "store: failed to write the recovered item list back to {}: {err:#}",
+            path.display()
+        );
+    }
+    items
 }
 
 /// Removes items whose file no longer exists and returns their ids in list order.
@@ -239,6 +264,134 @@ mod tests {
             !dir.join("state.json").exists(),
             "the unreadable file must be moved aside, not left behind"
         );
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// Three-layer persistence, layer 1: every successful save rotates the previous state file into
+    /// `state.json.bak` before publishing the new list, and only one generation is kept.
+    #[test]
+    fn save_rotates_the_previous_state_into_bak() {
+        let dir = test_dir("rotate-bak");
+        let backup = dir.join("state.json.bak");
+        let a = item("a", &existing_file(&dir, "a.png"), 100);
+        let b = item("b", &existing_file(&dir, "b.png"), 200);
+
+        save_atomic(&dir, std::slice::from_ref(&a)).expect("first save");
+        assert!(
+            !backup.exists(),
+            "the first save has no previous file to rotate"
+        );
+
+        save_atomic(&dir, std::slice::from_ref(&b)).expect("second save");
+        let previous: Vec<Item> =
+            serde_json::from_slice(&fs::read(&backup).expect("read the bak")).expect("valid bak");
+        assert_eq!(
+            previous,
+            vec![a],
+            "the previous good list must be rotated into state.json.bak"
+        );
+        assert_eq!(load(&dir), vec![b]);
+        assert!(!dir.join("state.json.bak.tmp").exists());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// Three-layer persistence, layer 2: a corrupt main file is recovered from the last good
+    /// `.bak`, kept as `state.json.corrupt` for diagnosis, and written back as the main file.
+    #[test]
+    fn load_recovers_a_corrupt_state_file_from_the_backup() {
+        let dir = test_dir("recover-bak");
+        let kept = item("kept", &existing_file(&dir, "kept.png"), 100);
+        let next = item("next", &existing_file(&dir, "next.png"), 200);
+        save_atomic(&dir, std::slice::from_ref(&kept)).expect("first save");
+        save_atomic(&dir, std::slice::from_ref(&next)).expect("second save"); // .bak == [kept]
+
+        let corrupt = b"this is still not a state file".to_vec();
+        fs::write(dir.join("state.json"), &corrupt).expect("corrupt the main file");
+
+        assert_eq!(
+            load(&dir),
+            vec![kept.clone()],
+            "the last good copy must be recovered"
+        );
+        assert_eq!(
+            fs::read(dir.join("state.json.corrupt")).expect("corrupt backup"),
+            corrupt,
+            "the corrupt file must still be preserved for diagnosis"
+        );
+        let restored: Vec<Item> =
+            serde_json::from_slice(&fs::read(dir.join("state.json")).expect("read the main file"))
+                .expect("the recovered list must be written back as valid JSON");
+        assert_eq!(restored, vec![kept.clone()]);
+        let backup: Vec<Item> =
+            serde_json::from_slice(&fs::read(dir.join("state.json.bak")).expect("read the bak"))
+                .expect("the good backup stays readable");
+        assert_eq!(
+            backup,
+            vec![kept],
+            "the corrupt main file must be moved aside before the write-back, so the good .bak survives"
+        );
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// Three-layer persistence, layer 3: a corrupt main file whose `.bak` is also unusable keeps the
+    /// pre-existing behavior (preserve as `state.json.corrupt`, start empty, no empty main file).
+    #[test]
+    fn load_starts_empty_when_the_state_backup_is_unusable() {
+        let dir = test_dir("bad-bak");
+        let corrupt = b"this is not a state file".to_vec();
+        fs::write(dir.join("state.json"), &corrupt).expect("write corrupt state");
+        fs::write(dir.join("state.json.bak"), b"[ broken").expect("write corrupt backup");
+
+        assert!(load(&dir).is_empty());
+        assert_eq!(
+            fs::read(dir.join("state.json.corrupt")).expect("corrupt backup"),
+            corrupt
+        );
+        assert!(
+            !dir.join("state.json").exists(),
+            "the unreadable file must be moved aside, not left behind"
+        );
+        assert_eq!(
+            fs::read(dir.join("state.json.bak")).expect("the unusable backup is left alone"),
+            b"[ broken",
+            "a bad backup is not deleted; the next save rotates a good generation over it"
+        );
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// Three-layer persistence, read-only session rule: an existing but unreadable `state.json`
+    /// must never be overwritten. Same simulation as the settings test: Windows cannot make a plain
+    /// file unreadable without ACLs (and this sandbox may not allow changing them), so a *directory*
+    /// at the state path makes `fs::read` fail with a non-`NotFound` error on every platform.
+    #[test]
+    fn save_refuses_to_overwrite_a_state_file_it_cannot_read() {
+        let dir = test_dir("read-failure");
+        let path = dir.join("state.json");
+        fs::create_dir(&path).expect("a directory at the state path blocks reads");
+
+        let error = save_atomic(&dir, &[]).expect_err("the write must be refused");
+        let message = format!("{error:#}");
+        assert!(
+            message.contains("refusing to overwrite"),
+            "the error must be diagnostic: {message}"
+        );
+        assert!(
+            message.contains("state.json"),
+            "the error names the path: {message}"
+        );
+        assert!(path.is_dir(), "the unreadable target must be left in place");
+        assert!(
+            !dir.join("state.json.tmp").exists(),
+            "a refused write must not leave a .tmp file"
+        );
+        assert!(
+            !dir.join("state.json.bak").exists(),
+            "a refused write must not rotate a backup"
+        );
+
+        // The read side is a read-only session too: empty in memory, no write at all.
+        assert!(load(&dir).is_empty());
+        assert!(path.is_dir(), "load must not touch the unreadable file");
         let _ = fs::remove_dir_all(dir);
     }
 
