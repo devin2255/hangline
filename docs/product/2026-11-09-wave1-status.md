@@ -79,6 +79,12 @@
 - W1.7：两个保留子菜单真 disabled 说明行；「全部取下线」`MessageBoxW` Yes/No（数量 + 文件语义，按语言本地化，0 不弹）；启动热键失败 Warning 每次运行一次。
 - W1.8：`editLatestHotkey`（默认 `Ctrl+Alt+E`）、`Target::EditLatest`、3 项注册、托盘改键行、`Shortcut.tsx` 第三 target、动作按条目类型打开标注/裁剪。
 
+**非 GUI 验收（锁屏期间完成，2026-11-09）**
+- `hangline.exe --selftest`：**PASS 9 / WARN 1 / FAIL 0，exit 0**（数据目录可写、settings 18 键、state 4 条目、磁盘/DPI/双屏/WebView2/内存/版本）。
+- 锁屏下无界面启动冒烟：数据层加载 4 条目 → **三个热键全部注册**（Capture `Ctrl+Alt+S` / Toggle `Ctrl+Alt+T` / EditLatest `Ctrl+Alt+E`）→ 托盘图标与完整菜单创建（zh-Hans），无错误日志。
+- 代码审查通过：`message_box` 在 worker 线程调用（不阻塞事件循环）；「全部取下线」默认按钮为 No；保留策略说明行为真 disabled 且 `action_for=None`；`SetCapture` 经 `run_on_main_thread`、`ReleaseCapture` 覆盖全结束路径；`CaptureOutcome`/`PressedAt` 与 TS 契约 camelCase 一致。
+- GUI 脚本已加锁屏快速失败保护（`Test-DesktopUnlocked`），锁屏运行会 exit 9 并明确诊断，不再伪装成产品失败。
+
 **真机回归状态**：❗**待补跑**。执行时桌面已锁屏（LogonUI 运行、前台窗口为空、应用日志 `GetCursorPos failed (0x80070005)`），合成输入无法到达应用，本轮批次 2 的 GUI 验证作废（未产生任何测试数据，用户数据已完整恢复 4 条目）。解锁后按 `.acceptance/harness/phase-w2.ps1` 补跑：自动复制、pressedAt 补按、第三热键、热键失败对话框四项。
 ### 批次 2（W1.5–W1.8）
 
