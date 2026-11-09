@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased — Wave 1 batch 1 (card action surface)
+
+- **Card context menu** (right-click): copy image / copy as file / open / show in Explorer /
+  markup (or trim recording) / "Take down ▸" with move-to-Recycle-Bin, remove-from-line and
+  take-down-everything-to-the-left/right. Rendered inside the panel window (no extra window); the
+  menu rect is reported to the click-through hit-test so it is clickable; outside click closes it
+  without triggering the card copy gesture; WebView2's default context menu is suppressed.
+- **Hover action capsule**: three buttons (copy / markup·trim / more actions) under a hovered card.
+- **Annotation tools 5 → 9**: highlight, mosaic, blur and auto-incrementing number (undo-safe),
+  with preview and export sharing one renderer; `Shape.label` is backward compatible.
+- **Layered Esc/right-click back-out in the editor**: text → crop → tool → dirty-confirm cancel.
+- **Rust**: `copy_item_as_file`, `show_in_explorer` (spec-promised, previously missing) and
+  `take_down_side` (batch take-down, never deletes files; one persist + one broadcast).
+- 51 new frontend tests (210 → 261) and 7 new Rust tests (369 → 376).
 ## 1.1.1 — 2026-11-09
 
 > Wave 0 debt paydown plus the first real-machine acceptance pass. Still **unsigned**: see the

@@ -9,17 +9,31 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  BLUR_RADIUS_MAX_PX,
+  BLUR_RADIUS_MIN_PX,
+  HIGHLIGHT_ALPHA,
+  HIGHLIGHT_COLOR,
   MAX_HISTORY,
+  MOSAIC_BLOCK_MAX_PX,
+  MOSAIC_BLOCK_MIN_PX,
+  NUMBER_RADIUS_MIN_PX,
   addShape,
+  blurRadiusPx,
   canRedo,
   canUndo,
   clampCrop,
   createAnnotationState,
   cropOutput,
   fitContain,
+  mosaicBlockPx,
   moveCrop,
+  nextNumberValue,
+  numberRadiusPx,
+  numberTextColor,
   redo,
+  renderShapes,
   setCrop,
+  shapeRect,
   toImagePoint,
   undo,
   type Shape,
@@ -284,5 +298,272 @@ describe("fitContain", () => {
     expect(fitContain(4000, 3000, 0, 800)).toEqual({ width: 0, height: 0 });
     expect(fitContain(0, 0, 800, 600)).toEqual({ width: 0, height: 0 });
     expect(fitContain(4000, 3000, Number.NaN, 800)).toEqual({ width: 0, height: 0 });
+  });
+});
+
+/** A rect-like shape helper for the rectangle tools (`highlight`, `mosaic`, `blur`). */
+function rectShape(tool: Shape["tool"], points: Shape["points"]): Shape {
+  return { id: `${tool}-1`, tool, color: "#ff3b30", width: 4, points };
+}
+
+/** A number badge with its sequence label. */
+function numberShape(label: string): Shape {
+  return {
+    id: `number-${label}`,
+    tool: "number",
+    color: "#ff3b30",
+    width: 4,
+    points: [[50, 50]],
+    label,
+  };
+}
+
+/** A `CanvasImageSource` stand-in with only the natural size the renderer reads. */
+function fakeImage(width: number, height: number): CanvasImageSource {
+  return { naturalWidth: width, naturalHeight: height } as unknown as CanvasImageSource;
+}
+
+interface FakeContext {
+  ctx: CanvasRenderingContext2D;
+  calls: string[];
+  state: Record<string, unknown>;
+}
+
+/** Records the renderer's canvas calls and the mutable context state it sets. */
+function fakeContext(options: { filter?: boolean } = {}): FakeContext {
+  const calls: string[] = [];
+  const state: Record<string, unknown> = {
+    imageSmoothingEnabled: true,
+    globalAlpha: 1,
+    filter: options.filter === false ? undefined : "none",
+  };
+  const target: Record<string, unknown> = {
+    save: () => calls.push("save"),
+    restore: () => calls.push("restore"),
+    beginPath: () => calls.push("beginPath"),
+    moveTo: () => undefined,
+    lineTo: () => undefined,
+    arc: () => calls.push("arc"),
+    rect: () => calls.push("rect"),
+    clip: () => calls.push("clip"),
+    fill: () => calls.push("fill"),
+    stroke: () => calls.push("stroke"),
+    fillRect: (x: number, y: number, w: number, h: number) =>
+      calls.push(`fillRect ${x},${y},${w},${h}`),
+    strokeRect: () => calls.push("strokeRect"),
+    fillText: (text: string, x: number, y: number) => calls.push(`fillText ${text} ${x},${y}`),
+    drawImage: (...args: unknown[]) => calls.push(`drawImage ${args.length}`),
+    clearRect: () => undefined,
+  };
+  for (const key of [
+    "strokeStyle",
+    "fillStyle",
+    "lineWidth",
+    "lineCap",
+    "lineJoin",
+    "font",
+    "textAlign",
+    "textBaseline",
+    "globalAlpha",
+    "filter",
+    "imageSmoothingEnabled",
+  ]) {
+    Object.defineProperty(target, key, {
+      get: () => state[key],
+      set: (value: unknown) => {
+        state[key] = value;
+        calls.push(`${key} ${String(value)}`);
+      },
+      enumerable: true,
+      configurable: true,
+    });
+  }
+  return { ctx: target as unknown as CanvasRenderingContext2D, calls, state };
+}
+
+/** Runs `run` with a minimal `document.createElement("canvas")` (the mosaic scratch canvas). */
+function withFakeDocument<T>(run: () => T): T {
+  const globals = globalThis as unknown as { document?: unknown };
+  const previous = globals.document;
+  const scratchContext: Record<string, unknown> = {
+    drawImage: () => undefined,
+    clearRect: () => undefined,
+    imageSmoothingEnabled: false,
+  };
+  const scratchCanvas: Record<string, unknown> = {
+    width: 0,
+    height: 0,
+    getContext: () => scratchContext,
+  };
+  scratchContext.canvas = scratchCanvas;
+  globals.document = { createElement: () => scratchCanvas };
+  try {
+    return run();
+  } finally {
+    globals.document = previous;
+  }
+}
+
+describe("shapeRect (highlight / mosaic / blur geometry)", () => {
+  it("normalizes a drag in either direction into a positive rectangle", () => {
+    expect(shapeRect({ points: [[40, 30], [10, 10]] })).toEqual({ x: 10, y: 10, w: 30, h: 20 });
+    expect(shapeRect({ points: [[10, 10], [40, 30]] })).toEqual({ x: 10, y: 10, w: 30, h: 20 });
+    // A click-sized shape is still a (degenerate) rectangle; the renderers skip it.
+    expect(shapeRect({ points: [[10, 10]] })).toEqual({ x: 10, y: 10, w: 0, h: 0 });
+  });
+
+  it("rejects missing and non-finite points", () => {
+    expect(shapeRect({ points: [] })).toBeNull();
+    expect(shapeRect({ points: [[Number.NaN, 0], [10, 10]] })).toBeNull();
+    expect(shapeRect({ points: [[0, 0], [Number.POSITIVE_INFINITY, 10]] })).toBeNull();
+  });
+
+  it("clamps a pixel-tool rectangle to the base image before sampling", () => {
+    const rect = shapeRect(rectShape("mosaic", [[300, 200], [-40, -30]]));
+    expect(rect).toEqual({ x: -40, y: -30, w: 340, h: 230 });
+    expect(clampCrop(rect as { x: number; y: number; w: number; h: number }, 200, 150)).toEqual({
+      x: 0,
+      y: 0,
+      w: 200,
+      h: 150,
+    });
+  });
+});
+
+describe("pixel-tool sizes", () => {
+  it("derives the mosaic block size from the stroke width and clamps it", () => {
+    expect(mosaicBlockPx(4)).toBe(4);
+    expect(mosaicBlockPx(10, 2)).toBe(20);
+    expect(mosaicBlockPx(0.5)).toBe(MOSAIC_BLOCK_MIN_PX);
+    expect(mosaicBlockPx(500)).toBe(MOSAIC_BLOCK_MAX_PX);
+    expect(mosaicBlockPx(Number.NaN)).toBe(MOSAIC_BLOCK_MIN_PX);
+  });
+
+  it("derives the blur radius from the stroke width and clamps it", () => {
+    expect(blurRadiusPx(4)).toBe(6);
+    expect(blurRadiusPx(10, 0.5)).toBe(8);
+    expect(blurRadiusPx(1)).toBe(BLUR_RADIUS_MIN_PX);
+    expect(blurRadiusPx(1000)).toBe(BLUR_RADIUS_MAX_PX);
+  });
+});
+
+describe("new tool rendering", () => {
+  it("paints a highlight as a 35 % translucent rectangle", () => {
+    const { ctx, calls, state } = fakeContext();
+    renderShapes(ctx, [rectShape("highlight", [[10, 20], [110, 70]])], 1);
+    expect(HIGHLIGHT_ALPHA).toBe(0.35);
+    expect(calls).toContain("fillRect 10,20,100,50");
+    // The saved PNG calls the same renderer, so this alpha is what the export composites.
+    expect(state.globalAlpha).toBe(HIGHLIGHT_ALPHA);
+    expect(state.fillStyle).toBe("#ff3b30");
+  });
+
+  it("mosaics the base image through a downscaled scratch canvas", () => {
+    const { ctx, calls, state } = fakeContext();
+    const mosaic = rectShape("mosaic", [[10, 10], [210, 110]]);
+    withFakeDocument(() => renderShapes(ctx, [mosaic], 1, fakeImage(1000, 800)));
+    expect(calls.some((call) => call.startsWith("imageSmoothingEnabled false"))).toBe(true);
+    // One 9-argument drawImage back onto the overlay canvas.
+    expect(calls).toContain("drawImage 9");
+    expect(state.imageSmoothingEnabled).toBe(true);
+  });
+
+  it("blurs by clipping the region and redrawing the base through ctx.filter", () => {
+    const { ctx, calls, state } = fakeContext();
+    const blur = rectShape("blur", [[0, 0], [100, 50]]);
+    renderShapes(ctx, [blur], 1, fakeImage(500, 400));
+    expect(calls).toContain("clip");
+    expect(calls).toContain("filter blur(6px)");
+    expect(calls).toContain("drawImage 5");
+    expect(state.filter).toBe("blur(6px)");
+  });
+
+  it("falls back to mosaic when the engine supports no canvas filter", () => {
+    const { ctx, calls } = fakeContext({ filter: false });
+    const blur = rectShape("blur", [[0, 0], [100, 50]]);
+    withFakeDocument(() => renderShapes(ctx, [blur], 1, fakeImage(500, 400)));
+    expect(calls).not.toContain("clip");
+    expect(calls).not.toContain("filter blur(6px)");
+    // The mosaic fallback painted (9-argument drawImage) instead of leaving a hole.
+    expect(calls).toContain("drawImage 9");
+  });
+
+  it("paints nothing for the pixel tools without a base image", () => {
+    const { ctx, calls } = fakeContext();
+    const shapes = [rectShape("mosaic", [[0, 0], [10, 10]]), rectShape("blur", [[0, 0], [10, 10]])];
+    renderShapes(ctx, shapes, 1);
+    expect(calls.some((call) => call.startsWith("drawImage"))).toBe(false);
+    expect(calls).not.toContain("clip");
+  });
+
+  it("paints a number badge with its label in a contrast colour", () => {
+    const { ctx, calls, state } = fakeContext();
+    renderShapes(ctx, [numberShape("3")], 1);
+    expect(calls).toContain("arc");
+    expect(calls).toContain("fillText 3 50,50");
+    expect(state.textAlign).toBe("center");
+    expect(state.fillStyle).toBe("#ffffff");
+  });
+
+  it("skips a number badge that carries no label (corrupt/legacy state)", () => {
+    const { ctx, calls } = fakeContext();
+    const broken: Shape = { id: "n", tool: "number", color: "#ff3b30", width: 4, points: [[0, 0]] };
+    renderShapes(ctx, [broken], 1);
+    expect(calls).not.toContain("arc");
+  });
+});
+
+describe("number sequencing", () => {
+  it("scales the badge radius with the stroke width", () => {
+    expect(numberRadiusPx(2)).toBe(NUMBER_RADIUS_MIN_PX);
+    expect(numberRadiusPx(10)).toBe(30);
+  });
+
+  it("uses dark digits on pale badge colours and white on dark ones", () => {
+    expect(numberTextColor("#ffcc00")).toBe("#111827");
+    expect(numberTextColor("#ff3b30")).toBe("#ffffff");
+    expect(numberTextColor("not-a-colour")).toBe("#ffffff");
+  });
+
+  it("computes the next value from the committed shapes", () => {
+    expect(nextNumberValue([])).toBe(1);
+    expect(nextNumberValue([numberShape("1"), numberShape("2")])).toBe(3);
+    expect(nextNumberValue([numberShape("2"), numberShape("7")])).toBe(8);
+    expect(nextNumberValue([numberShape("three")])).toBe(1);
+  });
+
+  it("reuses a number after undo instead of skipping it", () => {
+    let state = createAnnotationState(800, 600);
+    state = addShape(state, numberShape("1"));
+    state = addShape(state, numberShape("2"));
+    state = addShape(state, numberShape("3"));
+    expect(nextNumberValue(state.shapes)).toBe(4);
+
+    state = undo(state);
+    expect(nextNumberValue(state.shapes)).toBe(3);
+    state = addShape(state, numberShape("3"));
+    expect(nextNumberValue(state.shapes)).toBe(4);
+  });
+});
+
+describe("serialization compatibility", () => {
+  it("round-trips the new tools through JSON and still reads legacy shapes", () => {
+    const shapes: Shape[] = [
+      numberShape("2"),
+      { id: "m", tool: "mosaic", color: HIGHLIGHT_COLOR, width: 8, points: [[0, 0], [10, 10]] },
+      { id: "h", tool: "highlight", color: HIGHLIGHT_COLOR, width: 4, points: [[0, 0], [10, 10]] },
+    ];
+    const decoded = JSON.parse(JSON.stringify(shapes)) as Shape[];
+    expect(decoded).toEqual(shapes);
+    expect(decoded[0].label).toBe("2");
+
+    // State written before W1.3 has no `label`/`text` keys; it must still decode and render.
+    const legacy = JSON.parse(
+      '{"id":"old","tool":"rect","color":"#ff3b30","width":4,"points":[[0,0],[10,10]]}',
+    ) as Shape;
+    expect(legacy.label).toBeUndefined();
+    expect(nextNumberValue([legacy])).toBe(1);
+    const { ctx } = fakeContext();
+    expect(() => renderShapes(ctx, [legacy, ...decoded], 1, fakeImage(100, 100))).not.toThrow();
   });
 });

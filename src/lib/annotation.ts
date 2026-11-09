@@ -11,8 +11,25 @@
  * image pixels and doubles as the text size driver (see [`textFontPx`]).
  */
 
-/** One editor tool (design spec §3.7; crop is a mode, not a drawn shape). */
-export type Tool = "pen" | "rect" | "arrow" | "text" | "crop";
+import { relativeLuminance } from "./color";
+
+/**
+ * One editor tool (design spec §3.7; crop is a mode, not a drawn shape).
+ *
+ * `highlight`, `mosaic`, `blur` and `number` are the W1.3 additions. `mosaic`/`blur` are pixel
+ * tools: they do not paint a colour, they sample the base image (see [`renderShapes`]). `number`
+ * is click-to-place and stores its sequence value in the optional [`Shape.label`].
+ */
+export type Tool =
+  | "pen"
+  | "rect"
+  | "arrow"
+  | "text"
+  | "highlight"
+  | "mosaic"
+  | "blur"
+  | "number"
+  | "crop";
 
 /** A tool that produces a persisted shape. */
 export type DrawTool = Exclude<Tool, "crop">;
@@ -33,6 +50,13 @@ export interface Shape {
   points: Point[];
   /** Multi-line text for the `text` tool. */
   text?: string;
+  /**
+   * Single-line label for the `number` tool: the drawn sequence value (`"1"`, `"2"`, …).
+   *
+   * Optional so state written before W1.3 stays readable: an old shape simply has no label, and a
+   * `number` shape without one is not rendered (see [`nextNumberValue`] and `renderNumber`).
+   */
+  label?: string;
 }
 
 /** A crop rectangle in image pixels (normalized: `w`/`h` positive). */
@@ -64,6 +88,25 @@ export const TEXT_FONT_SCALE = 6;
 
 /** Smallest text size in image pixels (keeps text readable on small screenshots). */
 export const TEXT_FONT_MIN_PX = 12;
+
+/** Opacity of the `highlight` fill. The saved PNG uses the same renderer, so it matches exactly. */
+export const HIGHLIGHT_ALPHA = 0.35;
+
+/** Amber default for the highlight tool (picked automatically when the tool is selected). */
+export const HIGHLIGHT_COLOR = "#ffcc00";
+
+/** Number badge radius: `width * NUMBER_RADIUS_SCALE` image px, never below the minimum. */
+export const NUMBER_RADIUS_SCALE = 3;
+export const NUMBER_RADIUS_MIN_PX = 12;
+
+/** Mosaic pixel-block size in image pixels (derived from the stroke width, then clamped). */
+export const MOSAIC_BLOCK_MIN_PX = 2;
+export const MOSAIC_BLOCK_MAX_PX = 64;
+
+/** Blur radius in image pixels: `width * BLUR_RADIUS_SCALE`, clamped to a usable range. */
+export const BLUR_RADIUS_SCALE = 1.5;
+export const BLUR_RADIUS_MIN_PX = 2;
+export const BLUR_RADIUS_MAX_PX = 48;
 
 /** The crop/paint state of one open editor image (history is part of the state). */
 export interface AnnotationState {
@@ -280,6 +323,73 @@ export function textFontPx(shapeWidth: number): number {
 }
 
 /**
+ * The normalized rectangle spanned by a shape's first/last point (image pixels).
+ *
+ * Used by the rectangle-shaped tools (`highlight`, `mosaic`, `blur`); `null` when the shape has no
+ * usable two-point geometry. A reverse drag (right-to-left / bottom-to-top) is normalized to a
+ * positive rectangle, exactly like [`clampCrop`] does for the crop rectangle.
+ */
+export function shapeRect(shape: Pick<Shape, "points">): DragRect | null {
+  const start = shape.points[0];
+  const end = shape.points[shape.points.length - 1] ?? start;
+  if (!start || !end) return null;
+  if (![start[0], start[1], end[0], end[1]].every((value) => Number.isFinite(value))) return null;
+  return {
+    x: Math.min(start[0], end[0]),
+    y: Math.min(start[1], end[1]),
+    w: Math.abs(end[0] - start[0]),
+    h: Math.abs(end[1] - start[1]),
+  };
+}
+
+/** Mosaic pixel-block size in image pixels for a shape width (then scaled to device pixels). */
+export function mosaicBlockPx(shapeWidth: number, scale = 1): number {
+  const natural = Math.max(1, finite(shapeWidth, 1));
+  const device = natural * Math.max(0, finite(scale, 1));
+  return Math.round(clamp(device, MOSAIC_BLOCK_MIN_PX, MOSAIC_BLOCK_MAX_PX));
+}
+
+/** Blur radius in image pixels for a shape width (then scaled to device pixels). */
+export function blurRadiusPx(shapeWidth: number, scale = 1): number {
+  const natural = Math.max(1, finite(shapeWidth, 1)) * BLUR_RADIUS_SCALE;
+  const device = natural * Math.max(0, finite(scale, 1));
+  return Math.round(clamp(device, BLUR_RADIUS_MIN_PX, BLUR_RADIUS_MAX_PX));
+}
+
+/** Radius of a number badge in image pixels (derived from the stroke width). */
+export function numberRadiusPx(shapeWidth: number): number {
+  const scaled = Math.max(1, finite(shapeWidth, 1)) * NUMBER_RADIUS_SCALE;
+  return Math.max(NUMBER_RADIUS_MIN_PX, Math.round(scaled));
+}
+
+/**
+ * The next sequence value for the `number` tool: `max(existing number labels) + 1`.
+ *
+ * Deriving the value from the committed shapes (instead of a counter in the component) makes it
+ * correct across undo: after undoing badge 3 the next badge is 3 again, not 4. Labels that are not
+ * positive integers (corrupt/legacy data) are ignored.
+ */
+export function nextNumberValue(shapes: readonly Shape[]): number {
+  let highest = 0;
+  for (const shape of shapes) {
+    if (shape.tool !== "number") continue;
+    const value = Number.parseInt(shape.label ?? "", 10);
+    if (Number.isFinite(value) && value > highest) highest = value;
+  }
+  return highest + 1;
+}
+
+/** Digits inside a number badge: white on dark/medium colours, near-black on pale ones. */
+export function numberTextColor(background: string): string {
+  try {
+    return relativeLuminance(background) > 0.6 ? "#111827" : "#ffffff";
+  } catch {
+    // Unparseable colour (hand-edited state): white is the documented default.
+    return "#ffffff";
+  }
+}
+
+/**
  * Fits an image into a box preserving its aspect ratio (`object-fit: contain` math in CSS pixels).
  *
  * Returns a zero size for a degenerate box/image so the page can show the loading placeholder
@@ -393,17 +503,186 @@ function renderText(ctx: CanvasRenderingContext2D, shape: Shape, scale: number):
   });
 }
 
-/** Draws every committed shape at `scale` (1 = natural image pixels, used for saving). */
+/** Paints a flat translucent rectangle (W1.3 `highlight`). */
+function renderHighlight(ctx: CanvasRenderingContext2D, shape: Shape, scale: number): void {
+  const rect = shapeRect(shape);
+  if (!rect) return;
+  const width = rect.w * scale;
+  const height = rect.h * scale;
+  if (width < 1 || height < 1) return;
+  // No stroke: the highlight is a flat marker, and a stroke would double the perceived edge weight.
+  // The saved PNG runs through this same function, so the opacity/colour match the preview exactly.
+  ctx.globalAlpha = HIGHLIGHT_ALPHA;
+  ctx.fillStyle = shape.color;
+  ctx.fillRect(rect.x * scale, rect.y * scale, width, height);
+}
+
+/** Size of a `CanvasImageSource` in its natural pixels (image elements expose `naturalWidth`). */
+function sourceSize(source: CanvasImageSource): { width: number; height: number } | null {
+  const candidate = source as unknown as {
+    naturalWidth?: number;
+    naturalHeight?: number;
+    videoWidth?: number;
+    videoHeight?: number;
+    width?: number;
+    height?: number;
+  };
+  const width = candidate.naturalWidth ?? candidate.videoWidth ?? candidate.width ?? 0;
+  const height = candidate.naturalHeight ?? candidate.videoHeight ?? candidate.height ?? 0;
+  return width > 0 && height > 0 ? { width, height } : null;
+}
+
+/**
+ * Reusable offscreen canvas for the mosaic downscale, created on first use.
+ *
+ * `DOM`-free environments (unit tests) get `null`; the editor always has a document, so this only
+ * affects non-browser callers, which then simply paint nothing for the pixel tools.
+ */
+let scratchCanvas: HTMLCanvasElement | null = null;
+
+function acquireScratch(width: number, height: number): CanvasRenderingContext2D | null {
+  if (typeof document === "undefined") return null;
+  if (!scratchCanvas) scratchCanvas = document.createElement("canvas");
+  if (scratchCanvas.width !== width) scratchCanvas.width = width;
+  if (scratchCanvas.height !== height) scratchCanvas.height = height;
+  return scratchCanvas.getContext("2d");
+}
+
+/**
+ * Paints a pixelated rectangle (W1.3 `mosaic`): downscale the base image region to one pixel per
+ * block on a scratch canvas, then draw it back with smoothing disabled (nearest-neighbour), which
+ * is the classic `drawImage` mosaic. Samples the **base image**, never the overlay canvas.
+ */
+function renderMosaic(
+  ctx: CanvasRenderingContext2D,
+  shape: Shape,
+  scale: number,
+  base: CanvasImageSource | undefined,
+): void {
+  if (!base) return;
+  const size = sourceSize(base);
+  const rect = shapeRect(shape);
+  if (!size || !rect) return;
+  const region = clampCrop(rect, size.width, size.height);
+  if (!region) return;
+  const block = mosaicBlockPx(shape.width);
+  const columns = Math.max(1, Math.round(region.w / block));
+  const rows = Math.max(1, Math.round(region.h / block));
+  const scratch = acquireScratch(columns, rows);
+  if (!scratch) return;
+  scratch.imageSmoothingEnabled = false;
+  scratch.clearRect(0, 0, columns, rows);
+  scratch.drawImage(base, region.x, region.y, region.w, region.h, 0, 0, columns, rows);
+  const previousSmoothing = ctx.imageSmoothingEnabled;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(
+    scratch.canvas,
+    0,
+    0,
+    columns,
+    rows,
+    region.x * scale,
+    region.y * scale,
+    region.w * scale,
+    region.h * scale,
+  );
+  ctx.imageSmoothingEnabled = previousSmoothing;
+}
+
+/**
+ * Whether the canvas 2D context supports `filter` (Chromium/WebView2 do).
+ *
+ * Detection is a real assignment round-trip because an unsupported engine silently ignores the
+ * write, which would otherwise leave the region unpainted instead of falling back to mosaic.
+ */
+function supportsCanvasFilter(ctx: CanvasRenderingContext2D): boolean {
+  const candidate = ctx as CanvasRenderingContext2D & { filter?: unknown };
+  if (typeof candidate.filter !== "string") return false;
+  const previous = candidate.filter;
+  try {
+    candidate.filter = "blur(1px)";
+    const supported = candidate.filter === "blur(1px)";
+    candidate.filter = previous;
+    return supported;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Paints a blurred rectangle (W1.3 `blur`): clip to the rectangle and redraw the base image
+ * through `ctx.filter = "blur(Npx)"`. The clip means the blur only replaces the selected region
+ * (it samples neighbouring pixels, so edges stay soft).
+ *
+ * Fallback: engines without `CanvasRenderingContext2D.filter` get the mosaic implementation
+ * instead — same rectangle, visibly derived from the base image, never a hole in the composition.
+ */
+function renderBlur(
+  ctx: CanvasRenderingContext2D,
+  shape: Shape,
+  scale: number,
+  base: CanvasImageSource | undefined,
+): void {
+  if (!base) return;
+  const size = sourceSize(base);
+  const rect = shapeRect(shape);
+  if (!size || !rect) return;
+  const region = clampCrop(rect, size.width, size.height);
+  if (!region) return;
+  if (!supportsCanvasFilter(ctx)) {
+    renderMosaic(ctx, shape, scale, base);
+    return;
+  }
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(region.x * scale, region.y * scale, region.w * scale, region.h * scale);
+  ctx.clip();
+  ctx.filter = `blur(${blurRadiusPx(shape.width, scale)}px)`;
+  ctx.drawImage(base, 0, 0, size.width * scale, size.height * scale);
+  ctx.restore();
+}
+
+/** Paints a numbered badge (W1.3 `number`): filled circle + centred value. */
+function renderNumber(ctx: CanvasRenderingContext2D, shape: Shape, scale: number): void {
+  const anchor = shape.points[0];
+  const label = (shape.label ?? "").trim();
+  // A number without its value is not renderable (only possible with corrupt/legacy state).
+  if (!anchor || !label) return;
+  const radius = numberRadiusPx(shape.width) * scale;
+  if (radius < 1) return;
+  ctx.beginPath();
+  ctx.arc(anchor[0] * scale, anchor[1] * scale, radius, 0, Math.PI * 2);
+  ctx.fillStyle = shape.color;
+  ctx.fill();
+  ctx.fillStyle = numberTextColor(shape.color);
+  ctx.font = `600 ${Math.round(radius * 1.15)}px "Segoe UI", system-ui, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, anchor[0] * scale, anchor[1] * scale);
+}
+
+/**
+ * Draws every committed shape at `scale` (1 = natural image pixels, used for saving).
+ *
+ * `base` is the source image for the pixel tools (`mosaic`/`blur`). Both call sites pass it — the
+ * on-screen preview canvas and the natural-resolution offscreen canvas used for the saved PNG — so
+ * the two paths composite identically. Without a base those two tools paint nothing.
+ *
+ * Each shape is painted inside its own `save`/`restore` pair: the tools change shared context state
+ * (`globalAlpha`, `filter`, `textAlign`, `textBaseline`, smoothing) and one tool must never leak
+ * state into the next.
+ */
 export function renderShapes(
   ctx: CanvasRenderingContext2D,
   shapes: readonly Shape[],
   scale: number,
+  base?: CanvasImageSource,
 ): void {
   if (!Number.isFinite(scale) || scale <= 0) return;
-  ctx.save();
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
   for (const shape of shapes) {
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
     ctx.strokeStyle = shape.color;
     ctx.fillStyle = shape.color;
     ctx.lineWidth = Math.max(1, shape.width) * scale;
@@ -420,7 +699,19 @@ export function renderShapes(
       case "text":
         renderText(ctx, shape, scale);
         break;
+      case "highlight":
+        renderHighlight(ctx, shape, scale);
+        break;
+      case "mosaic":
+        renderMosaic(ctx, shape, scale, base);
+        break;
+      case "blur":
+        renderBlur(ctx, shape, scale, base);
+        break;
+      case "number":
+        renderNumber(ctx, shape, scale);
+        break;
     }
+    ctx.restore();
   }
-  ctx.restore();
 }

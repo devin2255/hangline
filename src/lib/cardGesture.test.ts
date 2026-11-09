@@ -9,7 +9,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   HOLD_CLICK_GUARD_MS,
+  PRIMARY_POINTER_BUTTON,
   createCardGesture,
+  isSecondaryPress,
+  shouldRunCardClick,
+  shouldStartCardPress,
   shouldSuppressCardClick,
 } from "./cardGesture";
 
@@ -112,6 +116,36 @@ describe("createCardGesture", () => {
     expect(onCopy).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
     expect(onCopy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("right-button / menu gesture arbitration", () => {
+  it("treats every non-primary pointer button as secondary (context menu, middle click)", () => {
+    expect(PRIMARY_POINTER_BUTTON).toBe(0);
+    expect(isSecondaryPress(0)).toBe(false);
+    expect(isSecondaryPress(1)).toBe(true);
+    expect(isSecondaryPress(2)).toBe(true);
+    expect(isSecondaryPress(3)).toBe(true);
+  });
+
+  it("lets a primary press start on an idle, revealed card", () => {
+    expect(shouldStartCardPress({ button: 0, locked: false })).toBe(true);
+    expect(shouldStartCardPress({ button: 0, locked: false, paused: false, dragging: false })).toBe(
+      true,
+    );
+  });
+
+  it("never starts a press for a right click, an open menu, a paused panel or a native drag", () => {
+    expect(shouldStartCardPress({ button: 2, locked: false })).toBe(false);
+    expect(shouldStartCardPress({ button: 1, locked: false })).toBe(false);
+    expect(shouldStartCardPress({ button: 0, locked: true })).toBe(false);
+    expect(shouldStartCardPress({ button: 0, locked: false, paused: true })).toBe(false);
+    expect(shouldStartCardPress({ button: 0, locked: false, dragging: true })).toBe(false);
+  });
+
+  it("suppresses the click/double-click copy-open path only while the card is locked", () => {
+    expect(shouldRunCardClick(false)).toBe(true);
+    expect(shouldRunCardClick(true)).toBe(false);
   });
 });
 

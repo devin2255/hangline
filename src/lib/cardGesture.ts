@@ -66,6 +66,56 @@ export interface CardGesture {
   cancel(): void;
 }
 
+/** `PointerEvent.button` of the primary (left) button. */
+export const PRIMARY_POINTER_BUTTON = 0;
+
+/**
+ * Whether a pointerdown is a secondary/middle press.
+ *
+ * Only the primary button may start a card gesture. A right press must never start the press pose,
+ * the 450 ms hold, or the drag threshold tracking: on Windows the `contextmenu` event follows it,
+ * and a menu must not coexist with a copy timer or an open editor.
+ */
+export function isSecondaryPress(button: number): boolean {
+  return button !== PRIMARY_POINTER_BUTTON;
+}
+
+/** Inputs that decide whether a pointerdown may start a card gesture. */
+export interface CardPressGate {
+  /** `PointerEvent.button` of the press. */
+  button: number;
+  /** A card menu (or its dismiss guard) is active: every card gesture is suspended. */
+  locked: boolean;
+  /** The panel is tucked/hidden or motion is paused. */
+  paused?: boolean;
+  /** A native drag-out is in flight for the card (the OS owns the pointer). */
+  dragging?: boolean;
+}
+
+/**
+ * Whether a pointerdown may start a card press (press pose, long-press timer, drag origin).
+ *
+ * Cancels on every non-primary button, an open menu, a paused panel and an in-flight native drag.
+ * Keeping the arbitration here (instead of scattering `if`s through the component) is what the
+ * five-way gesture matrix (click / double-click / long-press / drag-out / context menu) is tested
+ * against.
+ */
+export function shouldStartCardPress({
+  button,
+  locked,
+  paused = false,
+  dragging = false,
+}: CardPressGate): boolean {
+  if (isSecondaryPress(button)) return false;
+  if (locked || paused || dragging) return false;
+  return true;
+}
+
+/** Whether a `click` on a card may schedule its delayed copy / open action. */
+export function shouldRunCardClick(locked: boolean): boolean {
+  return !locked;
+}
+
 /**
  * Creates the per-card gesture controller.
  *

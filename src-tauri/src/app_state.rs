@@ -239,6 +239,51 @@ fn drop_expired(items: &mut Vec<Item>, policy: KeepForDays, now_ms: i64) -> Vec<
     expired
 }
 
+/// One side of the target card a side take-down removes (`take_down_side`).
+///
+/// The line is ordered by `added_at` ascending (design spec §4.5: the oldest card hangs left, the
+/// newest right), so `before` is the older prefix and `after` the newer suffix around the target.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Side {
+    /// Cards older than (to the left of) the target.
+    Before,
+    /// Cards newer than (to the right of) the target.
+    After,
+}
+
+impl Side {
+    /// Parses the wire value of the `take_down_side` command; only `"before"`/`"after"` are valid.
+    pub fn parse(side: &str) -> Option<Self> {
+        match side {
+            "before" => Some(Self::Before),
+            "after" => Some(Self::After),
+            _ => None,
+        }
+    }
+
+    /// The stable wire name (also used in the command log line).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Before => "before",
+            Self::After => "after",
+        }
+    }
+}
+
+/// Ids of the cards strictly on `side` of `target_id`, in line order.
+///
+/// `None` when the target is not on the line: the command treats that as an idempotent no-op, the
+/// same way `take_down` handles an already-gone card. The target itself is never returned and the
+/// opposite side is never included. Pure, so the selection contract is unit-tested without a state.
+pub fn side_ids(items: &[Item], target_id: &str, side: Side) -> Option<Vec<String>> {
+    let index = items.iter().position(|item| item.id == target_id)?;
+    let (start, end) = match side {
+        Side::Before => (0, index),
+        Side::After => (index + 1, items.len()),
+    };
+    Some(items[start..end].iter().map(|item| item.id.clone()).collect())
+}
+
 /// The snapshot+emit gate behind [`AppState::broadcast`].
 ///
 /// Holding this lock across "take snapshot, emit" is what makes event order match revision order:
@@ -541,6 +586,41 @@ impl AppState {
         // P2-7: an item that leaves the line must not leave its cached preview behind.
         crate::thumbnails::remove_for_id(id);
         Ok(Some(removed))
+    }
+
+    /// Removes every row whose id is in `ids` with **one** revision bump and **one** persist.
+    ///
+    /// The batch form behind the `take_down_side` command: the source files are deliberately left
+    /// on disk (the same contract as `take_down(deleteFile = false)`), and the caller broadcasts the
+    /// new snapshot exactly once. Ids that already left the line are ignored; when nothing is
+    /// removed this is a no-op that neither rewrites `state.json` nor bumps the revision. Returns
+    /// the removed rows in line order.
+    pub fn remove_many(&self, ids: &[String]) -> anyhow::Result<Vec<Item>> {
+        let removed = {
+            let mut inner = self.lock();
+            let mut kept = Vec::with_capacity(inner.items.len());
+            let mut removed = Vec::with_capacity(ids.len().min(inner.items.len()));
+            for item in inner.items.drain(..) {
+                if ids.iter().any(|id| id == &item.id) {
+                    removed.push(item);
+                } else {
+                    kept.push(item);
+                }
+            }
+            inner.items = kept;
+            if removed.is_empty() {
+                return Ok(removed);
+            }
+            inner.bump();
+            store::save_atomic(&inner.dir, &inner.items)
+                .context("failed to persist the side take-down")?;
+            removed
+        };
+        // P2-7 parity with `remove`/`prune`: the cache files of rows that left the line go too.
+        for item in &removed {
+            crate::thumbnails::remove_for_id(&item.id);
+        }
+        Ok(removed)
     }
 
     /// Drops items whose files disappeared (user deleted them in Explorer) and persists.
@@ -1536,6 +1616,132 @@ mod tests {
         assert_eq!(removed.id, id);
         assert!(!thumbs.join(format!("{id}.png")).exists(), "preview deleted");
         assert!(state.item(id).is_none());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// Builds one card per id, oldest first (the line's `added_at` ascending order).
+    fn line(ids: &[&str]) -> Vec<Item> {
+        ids.iter()
+            .enumerate()
+            .map(|(index, id)| item(id, Path::new("line.png"), index as i64))
+            .collect()
+    }
+
+    /// `side_ids` around a middle target: the older prefix for `before`, the newer suffix for
+    /// `after`; the target card itself is never in the selection.
+    #[test]
+    fn side_ids_selects_the_older_or_newer_side_around_the_target() {
+        let items = line(&["a", "b", "c", "d", "e"]);
+        assert_eq!(
+            side_ids(&items, "c", Side::Before),
+            Some(vec!["a".to_string(), "b".to_string()])
+        );
+        assert_eq!(
+            side_ids(&items, "c", Side::After),
+            Some(vec!["d".to_string(), "e".to_string()])
+        );
+    }
+
+    /// The first and last cards have exactly one empty side; the cards on the other side all stay
+    /// eligible for removal.
+    #[test]
+    fn side_ids_at_the_line_ends_leaves_the_boundary_side_empty() {
+        let items = line(&["a", "b", "c", "d", "e"]);
+        assert_eq!(side_ids(&items, "a", Side::Before), Some(Vec::new()));
+        assert_eq!(
+            side_ids(&items, "a", Side::After),
+            Some(vec![
+                "b".to_string(),
+                "c".to_string(),
+                "d".to_string(),
+                "e".to_string()
+            ])
+        );
+        assert_eq!(
+            side_ids(&items, "e", Side::Before),
+            Some(vec![
+                "a".to_string(),
+                "b".to_string(),
+                "c".to_string(),
+                "d".to_string()
+            ])
+        );
+        assert_eq!(side_ids(&items, "e", Side::After), Some(Vec::new()));
+    }
+
+    /// A target that already left the line has no side (the command then treats it as a no-op).
+    #[test]
+    fn side_ids_returns_none_when_the_target_is_not_on_the_line() {
+        let items = line(&["a", "b"]);
+        assert_eq!(side_ids(&items, "gone", Side::Before), None);
+        assert_eq!(side_ids(&items, "gone", Side::After), None);
+        assert_eq!(side_ids(&[], "a", Side::Before), None);
+    }
+
+    /// Only the two documented wire names parse; everything else is rejected.
+    #[test]
+    fn side_parse_accepts_only_before_and_after() {
+        assert_eq!(Side::parse("before"), Some(Side::Before));
+        assert_eq!(Side::parse("after"), Some(Side::After));
+        assert_eq!(Side::Before.as_str(), "before");
+        assert_eq!(Side::After.as_str(), "after");
+        for invalid in ["", "Before", "AFTER", "left", "right", "after ", " before"] {
+            assert_eq!(Side::parse(invalid), None, "must reject {invalid:?}");
+        }
+    }
+
+    /// The side take-down removes exactly the given rows with one revision bump and one persist;
+    /// the source files stay on disk, and an empty/stale id list is a no-op.
+    #[test]
+    fn remove_many_removes_the_batch_with_one_revision_and_one_persist() {
+        let dir = test_dir("remove-many");
+        let state = AppState::load(dir.clone());
+        let mut rows = Vec::new();
+        for index in 0..4i64 {
+            let id = format!("side-{index}");
+            let path = existing_file(&dir, &format!("side-{index}.png"));
+            state
+                .add_item(item(&id, &path, index))
+                .expect("add a side fixture item");
+            rows.push((id, path));
+        }
+        let before = state.snapshot();
+        let removed = state
+            .remove_many(&[rows[0].0.clone(), rows[2].0.clone()])
+            .expect("remove the batch");
+        assert_eq!(removed.len(), 2);
+        let after = state.snapshot();
+        assert_eq!(
+            after.revision,
+            before.revision + 1,
+            "one batch is exactly one revision bump"
+        );
+        assert_eq!(
+            after
+                .items
+                .iter()
+                .map(|item| item.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["side-1", "side-3"]
+        );
+        assert_eq!(
+            store::load(&dir),
+            after.items,
+            "the batch is persisted once (the .json matches the state)"
+        );
+        // Never deletes files: the source files of the removed cards are still on disk.
+        assert!(rows[0].1.is_file());
+        assert!(rows[2].1.is_file());
+
+        // A stale id or an empty batch changes nothing (no revision bump, no rewrite).
+        let unchanged = state.snapshot();
+        assert!(state.remove_many(&[]).expect("empty batch").is_empty());
+        assert!(state
+            .remove_many(&[rows[0].0.clone()])
+            .expect("stale id")
+            .is_empty());
+        assert_eq!(state.snapshot(), unchanged);
+
         let _ = fs::remove_dir_all(dir);
     }
 }

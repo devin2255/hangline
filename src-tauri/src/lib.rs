@@ -1,3 +1,5 @@
+use std::os::windows::process::CommandExt;
+
 use tauri::Manager;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::Input::KeyboardAndMouse::GetDoubleClickTime;
@@ -416,6 +418,27 @@ fn copy_item(app: tauri::AppHandle, id: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Copies one card's file as a file drop only (`CF_HDROP`, no PNG/DIBV5), for "copy as file".
+///
+/// This is the design-spec §4.7 fallback `copy_item` already uses for recordings: chat apps that
+/// paste `CF_HDROP` as the file itself instead of the pixels get exactly that. The clipboard writer
+/// is the same verified path ([`clipboard_io::copy_file`]); a failure returns its diagnostic error
+/// and the panel shows no `Copied` pill.
+#[tauri::command]
+fn copy_item_as_file(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let item = item_by_id(&app, &id)?;
+    clipboard_io::copy_file(&item.path, clipboard_owner(&app)).map_err(|error| {
+        log::warn!(
+            "copy_item_as_file: cannot copy {} as a file: {error:#}",
+            item.path.display()
+        );
+        error.to_string()
+    })?;
+    // Same copy feedback as `copy_item` (design spec §3.5 "声音").
+    sound::copied(&app);
+    Ok(())
+}
+
 /// Opens one card's file with its default application (`ShellExecuteW "open"`).
 #[tauri::command]
 fn open_item(app: tauri::AppHandle, id: String) -> Result<(), String> {
@@ -427,6 +450,61 @@ fn open_item(app: tauri::AppHandle, id: String) -> Result<(), String> {
         );
         error.to_string()
     })
+}
+
+/// Returns the single command-line argument that makes Explorer reveal `path`.
+///
+/// Explorer expects `/select,` immediately followed by the path. A Windows file name can never
+/// contain `"`, so wrapping the path in quotes is the whole escaping: spaces, commas, parentheses
+/// and non-ASCII characters stay inside the quoted path and the `/select,` prefix stays outside.
+/// The argument is passed verbatim to the command line (`raw_arg`), so Explorer receives exactly
+/// `/select,"<path>"` (design spec §4.4 `show_in_explorer`).
+fn explorer_select_argument(path: &std::path::Path) -> String {
+    format!("/select,\"{}\"", path.display())
+}
+
+/// Whether `path` can be revealed in Explorer: it must be an existing regular file.
+///
+/// Explorer runs as a separate process, so without this check a deleted file would only open a
+/// folder with nothing selected. The command returns a concrete, path-bearing error instead.
+fn validate_explorer_target(path: &std::path::Path) -> Result<(), String> {
+    match std::fs::metadata(path) {
+        Ok(metadata) if metadata.is_file() => Ok(()),
+        Ok(_) => Err(format!("cannot reveal a non-file: {}", path.display())),
+        Err(error) => Err(format!(
+            "cannot reveal {}: the file is not accessible: {error}",
+            path.display()
+        )),
+    }
+}
+
+/// Reveals one card's file in Explorer (`explorer.exe /select,"<path>"`).
+///
+/// The file is validated first (a card can outlive its file for a few polls), then Explorer is
+/// spawned and never waited on: the shell owns its lifetime and the IPC thread must not block.
+#[tauri::command]
+fn show_in_explorer(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let item = item_by_id(&app, &id)?;
+    validate_explorer_target(&item.path).map_err(|error| {
+        log::warn!("show_in_explorer: {error}");
+        error
+    })?;
+    let argument = explorer_select_argument(&item.path);
+    std::process::Command::new("explorer.exe")
+        .raw_arg(argument)
+        .spawn()
+        .map_err(|error| {
+            log::warn!(
+                "show_in_explorer: cannot launch Explorer for {}: {error}",
+                item.path.display()
+            );
+            format!("cannot open Explorer: {error}")
+        })?;
+    log::info!(
+        "show_in_explorer: revealing {} in Explorer",
+        item.path.display()
+    );
+    Ok(())
 }
 
 /// Takes one card off the line, optionally recycling its file.
@@ -517,6 +595,45 @@ fn take_down(app: tauri::AppHandle, id: String, delete_file: bool) -> Result<(),
     sound::discarded(&app);
     log::info!("take_down: item {id} is off the line");
     Ok(())
+}
+
+/// Takes every card on one side of `id` off the line, never deleting a file.
+///
+/// `side` is `"before"` (the older cards to the left) or `"after"` (the newer cards to the right);
+/// the line is ordered by `added_at` ascending (design spec §4.5), so the selection is the prefix or
+/// suffix around the target. The target card itself stays on the line and the removed cards' files
+/// stay on disk (the `take_down(deleteFile = false)` contract). The whole batch is one state
+/// mutation: one `state.json` write and one `state` broadcast. A stale menu on a card that already
+/// left the line is an idempotent no-op returning `0`.
+#[tauri::command]
+fn take_down_side(app: tauri::AppHandle, id: String, side: String) -> Result<u32, String> {
+    let side = app_state::Side::parse(&side).ok_or_else(|| {
+        format!("unknown take-down side: {side:?} (expected \"before\" or \"after\")")
+    })?;
+    let state = app.state::<app_state::AppState>();
+    let Some(ids) = app_state::side_ids(&state.snapshot().items, &id, side) else {
+        log::info!("take_down_side: item {id} is no longer on the line; nothing to remove");
+        return Ok(0);
+    };
+    let removed = state.remove_many(&ids).map_err(|error| {
+        log::error!(
+            "take_down_side: cannot persist the {} side take-down of {id}: {error:#}",
+            side.as_str()
+        );
+        // `remove_many` mutates in memory before persisting; publish so the UI matches.
+        let _ = app_state::emit_state(&app);
+        error.to_string()
+    })?;
+    let count = u32::try_from(removed.len()).unwrap_or(u32::MAX);
+    let _ = app_state::emit_state(&app);
+    if count > 0 {
+        sound::discarded(&app);
+    }
+    log::info!(
+        "take_down_side: {count} card(s) on the {} side of {id} are off the line (files kept)",
+        side.as_str()
+    );
+    Ok(count)
 }
 
 /// Changes one global shortcut.
@@ -793,8 +910,11 @@ pub fn run() {
             set_panel_busy,
             get_double_click_interval_ms,
             copy_item,
+            copy_item_as_file,
             open_item,
+            show_in_explorer,
             take_down,
+            take_down_side,
             after_drag,
             set_hotkey,
             close_shortcut_window,
@@ -960,7 +1080,7 @@ mod tests {
     use super::*;
 
     use std::fs;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use std::time::Duration;
 
     use app_state::AppState;
@@ -1118,5 +1238,42 @@ mod tests {
             || probes.next().expect("the wait must stop when the item is gone"),
         );
         assert_eq!(outcome, AfterDragOutcome::ItemGone);
+    }
+
+    /// Explorer receives `/select,"<path>"`: the path is quoted so spaces, commas and parentheses
+    /// stay one argument, and the `/select,` prefix stays outside the quotes.
+    #[test]
+    fn explorer_select_argument_quotes_the_path() {
+        assert_eq!(
+            explorer_select_argument(Path::new(r"C:\shots\shot.png")),
+            r#"/select,"C:\shots\shot.png""#
+        );
+        assert_eq!(
+            explorer_select_argument(Path::new(r"C:\Users\A B\Pictures\my shot, (1).png")),
+            r#"/select,"C:\Users\A B\Pictures\my shot, (1).png""#
+        );
+        // A Windows file name cannot contain `"`, so quoting needs no further escaping and the
+        // prefix is never part of the quoted path.
+        let argument = explorer_select_argument(Path::new(r"C:\shots\a.png"));
+        assert!(argument.starts_with("/select,\""));
+        assert!(argument.ends_with('"'));
+    }
+
+    /// A card whose file was deleted (or is not a file) gets a concrete error instead of an empty
+    /// Explorer window; an existing file passes.
+    #[test]
+    fn validate_explorer_target_rejects_missing_files_and_directories() {
+        let dir = test_dir("explorer-target");
+        let missing = dir.join("gone.png");
+        let error = validate_explorer_target(&missing).expect_err("a missing file is rejected");
+        assert!(error.contains("not accessible"), "clear error: {error}");
+        assert!(error.contains("gone.png"), "the path is in the error: {error}");
+        let error = validate_explorer_target(&dir).expect_err("a directory is rejected");
+        assert!(error.contains("non-file"), "clear error: {error}");
+
+        let file = dir.join("here.png");
+        fs::write(&file, b"png").expect("write the reveal target");
+        assert!(validate_explorer_target(&file).is_ok());
+        let _ = fs::remove_dir_all(dir);
     }
 }

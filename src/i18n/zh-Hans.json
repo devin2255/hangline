@@ -52,5 +52,21 @@
   "Checking for updates…": "正在检查更新…",
   "Couldn't check for updates": "无法检查更新",
   "Installing update…": "正在安装更新…",
-  "Update failed": "更新失败"
+  "Update failed": "更新失败",
+  "Copy image": "复制图片",
+  "Copy as file": "复制为文件",
+  "Open": "打开",
+  "Show in Explorer": "在资源管理器中显示",
+  "More actions": "更多操作",
+  "Copy": "复制",
+  "Move to Recycle Bin": "移入回收站",
+  "Remove from line": "仅从线上移除",
+  "Take down to the left": "取下左侧全部",
+  "Take down to the right": "取下右侧全部",
+  "Mosaic": "马赛克",
+  "Blur": "模糊",
+  "Number": "序号",
+  "Highlight": "高亮",
+  "Failed to open menu": "菜单打开失败",
+  "Nothing to take down": "没有可下线的截图"
 }

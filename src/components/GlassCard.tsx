@@ -25,7 +25,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, RefObject } from "react";
 import { assetUrl } from "../lib/assetUrl";
-import { HOLD_CLICK_GUARD_MS, createCardGesture, shouldSuppressCardClick } from "../lib/cardGesture";
+import { HOLD_CLICK_GUARD_MS, createCardGesture, shouldRunCardClick, shouldStartCardPress, shouldSuppressCardClick } from "../lib/cardGesture";
 import type { CardGesture } from "../lib/cardGesture";
 import { gustAmplitude, gustDelay } from "../lib/gust";
 import { t } from "../lib/i18n";
@@ -241,6 +241,19 @@ export interface GlassCardProps {
    * falling state. The error is only for logging (the panel's recovery is unconditional).
    */
   onTakeDownFailed?: (id: string, error: unknown) => void;
+  /**
+   * A card menu (or its just-closed dismiss guard) is active: click/double-click/long-press/drag
+   * are suspended until it closes. Decided by the panel, which owns the menu state.
+   */
+  gesturesLocked?: boolean;
+  /** Right-click on the card: opens the panel's in-window context menu at the pointer. */
+  onContextMenu?: (item: Item, clientX: number, clientY: number) => void;
+  /** Hover capsule's `More actions`: opens the same menu anchored to the capsule button. */
+  onMoreActions?: (item: Item, anchor: HTMLElement) => void;
+  /** Hover capsule's middle action (markup for images, trim for recordings). */
+  onEdit?: (item: Item) => void;
+  /** Reports the mounted hover capsule so the panel adds its rect to the click-through hit rects. */
+  onActionsElement?: (element: HTMLElement | null) => void;
 }
 
 export function GlassCard({
@@ -265,6 +278,11 @@ export function GlassCard({
   onRemove,
   onLongPress,
   onTakeDownFailed,
+  gesturesLocked = false,
+  onContextMenu,
+  onMoreActions,
+  onEdit,
+  onActionsElement,
 }: GlassCardProps) {
   const slotWidth = cardWidth(size);
   const visual = cardVisualSize(item, size);
@@ -335,6 +353,13 @@ export function GlassCard({
       cardRef?.(element);
     },
     [cardRef],
+  );
+  /** Combined hover-capsule ref: the panel measures it so the capsule is a click island. */
+  const attachActionsRef = useCallback(
+    (element: HTMLDivElement | null) => {
+      onActionsElement?.(element);
+    },
+    [onActionsElement],
   );
 
   useSlotSpring(slotRef, x, top, paused, reducedMotion);
@@ -571,6 +596,8 @@ export function GlassCard({
   } as CSSProperties;
   const gestureHint = t("Click to copy, double-click to open");
   const takeDownLabel = t("Take down");
+  const editLabel = isRecording ? t("Trim recording") : t("Markup");
+  const actionsVisible = hovered && !paused && !dragging && !gesturesLocked && !pillVisible;
 
   return (
     <div
@@ -631,11 +658,16 @@ export function GlassCard({
             longPress.current?.pointerMove(event.clientX, event.clientY);
           }}
           onPointerDown={(event) => {
-            // Only the primary button on the card body starts the press pose: a right/middle press
-            // must not trigger the 0.95 tween, and the take-down cross keeps its own 26 dp target.
-            if (event.button !== 0) return;
-            if (paused || dragging) return;
-            if ((event.target as HTMLElement).closest('[data-action="take-down"]')) return;
+            // Only the primary button on an unlocked card body starts the press pose: a right press
+            // belongs to the context menu, a middle press to nothing, and an open menu suspends
+            // every card gesture (Wave 1.1 arbitration).
+            if (
+              !shouldStartCardPress({ button: event.button, locked: gesturesLocked, paused, dragging })
+            ) {
+              return;
+            }
+            // The take-down cross and the hover capsule keep their own click targets.
+            if ((event.target as HTMLElement).closest("[data-action]")) return;
             pressedRef.current = true;
             pressOrigin.current = { x: event.clientX, y: event.clientY };
             movedPress.current = false;
@@ -657,6 +689,11 @@ export function GlassCard({
           }}
           onClick={(event) => {
             event.stopPropagation();
+            // An open menu (or the click that dismissed it) must never also copy the card.
+            if (!shouldRunCardClick(gesturesLocked)) {
+              event.preventDefault();
+              return;
+            }
             // A moved press was a drag, not a click: never copy on its release click.
             if (movedPress.current) {
               movedPress.current = false;
@@ -673,6 +710,7 @@ export function GlassCard({
           onDoubleClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
+            if (!shouldRunCardClick(gesturesLocked)) return;
             // A moved press and the first click of a quick double-click after a hold must not open.
             if (movedPress.current) {
               movedPress.current = false;
@@ -680,6 +718,17 @@ export function GlassCard({
             }
             if (suppressCardClick()) return;
             gesture.current?.doubleClick();
+          }}
+          onContextMenu={(event) => {
+            // The panel renders its own menu; the WebView2 default menu must never appear.
+            event.preventDefault();
+            event.stopPropagation();
+            if (gesturesLocked) return;
+            gesture.current?.cancel();
+            longPress.current?.cancel();
+            pressedRef.current = false;
+            syncTargets();
+            onContextMenu?.(itemRef.current, event.clientX, event.clientY);
           }}
         >
           <div
@@ -764,6 +813,93 @@ export function GlassCard({
               </svg>
             </span>
           </button>
+
+          {/*
+            Hover action capsule (Wave 1.2): three actions that used to require a right-click.
+            It is a child of the article on purpose: moving the pointer from the card into the
+            capsule never fires a pointerleave, so the capsule cannot disappear before it is
+            reached. The transparent top padding is a hover/click bridge, not dead space.
+          */}
+          {actionsVisible ? (
+            <div
+              className="glass-card__actions"
+              data-action="card-actions"
+              role="group"
+              aria-label={t("More actions")}
+              ref={attachActionsRef}
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => event.stopPropagation()}
+              onDoubleClick={(event) => event.stopPropagation()}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onContextMenu?.(itemRef.current, event.clientX, event.clientY);
+              }}
+            >
+              <button
+                type="button"
+                className="glass-card__action"
+                data-action="card-copy"
+                aria-label={t("Copy")}
+                title={t("Copy")}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  gesture.current?.cancel();
+                  pressedRef.current = false;
+                  syncTargets();
+                  handleCopy();
+                }}
+              >
+                <svg viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+                  <rect x="4" y="1.4" width="6.2" height="7.2" rx="1.2" />
+                  <path d="M8 10.4H2.6a1.2 1.2 0 0 1-1.2-1.2V4" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                className="glass-card__action"
+                data-action="card-edit"
+                aria-label={editLabel}
+                title={editLabel}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  gesture.current?.cancel();
+                  pressedRef.current = false;
+                  syncTargets();
+                  (onEdit ?? onLongPress)?.(itemRef.current);
+                }}
+              >
+                {isRecording ? (
+                  <svg viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+                    <rect x="1.2" y="2.4" width="9.6" height="7.2" rx="1.4" />
+                    <path d="M4.8 4.8v2.4l2-1.2z" className="glass-card__action-fill" />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+                    <path d="M2.2 9.8l.5-2.3 5.4-5.4 1.8 1.8-5.4 5.4z" />
+                    <path d="M6.9 3.4l1.8 1.8" />
+                  </svg>
+                )}
+              </button>
+              <button
+                type="button"
+                className="glass-card__action"
+                data-action="card-more"
+                aria-label={t("More actions")}
+                title={t("More actions")}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onMoreActions?.(itemRef.current, event.currentTarget);
+                }}
+              >
+                <svg viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+                  <circle cx="2.6" cy="6" r="0.9" className="glass-card__action-fill" />
+                  <circle cx="6" cy="6" r="0.9" className="glass-card__action-fill" />
+                  <circle cx="9.4" cy="6" r="0.9" className="glass-card__action-fill" />
+                </svg>
+              </button>
+            </div>
+          ) : null}
         </article>
       </div>
     </div>

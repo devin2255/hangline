@@ -285,6 +285,11 @@ html[data-window="annotate"][data-theme="light"] {
   cursor: crosshair;
 }
 
+/* Number badges are click-to-place: a cell cursor reads as "put one here". */
+.annotate__canvas[data-tool="number"] {
+  cursor: cell;
+}
+
 /* --- crop overlay ---------------------------------------------------------- */
 
 .annotate__crop {

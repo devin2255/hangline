@@ -17,6 +17,7 @@ import type {
   PhysicalRect,
   Settings,
   SettingsKey,
+  TakeDownSide,
   TrimTarget,
   UpdateInfo,
 } from "./types";
@@ -111,6 +112,23 @@ export function copyItem(id: string): Promise<void> {
   return invoke("copy_item", { id });
 }
 
+/**
+ * Copies one card as a file reference only (`CF_HDROP`), without the image/DIB formats (Wave 1.1).
+ *
+ * This is the card menu's explicit `Copy as file` row for both kinds; `copy_item` already falls
+ * back to it for recordings, but the two rows must stay distinguishable for images.
+ */
+export function copyItemAsFile(id: string): Promise<void> {
+  return invoke("copy_item_as_file", { id });
+}
+
+/**
+ * Reveals one card's file selected in Explorer (`explorer.exe /select,`), Wave 1.1.
+ */
+export function showInExplorer(id: string): Promise<void> {
+  return invoke("show_in_explorer", { id });
+}
+
 /** Opens one card's file with its default application. */
 export function openItem(id: string): Promise<void> {
   return invoke("open_item", { id });
@@ -124,6 +142,16 @@ export function openItem(id: string): Promise<void> {
  */
 export function takeDown(id: string, deleteFile: boolean): Promise<void> {
   return invoke("take_down", { id, deleteFile });
+}
+
+/**
+ * Takes every card on one side of `id` off the line (Wave 1.1 `take_down_side`).
+ *
+ * Side take-downs never delete files (`take_down(deleteFile = false)` semantics); Rust persists
+ * the batch once and broadcasts one state snapshot. Resolves with the number of removed cards.
+ */
+export function takeDownSide(id: string, side: TakeDownSide): Promise<number> {
+  return invoke<number>("take_down_side", { id, side });
 }
 
 /**

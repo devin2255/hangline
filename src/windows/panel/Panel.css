@@ -566,11 +566,157 @@
   outline-offset: 2px;
 }
 
+/*
+ * Hover action capsule (Wave 1.2): three compact buttons just below the card's bottom edge.
+ *
+ * The capsule is a child of `.glass-card` on purpose: the card scales on hover and its subtree is
+ * the hover region, so moving the pointer from the card onto the capsule never fires a
+ * pointerleave and the capsule cannot disappear before it is reached. The transparent 5 dp top
+ * padding is a hover/click bridge, not empty space.
+ */
+.glass-card__actions {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 5px 3px 3px;
+  border: 0.5px solid var(--glass-circle-border);
+  border-radius: 999px;
+  background: var(--glass-circle-bg);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22);
+  pointer-events: auto;
+  transform: translateX(-50%);
+  user-select: none;
+  backdrop-filter: blur(12px);
+}
+
+.glass-card__action {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--pill-text);
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.glass-card__action:hover {
+  /* Neutral mix: readable on both the dark and the light glass-circle background. */
+  background: rgba(128, 128, 128, 0.22);
+}
+
+.glass-card__action:focus-visible {
+  outline: 1.5px solid var(--glass-border-hover);
+  outline-offset: -2px;
+}
+
+.glass-card__action svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.3;
+}
+
+.glass-card__action .glass-card__action-fill {
+  fill: currentColor;
+  stroke: none;
+}
+
+/*
+ * In-panel card context menu (Wave 1.1): compact 26 dp rows, at most 6 rows + 3 separators ≈ 178 dp.
+ *
+ * The menu is clamped inside the 189/210/246 dp panel by the pure model (`lib/cardMenu.ts`), so it
+ * needs no scroll model. It is a sibling of the card viewport at the panel root: cards translate
+ * and scale, the menu must not. Its DOM box is reported in the click-through hit rects (see
+ * `interactiveRects`), otherwise the menu would be visible but unclickable.
+ */
+.panel__card-menu {
+  position: absolute;
+  z-index: 9;
+  box-sizing: border-box;
+  border: 0.5px solid var(--glass-border);
+  border-radius: 9px;
+  background: var(--pill-bg);
+  box-shadow:
+    0 10px 22px rgba(0, 0, 0, 0.3),
+    inset 0 0.75px 0 rgba(255, 255, 255, 0.4);
+  color: var(--pill-text);
+  user-select: none;
+  backdrop-filter: blur(16px) saturate(1.1);
+}
+
+.panel__card-menu--submenu {
+  z-index: 10;
+}
+
+.panel__card-menu-row {
+  display: flex;
+  box-sizing: border-box;
+  width: 100%;
+  height: 26px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: default;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.panel__card-menu-row:hover {
+  background: rgba(128, 128, 128, 0.22);
+}
+
+.panel__card-menu-row[data-disabled="true"] {
+  cursor: default;
+  opacity: 0.42;
+}
+
+.panel__card-menu-row[data-disabled="true"]:hover {
+  background: transparent;
+}
+
+.panel__card-menu-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.panel__card-menu-chevron {
+  flex: none;
+  font-size: 10px;
+  opacity: 0.72;
+}
+
+.panel__card-menu-separator {
+  box-sizing: border-box;
+  height: 6px;
+  margin: 0 2px;
+  border-top: 0.5px solid var(--glass-border);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .panel,
   .glass-card,
   .glass-card__take-down,
   .glass-card__take-down-glyph,
+  .glass-card__action,
   .copied-pill,
   .panel__update {
     transition: none;

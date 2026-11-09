@@ -69,6 +69,14 @@ export type ItemKind =
   | "recording"
   | "watchedFolder";
 
+/**
+ * Side of a card for the batch take-down (`take_down_side`, Wave 1.1).
+ *
+ * `"before"` removes the older cards (visually left of the target), `"after"` the newer ones; the
+ * target card itself stays on the line and the files are never deleted.
+ */
+export type TakeDownSide = "before" | "after";
+
 /** How many cards stay on the line (spec 3.6: `"fit"` or 25/50/100). */
 export type KeepOnLine = "fit" | 25 | 50 | 100;
 

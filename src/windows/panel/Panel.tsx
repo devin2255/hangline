@@ -19,25 +19,43 @@
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
+import { CardContextMenu } from "../../components/CardContextMenu";
 import { GlassCard } from "../../components/GlassCard";
 import { Rope } from "../../components/Rope";
 import {
   afterDrag,
+  copyItem,
+  copyItemAsFile,
   getDoubleClickIntervalMs,
   getEditorState,
   getPendingUpdate,
   installUpdate,
   openAnnotate,
+  openItem,
   openTrim,
   reportPanelReady,
   setHitRects,
   setPanelBusy,
+  showInExplorer,
   startDrag,
   startFall,
   startFly,
   syncPanelGeometry,
   takeCaptureOrigin,
+  takeDown,
+  takeDownSide,
 } from "../../lib/ipc";
+import {
+  interactiveRects,
+  menuHeightFor,
+  menuItemsFor,
+  openCardMenu,
+  setSubmenuOpen,
+  shouldSuppressCardGesture,
+  type CardMenuState,
+  type CssBox,
+  type MenuActionId,
+} from "../../lib/cardMenu";
 import { nextGustDelay } from "../../lib/gust";
 import { FALL, FLY } from "../../lib/motion";
 import {
@@ -167,6 +185,15 @@ const FALL_WATCHDOG_MS = FALL.durationMs + 950;
 const SPRINGING_CLASS = "panel--springing";
 
 /**
+ * How long a click that dismissed the card menu stays swallowed (ms).
+ *
+ * The card menu closes on `pointerdown` outside it, and the `click` that follows the same press
+ * would otherwise reach the card underneath and schedule its delayed copy. The guard is shorter
+ * than the system double-click interval, so it only ever covers the dismissing press.
+ */
+const MENU_DISMISS_GUARD_MS = 400;
+
+/**
  * P4-5 dev-only offset trace capacity: one sample per frame is ~300 samples for a 5 s sweep, so
  * 2000 samples cover a much longer gesture without unbounded memory.
  */
@@ -254,6 +281,8 @@ export function Panel() {
   const busyRef = useRef(false);
   /** A pointer press/drag/menu gesture is in flight in this panel window. */
   const pointerBusyRef = useRef(false);
+  /** A card context menu is open in this panel window (Wave 1.1): the line must not tuck. */
+  const menuOpenRef = useRef(false);
   /** The Rust-tracked markup editor window is open (P3-4). */
   const editorOpenRef = useRef(false);
   /** The Rust-tracked trim window is open (P3-6; same busy contract as the markup editor). */
@@ -265,7 +294,11 @@ export function Panel() {
   /** The trim window is open: same busy/motion contract as the markup editor. */
   const [trimOpen, setTrimOpen] = useState(false);
   const syncBusy = useCallback(() => {
-    const next = pointerBusyRef.current || editorOpenRef.current || trimOpenRef.current;
+    const next =
+      pointerBusyRef.current ||
+      editorOpenRef.current ||
+      trimOpenRef.current ||
+      menuOpenRef.current;
     setBusyReported(next);
     if (next === busyRef.current) return;
     busyRef.current = next;
@@ -277,6 +310,40 @@ export function Panel() {
     (next: boolean) => {
       pointerBusyRef.current = next;
       syncBusy();
+    },
+    [syncBusy],
+  );
+
+  /**
+   * Opens the markup editor (images) or the trim window (recordings).
+   *
+   * Shared by the long-press gesture, the hover capsule's middle action and the card menu's
+   * Markup/Trim row, so the optimistic busy flag (the line must not tuck in the gap before Rust's
+   * `editor-state`/`trim-state` event) is written exactly once.
+   */
+  const openEditorFor = useCallback(
+    (item: Item) => {
+      if (item.kind === "recording") {
+        trimOpenRef.current = true;
+        setTrimOpen(true);
+        syncBusy();
+        void openTrim(item.id).catch((error: unknown) => {
+          console.warn(`Hangline panel: cannot open the trim window for ${item.id}`, error);
+          trimOpenRef.current = false;
+          setTrimOpen(false);
+          syncBusy();
+        });
+        return;
+      }
+      editorOpenRef.current = true;
+      setEditorOpen(true);
+      syncBusy();
+      void openAnnotate(item.id).catch((error: unknown) => {
+        console.warn(`Hangline panel: cannot open the markup editor for ${item.id}`, error);
+        editorOpenRef.current = false;
+        setEditorOpen(false);
+        syncBusy();
+      });
     },
     [syncBusy],
   );
@@ -319,6 +386,127 @@ export function Panel() {
   /** Latest layout inputs for the async fly-start path (it runs after a reveal/await). */
   const layoutRef = useRef({ items, size, panelWidth, fits, lineLimit, offset });
   layoutRef.current = { items, size, panelWidth, fits, lineLimit, offset };
+
+  // --- card context menu + hover action capsule (Wave 1.1 / 1.2) ------------------------------
+  const [menu, setMenu] = useState<CardMenuState | null>(null);
+  /**
+   * A click that dismissed the menu is swallowed for {@link MENU_DISMISS_GUARD_MS} so it cannot
+   * also schedule the card's delayed copy/open underneath.
+   */
+  const [menuDismissGuard, setMenuDismissGuard] = useState(false);
+  const menuDismissGuardTimer = useRef<number | null>(null);
+  /** DOM boxes of the menu, its submenu and the hover capsule: click islands for the hit tester. */
+  const menuElRef = useRef<HTMLDivElement | null>(null);
+  const submenuElRef = useRef<HTMLDivElement | null>(null);
+  const actionsElRef = useRef<HTMLElement | null>(null);
+  /**
+   * Immediate hit-rect report for overlays that appear/disappear between layout signals.
+   *
+   * The capsule mounts on hover (a child-local state change: the panel does not re-render), so a
+   * frame-coalesced report could be ~1 frame late; the capsule would then briefly be visible but
+   * still inside the click-through area. Routed through a ref because `reportNow` is declared later
+   * in the component (the ref is assigned on every render once it exists).
+   */
+  const reportNowRef = useRef<() => void>(() => {});
+  /** True while card gestures must stay suspended (menu open or its dismiss guard). */
+  const menuSuppressed = shouldSuppressCardGesture(menu) || menuDismissGuard;
+
+  const setMenuBusy = useCallback(
+    (open: boolean) => {
+      menuOpenRef.current = open;
+      syncBusy();
+    },
+    [syncBusy],
+  );
+
+  const setMenuElement = useCallback((element: HTMLDivElement | null) => {
+    menuElRef.current = element;
+    scheduleReportRef.current();
+    reportNowRef.current();
+  }, []);
+  const setSubmenuElement = useCallback((element: HTMLDivElement | null) => {
+    submenuElRef.current = element;
+    scheduleReportRef.current();
+    reportNowRef.current();
+  }, []);
+  /** Keeps the hover capsule's rect in the click-through hit-rect union while it is mounted. */
+  const setActionsElement = useCallback((element: HTMLElement | null) => {
+    actionsElRef.current = element;
+    scheduleReportRef.current();
+    reportNowRef.current();
+  }, []);
+
+  const clearMenuDismissGuard = useCallback(() => {
+    if (menuDismissGuardTimer.current !== null) {
+      window.clearTimeout(menuDismissGuardTimer.current);
+      menuDismissGuardTimer.current = null;
+    }
+    setMenuDismissGuard(false);
+  }, []);
+
+  /**
+   * Closes the menu. `guard` is used when the close was caused by a pointerdown outside the menu:
+   * the click that follows the same press must not reach the card underneath.
+   */
+  const closeCardMenu = useCallback(
+    (guard = false) => {
+      const wasOpen = menuOpenRef.current;
+      setMenuBusy(false);
+      setMenu(null);
+      if (guard && wasOpen) {
+        setMenuDismissGuard(true);
+        if (menuDismissGuardTimer.current !== null) {
+          window.clearTimeout(menuDismissGuardTimer.current);
+        }
+        menuDismissGuardTimer.current = window.setTimeout(() => {
+          menuDismissGuardTimer.current = null;
+          setMenuDismissGuard(false);
+        }, MENU_DISMISS_GUARD_MS);
+      }
+      scheduleReportRef.current();
+    },
+    [setMenuBusy],
+  );
+
+  /** Opens the menu for `item` at a panel-client CSS anchor (pointer or capsule corner). */
+  const openCardMenuAt = useCallback(
+    (item: Item, anchorClientX: number, anchorClientY: number) => {
+      const list = layoutRef.current.items;
+      const index = list.findIndex((candidate) => candidate.id === item.id);
+      if (index < 0) return;
+      const nodes = menuItemsFor(item, { index, total: list.length });
+      // The reveal/tuck transform moves every client rect; absolute children are positioned in the
+      // panel's untransformed client space, so the anchor must be un-translated first.
+      const offsetY = panelRef.current ? currentTranslateY(panelRef.current) : 0;
+      clearMenuDismissGuard();
+      setMenuBusy(true);
+      setMenu(
+        openCardMenu({
+          itemId: item.id,
+          anchorX: anchorClientX,
+          anchorY: anchorClientY - offsetY,
+          menuHeight: menuHeightFor(nodes),
+          panelWidth: window.innerWidth,
+          panelHeight: window.innerHeight,
+        }),
+      );
+      scheduleReportRef.current();
+    },
+    [clearMenuDismissGuard, setMenuBusy],
+  );
+
+  /** Opens the same menu anchored to the hover capsule's `More actions` button. */
+  const openCardMenuAtElement = useCallback(
+    (item: Item, anchor: HTMLElement) => {
+      const rect = anchor.getBoundingClientRect();
+      openCardMenuAt(item, rect.left, rect.bottom + 2);
+    },
+    [openCardMenuAt],
+  );
+
+  const setMenuSubmenu = useCallback((open: boolean) => {
+    setMenu((current) => setSubmenuOpen(current, open));
+  }, []);
   /** Id of the overlay card (mirrored in a ref so async paths never read a stale state). */
   const flyingIdRef = useRef<string | null>(null);
   /** A flight waiting for the line to be revealed (new-item `state` arrives before `reveal`). */
@@ -407,13 +595,15 @@ export function Panel() {
     if (!track) return;
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
+      // Scrolling moves the line under the menu; a menu anchored to the old layout must close.
+      closeCardMenu(false);
       setScrollOffset((current) =>
         nextScrollOffset(current, event.deltaX, event.deltaY, maxOffset),
       );
     };
     track.addEventListener("wheel", onWheel, { passive: false });
     return () => track.removeEventListener("wheel", onWheel);
-  }, [maxOffset]);
+  }, [closeCardMenu, maxOffset]);
 
   // Every offset change is logged with its visible range; the runtime evidence reads these lines
   // and `data-offset`/`data-range-*` from the panel DOM.
@@ -794,6 +984,130 @@ export function Panel() {
   );
 
   /**
+   * Menu-driven single take-down: start the fall overlay first (same as the card's own cross),
+   * then ask Rust; a rejection restores the hidden card through the same rollback path.
+   */
+  const takeDownItem = useCallback(
+    (item: Item, deleteFile: boolean) => {
+      handleFallStart(item, cardRefs.current.get(item.id) ?? null);
+      void takeDown(item.id, deleteFile).catch((error: unknown) => {
+        handleTakeDownFailed(item.id, error);
+      });
+    },
+    [handleFallStart, handleTakeDownFailed],
+  );
+
+  /**
+   * Executes one card-menu row. The menu closes first so a slow/open IPC never leaves it on
+   * screen; every failure is logged (the menu has no error surface, matching the rest of the
+   * card actions, which log and keep the card).
+   */
+  const runMenuAction = useCallback(
+    (action: MenuActionId) => {
+      const itemId = menu?.itemId ?? "";
+      const item = layoutRef.current.items.find((candidate) => candidate.id === itemId) ?? null;
+      if (item && (action === "markup" || action === "trim")) {
+        // Set the editor busy flag *before* clearing the menu's: the line must stay expanded
+        // across the handoff, not flap for one IPC round-trip.
+        openEditorFor(item);
+        closeCardMenu(false);
+        return;
+      }
+      closeCardMenu(false);
+      if (!item) return;
+      switch (action) {
+        case "copyImage":
+          void copyItem(item.id).catch((error: unknown) => {
+            console.warn(`Hangline panel: copy image of ${item.path} failed`, error);
+          });
+          return;
+        case "copyAsFile":
+          void copyItemAsFile(item.id).catch((error: unknown) => {
+            console.warn(`Hangline panel: copy as file of ${item.path} failed`, error);
+          });
+          return;
+        case "open":
+          void openItem(item.id).catch((error: unknown) => {
+            console.warn(`Hangline panel: open of ${item.path} failed`, error);
+          });
+          return;
+        case "showInExplorer":
+          void showInExplorer(item.id).catch((error: unknown) => {
+            console.warn(`Hangline panel: show in Explorer of ${item.path} failed`, error);
+          });
+          return;
+        case "takeDownRecycle":
+          takeDownItem(item, true);
+          return;
+        case "takeDownRemove":
+          takeDownItem(item, false);
+          return;
+        case "takeDownLeft":
+        case "takeDownRight": {
+          const side = action === "takeDownLeft" ? "before" : "after";
+          void takeDownSide(item.id, side)
+            .then((count) => {
+              console.info(
+                `Hangline panel: take_down_side ${side} of ${item.id} took down ${count} card(s)`,
+              );
+            })
+            .catch((error: unknown) => {
+              console.warn(`Hangline panel: take_down_side ${side} of ${item.id} failed`, error);
+            });
+          return;
+        }
+      }
+    },
+    [closeCardMenu, menu, openEditorFor, takeDownItem],
+  );
+
+  // The menu is closed by an outside press, Escape (best effort: the panel is focusable:false),
+  // a wheel scroll or the line tucking. Listeners exist only while the menu is open.
+  useEffect(() => {
+    if (!menu) return;
+    const isInsideMenu = (target: EventTarget | null): boolean => {
+      if (!(target instanceof Node)) return false;
+      return Boolean(menuElRef.current?.contains(target) || submenuElRef.current?.contains(target));
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      if (isInsideMenu(event.target)) return;
+      // The dismissing press must not also copy/open the card under the pointer.
+      closeCardMenu(true);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      closeCardMenu(false);
+    };
+    const onBlur = () => closeCardMenu(false);
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") closeCardMenu(false);
+    };
+    // The panel is click-through around the menu: a pointer that leaves the window cannot deliver
+    // the outside pointerdown, so leaving the window closes the menu too.
+    const onPointerLeave = () => closeCardMenu(false);
+    document.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("blur", onBlur);
+    document.addEventListener("visibilitychange", onVisibility);
+    document.documentElement.addEventListener("pointerleave", onPointerLeave);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("blur", onBlur);
+      document.removeEventListener("visibilitychange", onVisibility);
+      document.documentElement.removeEventListener("pointerleave", onPointerLeave);
+    };
+  }, [closeCardMenu, menu]);
+
+  // The card the menu belongs to can be removed by a state broadcast (tray prune, side take-down,
+  // editor save): a menu pointing at a missing item must close instead of acting on stale data.
+  useEffect(() => {
+    if (!menu) return;
+    if (!items.some((item) => item.id === menu.itemId)) closeCardMenu(false);
+  }, [closeCardMenu, items, menu]);
+
+  /**
    * State-diff path (P2-6): plans falls for ids removed in one snapshot.
    *
    * Tray "take everything down", a drag prune and file-gone deletions can remove several cards at
@@ -1117,6 +1431,8 @@ export function Panel() {
 
   /** Rust asked to hide the line: CSS ease-in 220 ms; Rust hides the window ~300 ms later. */
   const tuck = useCallback(() => {
+    // A menu belongs to the revealed line: tucking hides its anchor and any click islands.
+    closeCardMenu(false);
     stopSpring();
     const panel = panelRef.current;
     panel?.classList.remove(SPRINGING_CLASS);
@@ -1143,7 +1459,7 @@ export function Panel() {
       };
       window.requestAnimationFrame(sample);
     }
-  }, [applyOffset, stopSpring, tuckedOffset]);
+  }, [applyOffset, closeCardMenu, stopSpring, tuckedOffset]);
 
   /** Rust asked to show the line: spring from tucked to 0 (immediate under reduced motion). */
   const reveal = useCallback(
@@ -1404,7 +1720,12 @@ export function Panel() {
       pointerBusyRef.current = false;
       editorOpenRef.current = false;
       trimOpenRef.current = false;
+      menuOpenRef.current = false;
       busyRef.current = false;
+      if (menuDismissGuardTimer.current !== null) {
+        window.clearTimeout(menuDismissGuardTimer.current);
+        menuDismissGuardTimer.current = null;
+      }
       void setPanelBusy(false).catch(() => undefined);
     };
   }, []);
@@ -1415,8 +1736,12 @@ export function Panel() {
    */
   function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>): void {
     if (event.button !== 0) return;
+    // An open menu (or the press that just dismissed it) must not start a drag on the card
+    // underneath; the same press only closes the menu.
+    if (menuSuppressed) return;
     const target = event.target instanceof Element ? event.target : null;
-    if (!target || target.closest('[data-action="take-down"]')) return;
+    // The take-down cross and the hover capsule own their presses; they are not drag origins.
+    if (!target || target.closest("[data-action]")) return;
     const slot = target.closest<HTMLElement>("[data-item-id]");
     const itemId = slot?.dataset.itemId;
     if (!slot || !itemId) return;
@@ -1444,6 +1769,12 @@ export function Panel() {
 
   /** Starts the native drag exactly once, as soon as the press travels more than 4 dp. */
   function handlePointerMove(event: ReactPointerEvent<HTMLDivElement>): void {
+    if (menuSuppressed) {
+      // A menu was open when this press started (or it just dismissed it): never hand the press
+      // to the OLE drag loop.
+      dragOriginRef.current = null;
+      return;
+    }
     if (suppressDragRef.current) {
       // The press became a hold and opened the editor: never hand it to the OLE drag loop too.
       dragOriginRef.current = null;
@@ -1479,33 +1810,9 @@ export function Panel() {
     (item: Item) => {
       // Whatever the kind, a completed hold must not turn into a native drag on the same press.
       suppressDragRef.current = true;
-      if (item.kind === "recording") {
-        // Optimistic trim busy: the line must not tuck in the gap between the hold and
-        // `trim-state`. A failed open rolls the flag back; a successful one is confirmed by Rust.
-        trimOpenRef.current = true;
-        setTrimOpen(true);
-        syncBusy();
-        void openTrim(item.id).catch((error: unknown) => {
-          console.warn(`Hangline panel: cannot open the trim window for ${item.id}`, error);
-          trimOpenRef.current = false;
-          setTrimOpen(false);
-          syncBusy();
-        });
-        return;
-      }
-      // Optimistic busy: the line must not tuck in the gap between the hold and `editor-state`.
-      // A failed open rolls the flag back; a successful one is confirmed by the Rust event.
-      editorOpenRef.current = true;
-      setEditorOpen(true);
-      syncBusy();
-      void openAnnotate(item.id).catch((error: unknown) => {
-        console.warn(`Hangline panel: cannot open the markup editor for ${item.id}`, error);
-        editorOpenRef.current = false;
-        setEditorOpen(false);
-        syncBusy();
-      });
+      openEditorFor(item);
     },
-    [syncBusy],
+    [openEditorFor],
   );
 
   // Report a pressed/menu gesture so Rust never tucks the line out from under it.
@@ -1602,7 +1909,7 @@ export function Panel() {
       suppressTransform(card);
     }
 
-    const rects: PhysicalRect[] = [];
+    const cardBoxes: CssBox[] = [];
     try {
       for (const card of cards) {
         const rect = card.getBoundingClientRect();
@@ -1629,17 +1936,7 @@ export function Panel() {
             });
           }
         }
-        const left = Math.max(viewport.left, rect.left);
-        const top = Math.max(viewport.top, rect.top);
-        const right = Math.min(viewport.right, rect.right);
-        const bottom = Math.min(viewport.bottom, rect.bottom);
-        if (right - left < 1 || bottom - top < 1) continue;
-        rects.push({
-          x: Math.round(left * scale),
-          y: Math.round((top - offsetY) * scale),
-          w: Math.round((right - left) * scale),
-          h: Math.round((bottom - top) * scale),
-        });
+        cardBoxes.push({ x: rect.left, y: rect.top, w: rect.width, h: rect.height });
       }
     } finally {
       for (const entry of saved) {
@@ -1647,20 +1944,35 @@ export function Panel() {
         else entry.element.style.setProperty(entry.property, entry.value, entry.priority);
       }
     }
-    // P5-2: the update notice lives outside the card track; its `Install update` button must be a
-    // clickable island in the click-through panel, so report it with the same physical conversion.
-    const notice = updateNoticeRef.current;
-    if (notice) {
-      const rect = notice.getBoundingClientRect();
-      if (rect.width >= 1 && rect.height >= 1) {
-        rects.push({
-          x: Math.round(rect.left * scale),
-          y: Math.round((rect.top - offsetY) * scale),
-          w: Math.round(rect.width * scale),
-          h: Math.round(rect.height * scale),
-        });
-      }
-    }
+
+    // Overlays are clickable islands outside the card track. The hover capsule hangs below its
+    // card, the context menu floats over the cards (its submenu is measured separately), and the
+    // P5-2 update notice's `Install update` button sits at the panel bottom. They are already
+    // clamped/positioned inside the panel, so they are added without viewport clipping; a closed
+    // overlay is `null` and contributes nothing (an empty array is still reported on close).
+    const measure = (element: HTMLElement | null): CssBox | null => {
+      if (!element || !element.isConnected) return null;
+      const rect = element.getBoundingClientRect();
+      if (rect.width < 1 || rect.height < 1) return null;
+      return { x: rect.left, y: rect.top, w: rect.width, h: rect.height };
+    };
+    const rects = interactiveRects({
+      cards: cardBoxes,
+      viewport: {
+        x: viewport.left,
+        y: viewport.top,
+        w: viewport.width,
+        h: viewport.height,
+      },
+      overlays: [
+        measure(actionsElRef.current),
+        measure(menuElRef.current),
+        measure(submenuElRef.current),
+        measure(updateNoticeRef.current),
+      ],
+      scale,
+      offsetY,
+    });
     await setHitRects(rects);
   }, []);
 
@@ -1674,6 +1986,11 @@ export function Panel() {
     reportChain.current = run;
     return run;
   }, [collectHitRects]);
+  // Overlay ref callbacks (capsule/menu/submenu) fire during commit, before layout effects; they
+  // route through this ref so a newly mounted capsule/menu is reported without waiting for a frame.
+  reportNowRef.current = () => {
+    void reportNow();
+  };
 
   /** Coalesces layout/scroll signals into one report per animation frame. */
   const scheduleReport = useCallback(() => {
@@ -1690,6 +2007,14 @@ export function Panel() {
   useEffect(() => {
     scheduleReportRef.current = scheduleReport;
   }, [scheduleReport]);
+
+  // The menu is a click island in the click-through panel. Report it immediately when it opens and
+  // when it closes: the close report replaces the old menu rect (possibly with an empty array) so a
+  // dismissed menu can never keep swallowing clicks over the desktop. The hover capsule reports
+  // itself through its ref callback (`setActionsElement`).
+  useEffect(() => {
+    void reportNow();
+  }, [menu, reportNow]);
 
   // P2-5/P2-6: re-report the hit rects when the fly/fall hidden sets change so the cards enter and
   // leave the click-through area immediately (a failed take-down rollback must not leave a stale
@@ -1958,6 +2283,18 @@ export function Panel() {
     transform: `translateX(${shift}px)`,
   } as CSSProperties;
 
+  // Rows for the open menu (Wave 1.1). Built from the *live* item list so the side take-downs are
+  // disabled correctly when the line changes under an open menu; a menu whose item disappeared is
+  // closed by the effect above and renders nothing.
+  const menuItem = menu ? (items.find((item) => item.id === menu.itemId) ?? null) : null;
+  const menuNodes =
+    menu && menuItem
+      ? menuItemsFor(menuItem, {
+          index: items.findIndex((item) => item.id === menuItem.id),
+          total: items.length,
+        })
+      : null;
+
   // P5-2 notice text. The pill is deliberately small: availability + one action, manual-check
   // feedback, or the coarse download percentage while installing.
   const updatePercent =
@@ -2007,6 +2344,10 @@ export function Panel() {
       data-origin-x={panelOrigin.x}
       data-origin-y={panelOrigin.y}
       data-falling-count={fallingIds.size}
+      data-card-menu-open={menu !== null}
+      // The panel is a custom chrome: the WebView2 default context menu must never appear, not
+      // even on the transparent studio area around the line (Wave 1.1).
+      onContextMenu={(event) => event.preventDefault()}
     >
       <div
         className="panel__viewport"
@@ -2048,6 +2389,11 @@ export function Panel() {
                 onFallStart={handleFallStart}
                 onTakeDownFailed={handleTakeDownFailed}
                 onLongPress={handleLongPress}
+                onEdit={openEditorFor}
+                onContextMenu={openCardMenuAt}
+                onMoreActions={openCardMenuAtElement}
+                onActionsElement={setActionsElement}
+                gesturesLocked={menuSuppressed}
                 reducedMotion={reducedMotion}
                 doubleClickMs={doubleClickMs}
                 dragging={draggingId === item.id}
@@ -2084,6 +2430,24 @@ export function Panel() {
             </button>
           ) : null}
         </div>
+      ) : null}
+      {/*
+        Card context menu (Wave 1.1): rendered inside the panel window (no second window, no window
+        resize). `CardContextMenu` measures itself through `setMenuElement`/`setSubmenuElement`; the
+        panel folds those DOM boxes into the click-through hit rects so the menu is clickable.
+      */}
+      {menu && menuNodes ? (
+        <CardContextMenu
+          items={menuNodes}
+          x={menu.x}
+          y={menu.y}
+          submenuOpen={menu.submenuOpen}
+          panelWidth={window.innerWidth}
+          onSubmenuOpenChange={setMenuSubmenu}
+          onAction={runMenuAction}
+          menuRef={setMenuElement}
+          submenuRef={setSubmenuElement}
+        />
       ) : null}
     </div>
   );

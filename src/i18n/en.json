@@ -52,5 +52,21 @@
   "Checking for updates…": "Checking for updates…",
   "Couldn't check for updates": "Couldn't check for updates",
   "Installing update…": "Installing update…",
-  "Update failed": "Update failed"
+  "Update failed": "Update failed",
+  "Copy image": "Copy image",
+  "Copy as file": "Copy as file",
+  "Open": "Open",
+  "Show in Explorer": "Show in Explorer",
+  "More actions": "More actions",
+  "Copy": "Copy",
+  "Move to Recycle Bin": "Move to Recycle Bin",
+  "Remove from line": "Remove from line",
+  "Take down to the left": "Take down to the left",
+  "Take down to the right": "Take down to the right",
+  "Mosaic": "Mosaic",
+  "Blur": "Blur",
+  "Number": "Number",
+  "Highlight": "Highlight",
+  "Failed to open menu": "Failed to open menu",
+  "Nothing to take down": "Nothing to take down"
 }

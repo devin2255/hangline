@@ -24,6 +24,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import {
+  HIGHLIGHT_COLOR,
   PEN_COLORS,
   PEN_WIDTHS,
   addShape,
@@ -34,6 +35,7 @@ import {
   cropOutput,
   fitContain,
   moveCrop,
+  nextNumberValue,
   redo,
   renderShapes,
   setCrop,
@@ -47,6 +49,7 @@ import {
   type Tool,
 } from "../../lib/annotation";
 import { assetUrl } from "../../lib/assetUrl";
+import { backout, type BackoutResult } from "../../lib/editorBackout";
 import { editorKeys } from "../../lib/editorKeys";
 import { t } from "../../lib/i18n";
 import {
@@ -66,7 +69,17 @@ import "./Annotate.css";
 const STAGE_PADDING = 16;
 
 /** The toolbar tools, in display order (crop is a mode and comes last). */
-const TOOLS: readonly Tool[] = ["pen", "rect", "arrow", "text", "crop"];
+const TOOLS: readonly Tool[] = [
+  "pen",
+  "rect",
+  "arrow",
+  "text",
+  "highlight",
+  "mosaic",
+  "blur",
+  "number",
+  "crop",
+];
 
 /** Crop handles (edges + corners), with the edges each one moves. */
 const CROP_HANDLES = ["nw", "n", "ne", "e", "se", "s", "sw", "w"] as const;
@@ -116,6 +129,14 @@ function toolLabel(tool: Tool): string {
       return t("Arrow");
     case "text":
       return t("Text");
+    case "highlight":
+      return t("Highlight");
+    case "mosaic":
+      return t("Mosaic");
+    case "blur":
+      return t("Blur");
+    case "number":
+      return t("Number");
     case "crop":
       return t("Crop");
   }
@@ -146,7 +167,8 @@ function resizeCrop(rect: CropRect, handle: CropHandle, point: Point): CropRect 
 
 /** Whether a committed shape has enough geometry to be visible (drops click-sized rect/arrow). */
 function isValidShape(shape: Shape): boolean {
-  if (shape.tool === "pen") return shape.points.length >= 1;
+  // Pen paths and number badges are valid from their single anchor point: a click is a dot/badge.
+  if (shape.tool === "pen" || shape.tool === "number") return shape.points.length >= 1;
   if (shape.points.length < 2) return false;
   const [start, end] = shape.points;
   const distance = Math.hypot(end[0] - start[0], end[1] - start[1]);
@@ -212,6 +234,8 @@ export function Annotate() {
   const cropDraftRef = useRef<CropRect | null>(null);
   /** Latest text entry (blur + Enter can both fire for one commit). */
   const textEditorRef = useRef<TextEditor | null>(null);
+  /** Latest selected tool (the window-level Esc/right-click handler is registered once). */
+  const toolRef = useRef<Tool>("pen");
   /** The pointer gesture in flight (`null` when idle). */
   const dragRef = useRef<DragState | null>(null);
   /** True while the current mounted editor still accepts state updates (delayed promises). */
@@ -358,6 +382,7 @@ export function Annotate() {
     (annotation?.crop ?? null) !== null ||
     (textEditor !== null && textEditor.value.trim() !== "");
   dirtyRef.current = dirty;
+  toolRef.current = tool;
 
   // Mirror the dirty flag to Rust: `open_annotate` focuses the existing window instead of
   // discarding unsaved edits when a second card is long-pressed.
@@ -452,6 +477,8 @@ export function Annotate() {
     (next: Tool) => {
       setTool(next);
       closeTextEditor();
+      // The highlight tool has its own default (amber); picking a swatch afterwards overrides it.
+      if (next === "highlight") setColor(HIGHLIGHT_COLOR);
       if (next === "crop") {
         setCropDraftBoth(annotation?.crop ?? null);
       } else {
@@ -523,7 +550,12 @@ export function Annotate() {
         tool,
         color,
         width,
-        points: tool === "pen" ? [point] : [point, point],
+        // Pen and number shapes are anchored at a single point (number is click-to-place); the
+        // rectangle tools start from a zero-size rectangle that the drag expands.
+        points: tool === "pen" || tool === "number" ? [point] : [point, point],
+        // Number badges take their value from the committed shapes so undo reuses a number instead
+        // of skipping it (see nextNumberValue).
+        ...(tool === "number" ? { label: String(nextNumberValue(annotation.shapes)) } : {}),
       };
       setDraftBoth(shape);
       dragRef.current = { mode: "shape" };
@@ -560,6 +592,9 @@ export function Annotate() {
             return;
           }
           setDraftBoth({ ...current, points: [...current.points, point] });
+        } else if (current.tool === "number") {
+          // Click-to-place: the badge stays at its anchor while the pointer moves.
+          return;
         } else {
           setDraftBoth({ ...current, points: [current.points[0], point] });
         }
@@ -611,6 +646,9 @@ export function Annotate() {
           if (!last || Math.hypot(point[0] - last[0], point[1] - last[1]) >= 0.5) {
             final = { ...current, points: [...current.points, point] };
           }
+        } else if (current.tool === "number") {
+          // Keep the click point: a number badge must not be dragged into a rectangle.
+          final = current;
         } else {
           final = { ...current, points: [current.points[0], point] };
         }
@@ -700,8 +738,14 @@ export function Annotate() {
       canvas.height = annotation.height;
     }
     context.clearRect(0, 0, annotation.width, annotation.height);
-    renderShapes(context, draft ? [...annotation.shapes, draft] : annotation.shapes, 1);
-  }, [annotation, draft, display.height, display.width]);
+    // The loaded image is the base for the pixel tools (mosaic/blur sample it, never the overlay).
+    renderShapes(
+      context,
+      draft ? [...annotation.shapes, draft] : annotation.shapes,
+      1,
+      imageRef.current ?? undefined,
+    );
+  }, [annotation, draft, display.height, display.width, imageReady]);
 
   /** Saves the composited full-resolution PNG through Rust and closes the editor. */
   const save = useCallback(async () => {
@@ -722,7 +766,8 @@ export function Annotate() {
       context.drawImage(image, -output.offsetX, -output.offsetY);
       context.save();
       context.translate(-output.offsetX, -output.offsetY);
-      renderShapes(context, current.shapes, 1);
+      // Same base argument as the preview: the exported PNG must composite pixel tools identically.
+      renderShapes(context, current.shapes, 1, image);
       context.restore();
       const dataUrl = canvas.toDataURL("image/png");
       const separator = dataUrl.indexOf(",");
@@ -790,10 +835,79 @@ export function Annotate() {
     };
   }, []);
 
-  // Window-level shortcuts (Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z / Ctrl+S / Esc). The textarea owns its
-  // own keys (Enter commits, Esc cancels the text entry), so its events are not interpreted here.
+  /**
+   * Applies one back-out decision from the pure reducer (`editorBackout.ts`).
+   *
+   * The reducer decides *which* layer consumed the input; this function only performs the DOM/state
+   * side effects. Layers 1–3 are consumed inside the editor; the bottom layer hands over to the
+   * existing cancel flow so a dirty image still asks before discarding.
+   */
+  const applyBackout = useCallback(
+    (result: BackoutResult) => {
+      if (result.effect.type === "consumed") {
+        if (textEditorRef.current) closeTextEditor();
+        if (toolRef.current !== result.state.tool) {
+          setTool(result.state.tool);
+          setCropDraftBoth(null);
+        }
+        return;
+      }
+      if (result.effect.type === "confirm-discard") {
+        requestCancel();
+        return;
+      }
+      // "cancel": nothing left to back out and nothing to lose — close without asking.
+      closingRef.current = true;
+      void closeEditor().catch((error: unknown) => {
+        console.warn("Hangline annotate: close_editor after Esc/right-click failed", error);
+      });
+    },
+    [closeTextEditor, requestCancel, setCropDraftBoth],
+  );
+
+  /**
+   * Esc and right-click: one layered back-out (W1.4).
+   *
+   * Text entry → crop mode → non-default tool → dirty-confirming cancel. A drag gesture in
+   * flight is the most transient thing on screen, so it is dropped first instead of walking the
+   * stack.
+   */
+  const handleBack = useCallback(() => {
+    if (savingRef.current) return;
+    if (dragRef.current) {
+      dragRef.current = null;
+      setDraftBoth(null);
+      setCropDraftBoth(toolRef.current === "crop" ? (annotationRef.current?.crop ?? null) : null);
+      return;
+    }
+    applyBackout(
+      backout({
+        textEditing: textEditorRef.current !== null,
+        cropMode: toolRef.current === "crop",
+        tool: toolRef.current,
+        dirty: dirtyRef.current,
+      }),
+    );
+  }, [applyBackout, setCropDraftBoth, setDraftBoth]);
+
+  /** Right-click is a back-out gesture, never the webview's native menu. */
+  const handleContextMenu = useCallback(
+    (event: { preventDefault: () => void }) => {
+      event.preventDefault();
+      handleBack();
+    },
+    [handleBack],
+  );
+
+  // Window-level shortcuts (Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z / Ctrl+S / Esc). The textarea keeps its
+  // own Enter/Escape handling, but both paths funnel Esc through the same `handleBack` reducer.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        handleBack();
+        return;
+      }
       const target = event.target as HTMLElement | null;
       if (target?.tagName === "TEXTAREA") return;
       const command = editorKeys(event.key, event.ctrlKey || event.metaKey, event.shiftKey);
@@ -809,12 +923,12 @@ export function Annotate() {
         void save();
       } else {
         event.preventDefault();
-        requestCancel();
+        handleBack();
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [redoAnnotation, requestCancel, save, undoAnnotation]);
+  }, [handleBack, redoAnnotation, save, undoAnnotation]);
 
   const handleImageLoad = useCallback(() => {
     const image = imageRef.current;
@@ -870,6 +984,7 @@ export function Annotate() {
       data-image-height={annotation?.height ?? 0}
       data-shapes={annotation?.shapes.length ?? 0}
       data-crop={annotation?.crop ? "true" : "false"}
+      onContextMenu={handleContextMenu}
     >
       <header className="annotate__titlebar" data-tauri-drag-region>
         <span className="annotate__title" data-tauri-drag-region>
@@ -899,6 +1014,7 @@ export function Annotate() {
                 aria-pressed={tool === name}
                 data-active={tool === name ? "true" : "false"}
                 data-tool={name}
+                title={toolLabel(name)}
                 onClick={() => selectTool(name)}
                 disabled={saving}
               >
@@ -1098,7 +1214,8 @@ export function Annotate() {
                   }
                   if (event.key === "Escape") {
                     event.preventDefault();
-                    closeTextEditor();
+                    // Same layered reducer as the window handler (layer 1 cancels this entry).
+                    handleBack();
                   } else if (event.key === "Enter" && !event.shiftKey) {
                     event.preventDefault();
                     commitText();
