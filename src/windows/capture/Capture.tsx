@@ -23,7 +23,7 @@ import {
   reportCaptureReady,
 } from "../../lib/ipc";
 import { themeSettingFromLocation, useResolvedTheme } from "../../lib/theme";
-import type { CaptureReady } from "../../lib/types";
+import type { CaptureReady, PressedPoint } from "../../lib/types";
 import {
   PRESSED_SELECTION_DROP_MS,
   clampSelection,
@@ -108,6 +108,12 @@ export function Capture() {
    */
   const beginPressedDragRef = useRef<(point: SelectionPoint) => void>(() => {});
   const endPressedDragRef = useRef<() => void>(() => {});
+  /** Applies one Rust-forwarded physical cursor sample to the borrowed selection (W1.6). */
+  const pressedApplyPointRef = useRef<(point: PressedPoint) => void>(() => {});
+  /** Finishes the borrowed selection when Rust reports the left button came up (W1.6). */
+  const pressedFinishRef = useRef<() => void>(() => {});
+  /** Last physical->CSS cursor position seen for the borrowed press. */
+  const pressedLastPointRef = useRef<SelectionPoint | null>(null);
 
   useEffect(() => {
     readyRef.current = ready;
@@ -116,6 +122,26 @@ export function Capture() {
   useEffect(() => {
     dprRef.current = dpr;
   }, [dpr]);
+
+  // W1.6 input path: Rust polls the cursor for a borrowed press and forwards samples over Tauri
+  // events. Chromium never turns the move stream into pointer events for a press whose button-down
+  // happened before the overlay existed (real-machine finding 2026-11-10), so the page must drive
+  // the borrowed selection from these events instead. Registered once per overlay window; the refs
+  // no-op when no borrowed drag is active.
+  useEffect(() => {
+    let disposed = false;
+    const points = listen<PressedPoint>("capture-pressed-point", ({ payload }) => {
+      if (!disposed && payload) pressedApplyPointRef.current(payload);
+    });
+    const up = listen("capture-pressed-up", () => {
+      if (!disposed) pressedFinishRef.current();
+    });
+    return () => {
+      disposed = true;
+      void points.then((unlisten) => unlisten()).catch(() => undefined);
+      void up.then((unlisten) => unlisten()).catch(() => undefined);
+    };
+  }, []);
 
   // Ready handshake: register the listener first, then ask Rust to emit `capture-ready`.
   //
@@ -324,6 +350,7 @@ export function Capture() {
     }
     pressedRef.current = false;
     pressedSawInputRef.current = false;
+    pressedLastPointRef.current = null;
     pointerRef.current = null;
     startRef.current = null;
   }, []);
@@ -361,50 +388,52 @@ export function Capture() {
         endPressedDrag();
         setSelection(null);
       };
-      const onMove = (event: PointerEvent) => {
-        if (!pressedRef.current) return;
-        // The button was released before a pointerup could be delivered: nothing more will arrive.
-        if ((event.buttons & 1) === 0) {
-          drop("borrowed press ended without a pointerup");
-          return;
-        }
-        markInput();
-        if (pointerRef.current === null) pointerRef.current = event.pointerId;
-        else if (event.pointerId !== pointerRef.current) return;
-        const startPoint = startRef.current;
-        if (!startPoint) return;
-        event.preventDefault();
-        setSelection(viewportSelection(startPoint, pointFrom(event)));
+      const toCssPoint = (physical: PressedPoint): SelectionPoint | null => {
+        const current = readyRef.current;
+        if (!current) return null;
+        const scale = viewportScale(current.virtualRect.w, window.innerWidth, current.scale || 1);
+        return physicalPointToCss(
+          physical,
+          { x: current.virtualRect.x, y: current.virtualRect.y },
+          scale,
+          window.innerWidth,
+          window.innerHeight,
+        );
       };
-      const onUp = (event: PointerEvent) => {
+      pressedApplyPointRef.current = (physical) => {
         if (!pressedRef.current) return;
-        if (pointerRef.current !== null && event.pointerId !== pointerRef.current) return;
+        const css = toCssPoint(physical);
+        const startPoint = startRef.current;
+        if (!css || !startPoint) return;
+        markInput();
+        pressedLastPointRef.current = css;
+        setSelection(
+          clampSelection(viewportSelection(startPoint, css), window.innerWidth, window.innerHeight),
+        );
+      };
+      pressedFinishRef.current = () => {
+        if (!pressedRef.current) return;
         markInput();
         const startPoint = startRef.current;
-        const rect = startPoint ? viewportSelection(startPoint, pointFrom(event)) : null;
+        const lastPoint = pressedLastPointRef.current;
+        const rect = startPoint && lastPoint ? viewportSelection(startPoint, lastPoint) : null;
         endPressedDrag();
         if (!rect) {
+          // The button came up without a real drag: stay open for a normal drag.
           setSelection(null);
           return;
         }
         setSelection(rect);
         if (!confirm(rect)) {
-          // Click without a real drag: the overlay stays open for a normal drag.
           setSelection(null);
         }
       };
-      const onCancel = () => {
-        if (!pressedRef.current) return;
-        drop("borrowed press cancelled by the OS");
-      };
-      window.addEventListener("pointermove", onMove, true);
-      window.addEventListener("pointerup", onUp, true);
-      window.addEventListener("pointercancel", onCancel, true);
       pressedCleanupRef.current = () => {
-        window.removeEventListener("pointermove", onMove, true);
-        window.removeEventListener("pointerup", onUp, true);
-        window.removeEventListener("pointercancel", onCancel, true);
+        pressedApplyPointRef.current = () => {};
+        pressedFinishRef.current = () => {};
       };
+      // Fallback only: Rust normally reports the release (capture-pressed-up). If neither a sample
+      // nor the up event arrives, the borrowed press was most likely already over.
       pressedTimerRef.current = window.setTimeout(() => {
         pressedTimerRef.current = null;
         if (!pressedRef.current) return;
@@ -414,9 +443,9 @@ export function Capture() {
             pressedSawInputRef.current,
           )
         ) {
-          drop("no input after the borrowed press");
+          drop("no make-up-press input arrived");
         }
-      }, PRESSED_SELECTION_DROP_MS);
+      }, PRESSED_SELECTION_DROP_MS * 4);
     },
     [confirm, endPressedDrag, viewportSelection],
   );

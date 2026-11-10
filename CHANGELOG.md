@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased — Wave 1 (card action surface)
+## 1.2.0 — 2026-11-10
+
+> Wave 1 (card action surface). Still **unsigned**: see the [Code signing policy](CODE_SIGNING_POLICY.md).
 
 - **Card context menu** (right-click): copy image / copy as file / open / show in Explorer /
   markup (or trim recording) / "Take down ▸" with move-to-Recycle-Bin, remove-from-line and
@@ -16,6 +18,10 @@
 - 51 new frontend tests (210 → 261) and 7 new Rust tests (369 → 376).
 - **Capture finish action**: new `captureCopyOnFinish` setting (+ tray check item) copies a confirmed
   screenshot to the clipboard; if saving fails the cropped image is copied instead of being lost.
+- **Pressed-at capture** (two-stage fix): the overlay captures the Chromium browser child window
+  instead of the Tauri top-level HWND, and Rust forwards cursor samples
+  (`capture-pressed-point` / `capture-pressed-up`) so the selection no longer depends on Chromium
+  translating synthetic moves into pointer events.
 - **Pressed-at capture**: the first mouse press of a hotkey-triggered capture is no longer dropped —
   the overlay takes OS mouse capture and continues the already-started drag (`capture-ready.pressedAt`).
 - **Tray explainability**: real disabled explanation rows in both retention submenus, a Yes/No

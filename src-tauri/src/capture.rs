@@ -60,8 +60,8 @@ use tauri::{
     AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindow,
     WebviewWindowBuilder,
 };
-use windows::core::PCWSTR;
-use windows::Win32::Foundation::{HWND, POINT, SYSTEMTIME};
+use windows::core::{BOOL, PCWSTR};
+use windows::Win32::Foundation::{HWND, LPARAM, POINT, SYSTEMTIME};
 use windows::Win32::Graphics::Gdi::{
     BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC, GetDIBits,
     ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, CAPTUREBLT, DIB_RGB_COLORS,
@@ -72,9 +72,9 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, ReleaseCapture, SetCapture, VK_LBUTTON,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetCursorPos, GetSystemMetrics, IsWindowVisible, MessageBoxW, MB_ICONERROR, MB_OK,
-    MB_SETFOREGROUND, MB_TOPMOST, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
-    SM_YVIRTUALSCREEN,
+    EnumChildWindows, GetClassNameW, GetCursorPos, GetSystemMetrics, IsWindowVisible, MessageBoxW,
+    MB_ICONERROR, MB_OK, MB_SETFOREGROUND, MB_TOPMOST, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
+    SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN,
 };
 
 use crate::app_state::{self, AppState};
@@ -1125,6 +1125,11 @@ fn filter_pressed_at(recorded: Option<PressedAt>, still_down: bool) -> Option<Pr
 /// webview. The press happened on another window, which still owns Windows' implicit capture;
 /// without this the overlay only sees the release (or nothing).
 ///
+/// Real-machine finding (2026-11-10): capturing the Tauri **top-level** HWND is not enough — the
+/// WebView2 input lives in a Chromium child window, so the moves never reached the page. The
+/// capture therefore targets the deepest input child (see [`choose_input_child`]), falling back to
+/// the top-level window only when no Chromium child is found.
+///
 /// `SetCapture` must run on the window's UI thread, so it is marshalled through
 /// `run_on_main_thread`. Any failure is logged only: the capture must never block the screenshot.
 fn capture_mouse(app: &AppHandle, window: &WebviewWindow, pressed_at: PressedAt) {
@@ -1151,13 +1156,16 @@ fn capture_mouse(app: &AppHandle, window: &WebviewWindow, pressed_at: PressedAt)
     // after the SetCapture in main-thread order.
     MOUSE_CAPTURED.store(true, Ordering::Release);
     let scheduled = app.run_on_main_thread(move || {
-        let hwnd = HWND(hwnd_value as *mut std::ffi::c_void);
+        let overlay = HWND(hwnd_value as *mut std::ffi::c_void);
+        let (target, class) = webview_input_hwnd(overlay);
         // SAFETY: called on the overlay window's UI thread; SetCapture has no pointer arguments.
-        let previous = unsafe { SetCapture(hwnd) };
+        let previous = unsafe { SetCapture(target) };
         log::info!(
-            "capture: pressedAt ({}, {}) captured by the overlay (SetCapture; previous {:?})",
+            "capture: pressedAt ({}, {}) captured by {:?} ({}) (SetCapture; previous {:?})",
             pressed_at.x,
             pressed_at.y,
+            target,
+            class,
             previous
         );
     });
@@ -1167,6 +1175,126 @@ fn capture_mouse(app: &AppHandle, window: &WebviewWindow, pressed_at: PressedAt)
         return;
     }
     arm_mouse_capture_watchdog(app);
+    spawn_pressed_poll(app);
+}
+
+/// One physical-pixel cursor sample of a borrowed press (W1.6 input fallback).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct PressedPoint {
+    /// Physical virtual-screen x (negative on a monitor left of the primary).
+    pub x: i32,
+    /// Physical virtual-screen y (negative on a monitor above the primary).
+    pub y: i32,
+}
+
+/// Event carrying one [`PressedPoint`] sample while a borrowed press is being tracked.
+pub const PRESSED_POINT_EVENT: &str = "capture-pressed-point";
+/// Event emitted once when the borrowed press's left button comes up.
+pub const PRESSED_UP_EVENT: &str = "capture-pressed-up";
+
+/// Tracks the borrowed press by **polling the cursor** and emitting samples to the overlay.
+///
+/// Real-machine finding (2026-11-10): `SetCapture` alone cannot drive the selection — Chromium does
+/// not translate the synthetic/system `WM_MOUSEMOVE` stream into pointer events for a press it never
+/// saw the down for. Polling `GetCursorPos` is deterministic: the page receives physical points over
+/// Tauri events and paints the selection itself, while `SetCapture` (kept) prevents the window that
+/// owned the original press from reacting to the moves. Stops when the capture flag is cleared, the
+/// button is released (emitting [`PRESSED_UP_EVENT`]) or after a 30 s safety deadline.
+fn spawn_pressed_poll(app: &AppHandle) {
+    static POLLING: AtomicBool = AtomicBool::new(false);
+    if POLLING.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    let app = app.clone();
+    let spawned = std::thread::Builder::new()
+        .name("hangline-capture-pressed-poll".to_string())
+        .spawn(move || {
+            let deadline = std::time::Instant::now() + Duration::from_secs(30);
+            while MOUSE_CAPTURED.load(Ordering::Acquire) && std::time::Instant::now() < deadline {
+                let mut point = POINT::default();
+                // SAFETY: GetCursorPos only writes into the local POINT.
+                if unsafe { GetCursorPos(&mut point) }.is_ok() {
+                    let _ = app.emit(
+                        PRESSED_POINT_EVENT,
+                        PressedPoint {
+                            x: point.x,
+                            y: point.y,
+                        },
+                    );
+                }
+                // SAFETY: no pointer arguments; the high bit is the "currently down" state.
+                let down = unsafe { GetAsyncKeyState(VK_LBUTTON.0 as i32) } as u16 & 0x8000 != 0;
+                if !down {
+                    let _ = app.emit(PRESSED_UP_EVENT, ());
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(16));
+            }
+            POLLING.store(false, Ordering::Release);
+        });
+    if let Err(error) = spawned {
+        POLLING.store(false, Ordering::Release);
+        log::warn!("capture: cannot spawn the pressed-at cursor poll thread: {error}");
+    }
+}
+
+/// Class names that host WebView2 input, most specific first.
+///
+/// The Chromium **browser window** (`Chrome_WidgetWin_1`) handles mouse input for a WebView2 — it
+/// hit-tests and forwards into the renderer — so it is preferred over the renderer host. `WRY_WEBVIEW`
+/// is the Tauri webview child and the last resort before falling back to the top-level window.
+const INPUT_CHILD_PREFERENCE: [&str; 3] = [
+    "Chrome_WidgetWin_1",
+    "Chrome_RenderWidgetHostHWND",
+    "WRY_WEBVIEW",
+];
+
+/// Picks the child window that must own `SetCapture` for the make-up press.
+///
+/// Pure over the observed class names so the preference order is unit-tested; `None` means "no
+/// Chromium child found" and the caller falls back to the overlay top-level window.
+fn choose_input_child(classes: &[&str]) -> Option<usize> {
+    for preferred in INPUT_CHILD_PREFERENCE {
+        if let Some(index) = classes.iter().position(|class| *class == preferred) {
+            return Some(index);
+        }
+    }
+    None
+}
+
+/// Collects `(hwnd, class name)` for every descendant of `parent`, in enumeration order.
+fn webview_input_hwnd(parent: HWND) -> (HWND, String) {
+    let mut found: Vec<(HWND, String)> = Vec::new();
+    // SAFETY: the callback only appends to `found`, which outlives the enumeration call.
+    unsafe {
+        let _ = EnumChildWindows(
+            Some(parent),
+            Some(collect_child_hwnd),
+            LPARAM(&mut found as *mut Vec<(HWND, String)> as isize),
+        );
+    }
+    let classes: Vec<&str> = found.iter().map(|(_, class)| class.as_str()).collect();
+    match choose_input_child(&classes) {
+        Some(index) => {
+            let (hwnd, class) = found.swap_remove(index);
+            (hwnd, class)
+        }
+        None => (parent, "top-level".to_string()),
+    }
+}
+
+/// `EnumChildWindows` callback: appends one `(hwnd, class)` pair to the `Vec` in `lparam`.
+unsafe extern "system" fn collect_child_hwnd(hwnd: HWND, lparam: LPARAM) -> BOOL {
+    let found = &mut *(lparam.0 as *mut Vec<(HWND, String)>);
+    let mut buffer = [0u16; 256];
+    let length = GetClassNameW(hwnd, &mut buffer);
+    let class = if length > 0 {
+        String::from_utf16_lossy(&buffer[..length as usize])
+    } else {
+        String::new()
+    };
+    found.push((hwnd, class));
+    BOOL(1)
 }
 
 /// Releases the W1.6 mouse capture if Hangline still owns it (idempotent; never fails a command).
@@ -2828,7 +2956,35 @@ mod tests {
         assert_eq!(filter_pressed_at(None, false), None);
     }
 
-    /// W1.5: the `finish_capture` reply is the `{ saved, copiedFallback }` camelCase contract.
+    /// W1.6: the make-up-press capture must target the Chromium input child, not the Tauri top-level
+/// window (real-machine finding: the top-level HWND receives no pointer messages).
+#[test]
+fn input_child_prefers_the_chromium_browser_window_then_renderer_then_wry() {
+    let all = [
+        "Intermediate D3D Window",
+        "Chrome_WidgetWin_1",
+        "Chrome_RenderWidgetHostHWND",
+        "WRY_WEBVIEW",
+    ];
+    assert_eq!(choose_input_child(&all), Some(1));
+
+    let without_renderer = ["WRY_WEBVIEW", "Chrome_RenderWidgetHostHWND"];
+    assert_eq!(choose_input_child(&without_renderer), Some(1));
+
+    let only_wry = ["Intermediate D3D Window", "WRY_WEBVIEW"];
+    assert_eq!(choose_input_child(&only_wry), Some(1));
+}
+
+/// No Chromium child (or an empty enumeration) => fall back to the overlay top-level window.
+#[test]
+fn input_child_is_none_when_nothing_matches() {
+    assert_eq!(choose_input_child(&[]), None);
+    assert_eq!(
+        choose_input_child(&["Intermediate D3D Window", "Chrome_WidgetWin_0"]),
+        None
+    );
+}
+/// W1.5: the `finish_capture` reply is the `{ saved, copiedFallback }` camelCase contract.
     #[test]
     fn capture_outcome_serializes_as_the_frontend_contract() {
         assert_eq!(

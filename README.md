@@ -11,7 +11,7 @@ Tauri 2 (Rust) + React 19 + TypeScript + Vite. Windows x64.
 
 Repository: <https://github.com/devin2255/hangline>
 
-> **Status: Hangline 1.1.1 release (Wave 0: reliability, field diagnostics, release discipline; first real-machine acceptance pass on P1–P4).**
+> **Status: Hangline 1.2.0 release (Wave 1: card action surface — right-click menu, hover capsule, 9-tool markup editor, third global hotkey and optional copy-on-capture; on top of the Wave 0 reliability work).**
 > The public source repository is <https://github.com/devin2255/hangline>; a GitHub Release is produced by the
 > `v*` tag workflow when signing secrets are configured, and the installer/portable ZIP can always be built locally.
 > The installer is currently unsigned (SmartScreen may warn); free code signing is being applied for
@@ -46,19 +46,19 @@ P4 multi-monitor placement under 100%/150% scaling (app UI only, neutral synthet
 More P4 evidence: [`docs/experiments/P4-multimon-settings.md`](docs/experiments/P4-multimon-settings.md),
 [`docs/acceptance/P4-core.md`](docs/acceptance/P4-core.md).
 
-## Install (1.1.1 release)
+## Install (1.2.0 release)
 
 Windows 10 22H2 or Windows 11, x64. Download the GitHub Release artifacts for the latest tag when available,
 or build the installer locally (see [Building](#building-from-source)) with
 `node scripts/release/build-release.mjs --sign`.
 
-- `Hangline_1.1.1_x64-setup.exe` — per-user install to `%LOCALAPPDATA%\Programs\Hangline` (no admin),
+- `Hangline_1.2.0_x64-setup.exe` — per-user install to `%LOCALAPPDATA%\Programs\Hangline` (no admin),
   Start-menu shortcut (desktop shortcut optional), HKCU uninstall entry, embedded WebView2
   bootstrapper (network needed only on a machine without WebView2). Uninstall asks whether to keep or delete your Hangline data
   (default: keep).
-- `Hangline_1.1.1_x64-portable.zip` — unpack anywhere and run `Hangline.exe`; data still lives in
+- `Hangline_1.2.0_x64-portable.zip` — unpack anywhere and run `Hangline.exe`; data still lives in
   `%LOCALAPPDATA%\Hangline` (a true portable mode is post-V1).
-- **Authenticode status:** releases up to v1.1.1 are **unsigned** — Windows SmartScreen shows an
+- **Authenticode status:** releases up to v1.2.0 are **unsigned** — Windows SmartScreen shows an
   unknown publisher. Hangline is applying for free code signing from SignPath Foundation; once the
   signing policy is enabled, releases will be Authenticode-signed. Until then, verify the SHA-256 in
   `SHA256SUMS.txt`. See the [Code signing policy](CODE_SIGNING_POLICY.md).
@@ -101,9 +101,15 @@ artifact metadata, privacy policy, and how third-party components are handled) i
   double-click opens it in the default app; drag it out as a real file; click
   the × to take it down (own screenshots go to the Recycle Bin, files from
   watched folders are only removed from the line).
+- **A second surface on every card.** Right-click a card for copy image / copy as file / open /
+  show in Explorer / markup (or trim the recording) / “Take down ▸” (Recycle Bin, remove from the
+  line only, everything to the left or right); hovering a card floats a three-button capsule
+  (copy / markup / more). The menu renders inside the panel window — no extra window, no focus.
 - **Markup on long press.** Press and hold a screenshot for 0.45 s: a borderless
   editor opens with pen (3 widths / 6 colours), rectangle, arrow, multiline text,
-  crop, and ≥20-step undo/redo. Saving composites the full-resolution PNG,
+  highlight, mosaic, blur, auto-numbering, crop, and ≥20-step undo/redo. Esc or
+  right-click steps back one layer at a time (text → crop → tool → discard). Saving
+  composites the full-resolution PNG,
   atomically replaces the file, refreshes the thumbnail, and the card reloads it
   in place. Files from watched folders open read-only (save disabled).
 - **Recording trim on long press.** Game Bar clips show their first frame plus a
@@ -121,9 +127,11 @@ artifact metadata, privacy policy, and how third-party components are handled) i
 - **Out of the way when you are gaming.** Full-screen apps, presentations and busy states hide the line automatically and it returns within a second; “Over full-screen apps” only applies when you have pinned the line.
 - **Tray settings.** Watch switches, extra watched folders (up to 3), keep
   count and keep-for window, card size (small/medium/large), shortcuts with conflict rollback,
-  sounds, open at login, language (English / 简体中文 / follow system), quit.
+  sounds, open at login, language (English / 简体中文 / follow system), copy-after-screenshot, quit.
+  Destructive actions ask before running, the retention submenus explain what happens to files,
+  and a shortcut that cannot be registered is reported instead of failing silently.
 - **Multi-monitor and per-monitor DPI.** The line follows the pointer across monitors (500 ms dwell), re-scales its cards for 100%/125%/150% screens, and re-places itself when displays change or the taskbar moves.
-- **Settings that stick.** Remap both global hotkeys with conflict detection and rollback, start at login through the standard Run key (quoted, path-with-spaces safe), sounds, card size, theme and language.
+- **Settings that stick.** Remap all three global hotkeys (capture, show/hide, edit latest) with conflict detection and rollback, start at login through the standard Run key (quoted, path-with-spaces safe), sounds, card size, theme and language.
 - **Local and quiet.** No accounts, no telemetry, no analytics, no cloud. The only network
   request is the signed update check (daily when enabled, or manual from the tray).
 
@@ -179,6 +187,9 @@ cargo check --manifest-path src-tauri/Cargo.toml --all-targets # 0 warnings
 | Optional: pointer at the top edge | After 0.5 s the line can drop down (off by default). |
 | Single click a card | Copy image to the clipboard (PNG + DIBV5 + file drop / CF_HDROP). A "Copied" pill confirms it. |
 | Double click a card | Open the file in the default app (does not touch the clipboard). |
+| Right-click a card | Card menu: copy image / copy as file / open / show in Explorer / markup or trim / **Take down ▸** (Recycle Bin, remove from line, everything to the left or right). |
+| Hover a card | A three-button capsule floats under it (copy / markup / more). |
+| `Ctrl+Alt+E` (default) | Open the newest card in the markup editor (recordings open in the trim window). |
 | Drag a card out | Native file drag: drop it on an app to copy, on a folder to move, on the Recycle Bin to delete. The card updates after the drop. |
 | × on a card | Take it down. Photos from Hangline's own screenshot folder go to the Recycle Bin; watched-folder files are only removed from the line. |
 | Mouse wheel / touchpad | Browse earlier cards when the retention limit is 25/50/100. |
@@ -229,7 +240,7 @@ Data lives under `%LOCALAPPDATA%\Hangline\` (`settings.json`,
 
 ## Known limitations
 
-Hangline 1.1.1 is a release build; the functional milestones P1–P5 are implemented and the
+Hangline 1.2.0 is a release build; the functional milestones P1–P5 are implemented and the
 remaining items are manual/deferred checks (the acceptance documents track them in detail):
 
 - **Manual acceptance is pending.** The following still need a real person on an
@@ -238,13 +249,14 @@ remaining items are manual/deferred checks (the acceptance documents track them 
   (WeChat/QQ/browser), real wheel/touchpad scrolling, real pointer cross-screen
   following, and the folder picker. They are marked `MANUAL-PENDING` — not
   "passed" — in [`docs/acceptance/P1-core.md`](docs/acceptance/P1-core.md).
-- **Unsigned (for now).** The 1.1.1 installer/portable ZIP are built by the tag workflow and published
+- **Unsigned (for now).** The 1.2.0 installer/portable ZIP are built by the tag workflow and published
   on GitHub Releases; there is no Authenticode signature yet (SmartScreen warns). From v1.1.x on, code
   signing is planned through SignPath Foundation — the current latest release may still be unsigned
   until the signing policy is enabled; see [Code signing policy](CODE_SIGNING_POLICY.md). Auto-update is
   wired and signature-verified against the updater public key in `tauri.conf.json` (see `docs/RELEASE.md`).
-- **Card right-click menu** is not implemented (V1.1). Today the card actions are
-  click / double-click / drag / ×.
+- **The card menu lives inside the panel window** (six rows plus a `Take down ▸` submenu), so it
+  is compact by design. Panel windows never take focus, so `Esc` does not close it — click anywhere
+  else. A capture whose save fails falls back to the clipboard (logged; no extra dialog).
 - **Annotation/recording trim and full-screen suppression** are implemented in
   source (P3/P4); their manual acceptance lives in the P3/P4 acceptance records.
 - **Languages:** only English and Simplified Chinese are built in (more languages are post-V1). A few native error dialogs are not localized yet (some English-only,

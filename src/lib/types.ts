@@ -241,6 +241,13 @@ export interface CaptureReady {
 }
 
 /** Result of the `finish_capture` command (Wave 1.5 return contract). */
+/** One physical-pixel cursor sample forwarded by Rust while a borrowed press is tracked (W1.6). */
+export interface PressedPoint {
+  /** Physical virtual-screen x (negative on a monitor left of the primary). */
+  x: number;
+  /** Physical virtual-screen y (negative on a monitor above the primary). */
+  y: number;
+}
 export interface CaptureFinishResult {
   /** True when the capture was saved to disk and hung on the line. */
   saved: boolean;

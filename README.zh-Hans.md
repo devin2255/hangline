@@ -8,7 +8,7 @@ Hangline 是一个 Windows 桌面应用：它把一条细绳挂在屏幕顶部�
 
 仓库：<https://github.com/devin2255/hangline>
 
-> **状态：Hangline 1.1.1 发布（Wave 0：可靠性、自诊断、发布纪律；P1–P4 首轮真机验收）。**
+> **状态：Hangline 1.2.0 发布（Wave 1：卡片操作面——右键菜单、悬浮动作胶囊、9 工具标注编辑器、第三全局热键、可选截图后自动复制；叠加 Wave 0 可靠性工作）。**
 > 公开源码仓库为 <https://github.com/devin2255/hangline>；配置签名 secrets 后，`v*` tag 工作流会生成 GitHub Release，也可随时在本地构建安装包与 portable ZIP。安装包当前未签名（SmartScreen 可能提示未知发布者），正在申请 SignPath Foundation 免费代码签名——见[代码签名策略](CODE_SIGNING_POLICY.md)。人工验收记录见 [`docs/acceptance/P1-core.md`](docs/acceptance/P1-core.md) … [`P5-core.md`](docs/acceptance/P5-core.md)。
 
 ![晾在绳上的玻璃卡片](docs/experiments/P1-panel-ui-100pct-3cards.png)
@@ -34,13 +34,13 @@ P4 多屏 100%/150% 缩放放置（仅应用 UI，中性合成卡片；面板截
 
 更多 P4 证据：[`docs/experiments/P4-multimon-settings.md`](docs/experiments/P4-multimon-settings.md)、[`docs/acceptance/P4-core.md`](docs/acceptance/P4-core.md)。
 
-## 安装（1.1.1 发布）
+## 安装（1.2.0 发布）
 
 Windows 10 22H2 或 Windows 11，x64。可从 GitHub Release（配置后由 tag 工作流生成）下载，或按下方“从源码构建”用 `node scripts/release/build-release.mjs --sign` 在本地构建发布产物。
 
-- `Hangline_1.1.1_x64-setup.exe` —— 当前用户安装到 `%LOCALAPPDATA%\Programs\Hangline`（无需管理员），开始菜单快捷方式（桌面快捷方式可选）、HKCU 卸载项、内置 WebView2 引导（仅在没有 WebView2 的机器上需要联网）。卸载时会询问保留或删除 Hangline 数据（默认保留）。
-- `Hangline_1.1.1_x64-portable.zip` —— 解压即用；数据仍在 `%LOCALAPPDATA%\Hangline`（真正的便携模式尚未支持）。
-- **签名状态：** 截至 v1.1.1 的发布**未做 Authenticode 签名**，SmartScreen 会提示未知发布者。项目正在申请 SignPath Foundation 的免费代码签名；签名策略启用后，发布产物将带 Authenticode 签名。在此之前请用 `SHA256SUMS.txt` 校验下载。详见[代码签名策略](CODE_SIGNING_POLICY.md)。
+- `Hangline_1.2.0_x64-setup.exe` —— 当前用户安装到 `%LOCALAPPDATA%\Programs\Hangline`（无需管理员），开始菜单快捷方式（桌面快捷方式可选）、HKCU 卸载项、内置 WebView2 引导（仅在没有 WebView2 的机器上需要联网）。卸载时会询问保留或删除 Hangline 数据（默认保留）。
+- `Hangline_1.2.0_x64-portable.zip` —— 解压即用；数据仍在 `%LOCALAPPDATA%\Hangline`（真正的便携模式尚未支持）。
+- **签名状态：** 截至 v1.2.0 的发布**未做 Authenticode 签名**，SmartScreen 会提示未知发布者。项目正在申请 SignPath Foundation 的免费代码签名；签名策略启用后，发布产物将带 Authenticode 签名。在此之前请用 `SHA256SUMS.txt` 校验下载。详见[代码签名策略](CODE_SIGNING_POLICY.md)。
 - **网络：** 应用保持本地；**唯一**网络请求是更新检查（`autoCheckUpdates` 开启时每日一次，或托盘手动检查），更新包会先验签再安装。发布端点/仓库目前是占位，需运营者创建 GitHub 仓库后替换。
 
 发布/更新/签名/隐私手册：[`docs/RELEASE.md`](docs/RELEASE.md)。
@@ -66,14 +66,15 @@ Windows 10 22H2 或 Windows 11，x64。可从 GitHub Release（配置后由 tag 
 - **自动去重。** 内容哈希（BLAKE3-64）+ 路径/revision 跟踪，同一张图无论被哪个来源看到，都只上栏一次。
 - **是一条线，不是一个窗口。** 面板贴在当前显示器工作区顶部，卡片以外区域点击穿透、从不抢焦点；新截图到达时自动展开 2.5 s 再收起。
 - **卡片就是操作入口。** 单击复制图片（PNG + DIBV5 + 文件拖放 CF_HDROP）；双击用默认程序打开；按住拖出是原生文件拖拽；点 × 取下线（自有截图进回收站；监听目录里的文件只下线、不删除）。
-- **长按标注。** 长按截图 0.45 s 打开无边框编辑器：画笔（3 粗细/6 色）、矩形、箭头、多行文字、裁剪、≥20 步撤销；保存时合成全分辨率 PNG、原子替换原文件、刷新缩略图，卡片立即换新。监听目录里的文件只读（保存禁用）。
+- **每张卡片都有一层新操作面。** 右键卡片：复制图片 / 复制为文件 / 打开 / 在资源管理器中显示 / 标注（录像为裁剪）/「取下线 ▸」（移入回收站、仅从线上移除、取下左侧全部、取下右侧全部）；悬停卡片浮出三按钮胶囊（复制 / 标注 / 更多）。菜单渲染在面板窗口内部——不新增窗口、不抢焦点。
+- **长按标注。** 长按截图 0.45 s 打开无边框编辑器：画笔（3 粗细/6 色）、矩形、箭头、多行文字、高亮、马赛克、模糊、自动序号、裁剪、≥20 步撤销；Esc 或右键逐层回退（文字 → 裁剪 → 工具 → 放弃）；保存时合成全分辨率 PNG、原子替换原文件、刷新缩略图，卡片立即换新。监听目录里的文件只读（保存禁用）。
 - **长按裁剪录屏。** Game Bar 录屏显示首帧 + 播放角标；长按打开裁剪窗口（双滑块 + `<video>` 预览）。导出走 Windows Media Composition，保留音频轨，原子替换原文件并刷新卡片；失败时原文件不动，并提供“用默认播放器打开”。上限 2 GB / 60 分钟。
 - **留得多时可翻阅。** 保留数量设为 25/50/100 后，线上只保留最新 N 张（旧卡片下线，**文件仍留在截图目录**），滚轮（或触控板）可翻阅；最新一张始终在右侧。100 张实测 60 fps。
 - **按时间自动清理（可选）。** 托盘 → **保留策略**：永久保留（默认）或只保留最近 7 / 30 / 90 天。到期的卡片自动下线；`%LOCALAPPDATA%\Hangline\Screenshots` 里的自有截图进回收站（可还原），而监听目录、系统截图与录屏的原文件永不删除。启动时、运行中每小时、以及每次修改保留策略后都会立即检查一次。
 - **全屏时不打扰。** 全屏游戏/演示/忙状态会自动隐藏线，退出后 1 秒内恢复；「全屏应用上」只在手动固定线时生效。
-- **托盘设置。** 监听开关、额外监听目录（最多 3 个）、保留数量、保留策略、卡片尺寸（小/中/大）、快捷键（含冲突回滚）、声音、开机启动、语言（English / 简体中文 / 跟随系统）、退出。
+- **托盘设置。** 监听开关、额外监听目录（最多 3 个）、保留数量、保留策略、卡片尺寸（小/中/大）、快捷键（含冲突回滚）、声音、开机启动、语言（English / 简体中文 / 跟随系统）、截图后自动复制、退出。危险操作会先确认，保留策略子菜单会说明文件去向，热键注册失败会明确提示而不是静默失败。
 - **多显示器与逐显示器 DPI。** 线跟随鼠标指针跨屏（停留 500 ms 后迁移），按 100%/125%/150% 缩放重排卡片，并在显示器变化/任务栏移动后重新贴边。
-- **设置可持久。** 两个全局热键可改键（冲突检测+回滚），开机启动走标准 Run 键（带引号、支持含空格路径），声音、尺寸、主题、语言均可设置。
+- **设置可持久。** 三个全局热键可改键（截图 / 显示隐藏 / 编辑最新一张，冲突检测+回滚），开机启动走标准 Run 键（带引号、支持含空格路径），声音、尺寸、主题、语言均可设置。
 - **本地、安静。** 没有账号、遥测、统计或云同步；唯一的网络请求是带签名的更新检查（开启时每日一次，或托盘手动检查）。
 
 ![150% 缩放、更多卡片的绳](docs/experiments/P1-panel-ui-150pct.png)
@@ -121,6 +122,9 @@ cargo check --manifest-path src-tauri/Cargo.toml --all-targets # 0 warnings
 | 可选：指针停在屏幕顶边 | 0.5 s 后展开（默认关闭）。 |
 | 单击卡片 | 复制图片到剪贴板（PNG + DIBV5 + 文件拖放 CF_HDROP），显示「已复制」提示。 |
 | 双击卡片 | 用默认程序打开文件（不写剪贴板）。 |
+| 右键卡片 | 卡片菜单：复制图片 / 复制为文件 / 打开 / 在资源管理器中显示 / 标注（录像为裁剪）/ **取下线 ▸**（回收站、仅从线上移除、取下左侧/右侧全部）。 |
+| 悬停卡片 | 卡片下方浮出三按钮胶囊（复制 / 标注 / 更多）。 |
+| `Ctrl+Alt+E`（默认） | 打开线上最新一张的标注编辑器（录像打开裁剪窗）。 |
 | 拖出卡片 | 原生文件拖拽：拖到应用＝复制，拖到文件夹＝移动，拖到回收站＝删除；卡片随结果更新。 |
 | 卡片上的 × | 取下线。Hangline 自有截图目录中的图片进回收站；监听目录中的文件只下线、不删除。 |
 | 鼠标滚轮 / 触控板 | 保留数量为 25/50/100 时翻阅更早的卡片。 |
@@ -148,11 +152,11 @@ cargo check --manifest-path src-tauri/Cargo.toml --all-targets # 0 warnings
 
 ## 已知限制
 
-Hangline 1.1.1 已发布；P1–P5 功能里程碑已实现，剩余为需人工/延后验证的项目（详见验收文档）：
+Hangline 1.2.0 已发布；P1–P5 功能里程碑已实现，剩余为需人工/延后验证的项目（详见验收文档）：
 
 - **人工验收待执行。** 以下项目仍需真人在解锁桌面上确认：真实物理 `Ctrl+Alt+S`/`Ctrl+Alt+T`、真实托盘点击、真实拖拽目标（微信/Figma、文件夹移动、回收站）、真实应用粘贴（微信/QQ/浏览器）、真实滚轮/触控板滚动、真人鼠标跨屏跟随、系统文件夹选择器。它们在 [`docs/acceptance/P1-core.md`](docs/acceptance/P1-core.md) 中标记为 `MANUAL-PENDING`，不是「已通过」。
-- **暂未签名。** 1.1.1 安装包/portable ZIP 由 tag 工作流构建并发布到 GitHub Releases；目前没有 Authenticode 签名（SmartScreen 会提示未知发布者）。从 v1.1.x 起计划通过 SignPath Foundation 做代码签名——在签名策略启用前，当前最新发布仍可能未签名，详见[代码签名策略](CODE_SIGNING_POLICY.md)。自动更新已接入并按 `tauri.conf.json` 中的更新公钥验签（见 `docs/RELEASE.md`）。
-- **卡片右键菜单**未实现（V1.1）。目前卡片操作是单击 / 双击 / 拖出 / ×。
+- **暂未签名。** 1.2.0 安装包/portable ZIP 由 tag 工作流构建并发布到 GitHub Releases；目前没有 Authenticode 签名（SmartScreen 会提示未知发布者）。从 v1.1.x 起计划通过 SignPath Foundation 做代码签名——在签名策略启用前，当前最新发布仍可能未签名，详见[代码签名策略](CODE_SIGNING_POLICY.md)。自动更新已接入并按 `tauri.conf.json` 中的更新公钥验签（见 `docs/RELEASE.md`）。
+- **卡片菜单渲染在面板窗口内**（6 行 + 「取下线 ▸」子菜单），因此尺寸是紧凑设计。面板从不抢焦点，`Esc` 不能关闭菜单——点击别处即可。保存失败时截图会兜底进剪贴板（写日志，不弹额外对话框）。
 - **标注/录屏裁剪与全屏抑制**已在源码实现（P3/P4）；人工验收见 P3/P4 验收记录。
 - **语言：** 目前只内置英文与简体中文（更多语言属后续版本）；少数原生错误对话框尚未本地化（有的仅英文，有的仅中文）。
 - **HEIC** 当前图像管线没有解码器：仍会上栏，但显示文件名占位而非缩略图。
@@ -176,7 +180,7 @@ Hangline 1.1.1 已发布；P1–P5 功能里程碑已实现，剩余为需人工
 
 ## 许可与归属
 
-Hangline 以 [MIT License](LICENSE) 授权（1.1.1 发布）。第三方声明与依赖许可见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
+Hangline 以 [MIT License](LICENSE) 授权（1.2.0 发布）。第三方声明与依赖许可见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
 
 Hangline 的形态**灵感来自 [Tendedero](https://github.com/alejandrobujan/tendedero)**（MIT 附加名称/图标限制条款，© 2026 Alejandro Buján），一个 macOS 截图晾衣绳应用。Hangline 是独立的 Windows 实现：没有复制 Tendedero 的源代码、美术或翻译文本；Hangline 的名称、图标与界面美术均为本项目原创。Hangline 与 Tendedero 项目无隶属或背书关系。
 
