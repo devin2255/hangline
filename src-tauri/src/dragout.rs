@@ -17,10 +17,13 @@
 //! * **Drop source** — [`DropSource`] implements `IDropSource`: Escape cancels, releasing the
 //!   left button performs the drop, otherwise the drag continues; `GiveFeedback` asks OLE for
 //!   its default drop cursors (no custom drag image yet).
-//! * **Threading** — `DoDragDrop` runs a modal loop and must be called from a COM STA after
-//!   `OleInitialize`. The Tauri IPC thread is not guaranteed to be an STA and blocking it would
-//!   stall the app's event loop, so [`start_drag`] returns as soon as the session is accepted and
-//!   the drag runs on a dedicated thread ([`DRAG_THREAD_NAME`]) for its whole duration.
+//! * **Threading** — `DoDragDrop` runs a modal loop and must be called from a COM STA, **on the
+//!   thread that owns the source window**. A dedicated worker thread does not receive the mouse
+//!   messages of the modal loop (real-machine finding 2026-11-10: the drag loop got a single
+//!   `QueryContinueDrag` call and no `GiveFeedback`, so every drop was cancelled by the watchdog).
+//!   `start_drag` therefore schedules the drag on the Tauri UI thread, after `OleInitialize`; the
+//!   command itself returns as soon as the session is accepted, and the drag's own message loop
+//!   keeps the app painting until the drop or cancel.
 //! * **Session flag** — [`DragSession`] keeps [`is_dragging`] set for the whole `DoDragDrop`
 //!   call, so `hittest` never flips the panel to click-through mid-drag.
 //! * **Outcome** — the drag thread emits the `drag-ended` event to the panel with the final
@@ -91,8 +94,6 @@ use crate::panel;
 /// emitted for cancellations and failures too.
 pub const DRAG_ENDED_EVENT: &str = "drag-ended";
 
-/// Name of the dedicated STA thread that owns `DoDragDrop` for one session.
-pub const DRAG_THREAD_NAME: &str = "hangline-ole-drag";
 
 /// Name of the watchdog thread that guards one drag session.
 pub const DRAG_WATCHDOG_THREAD_NAME: &str = "hangline-drag-watchdog";
@@ -1177,13 +1178,18 @@ pub fn start_drag(window: WebviewWindow, path: String) -> Result<(), String> {
         thread::current().id()
     );
 
-    let spawned = thread::Builder::new()
-        .name(DRAG_THREAD_NAME.to_owned())
-        .spawn(move || {
+    // OLE drag must run on the thread that owns the source window (the panel's UI thread): on a
+    // dedicated worker thread `DoDragDrop` captured the mouse but received **zero** mouse messages
+    // (real-machine finding 2026-11-10: `QueryContinueDrag` called once, `GiveFeedback` never, so
+    // the 8 s watchdog cancelled every drag and nothing could ever be dropped). `DoDragDrop` is
+    // modal by nature; its own message loop keeps the app painting and the event loop resumes as
+    // soon as the drag ends.
+    let drag_app = app.clone();
+    let spawned = app.run_on_main_thread(move || {
             let thread_id = unsafe { GetCurrentThreadId() };
             let watchdog = Arc::new(DragWatchdog::default());
             let watchdog_thread = match spawn_drag_watchdog(
-                app.clone(),
+                drag_app.clone(),
                 session_id,
                 thread_id,
                 watchdog.clone(),
@@ -1245,7 +1251,7 @@ pub fn start_drag(window: WebviewWindow, path: String) -> Result<(), String> {
                 ended.error,
                 thread::current().id()
             );
-            emit_drag_ended(&app, &watchdog, ended);
+            emit_drag_ended(&drag_app, &watchdog, ended);
             // The watchdog exits on `mark_finished`; join so a normal drag leaves no parked thread.
             if let Some(handle) = watchdog_thread {
                 if handle.join().is_err() {
@@ -1255,9 +1261,9 @@ pub fn start_drag(window: WebviewWindow, path: String) -> Result<(), String> {
         });
 
     match spawned {
-        Ok(_) => Ok(()),
+        Ok(()) => Ok(()),
         // The closure (and with it the session guard) is dropped on failure, clearing the flag.
-        Err(err) => Err(format!("failed to start the OLE drag thread: {err}")),
+        Err(err) => Err(format!("failed to start the OLE drag on the UI thread: {err}")),
     }
 }
 
