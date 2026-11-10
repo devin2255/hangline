@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.3.1 — 2026-11-10
+
+> Drag-out hotfix.
+
+- **Fixed: dragging a card from the line into another app (WeChat, Explorer, desktop, …) did
+  nothing.** The OLE drag loop ran on a dedicated worker thread, which never received the mouse
+  messages of the modal drag (`QueryContinueDrag` was called once, `GiveFeedback` never), so the
+  8 s watchdog cancelled every drag. `start_drag` now schedules the drag on the panel's Tauri UI
+  thread, whose message pump drives `DoDragDrop`; real-machine evidence: 44–47 drag callbacks,
+  `DROPEFFECT_COPY` drop onto Explorer (file copied, card kept) and the WeChat chat area accepts
+  the drag (copy cursor + `GiveFeedback`).
+- No other behavioural changes; commands and settings are unchanged from 1.3.0.
+
 ## 1.3.0 — 2026-11-10
 
 > Wave 2 (memory & search). Still **unsigned**: see the [Code signing policy](CODE_SIGNING_POLICY.md).

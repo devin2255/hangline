@@ -8,7 +8,7 @@ Hangline 是一个 Windows 桌面应用：它把一条细绳挂在屏幕顶部�
 
 仓库：<https://github.com/devin2255/hangline>
 
-> **状态：Hangline 1.3.0 发布（Wave 2：记忆与检索——截图备注/标签、按需搜索窗（`Ctrl+Alt+F`）、面板内停悬大图预览、本地 OCR 文字索引（中文关键词召回 81.67%）；叠加 Wave 0/1）。**
+> **状态：Hangline 1.3.1 发布（Wave 2：记忆与检索——截图备注/标签、按需搜索窗（`Ctrl+Alt+F`）、面板内停悬大图预览、本地 OCR 文字索引（中文关键词召回 81.67%）；含 1.3.1 拖拽修复）。**
 > 公开源码仓库为 <https://github.com/devin2255/hangline>；配置签名 secrets 后，`v*` tag 工作流会生成 GitHub Release，也可随时在本地构建安装包与 portable ZIP。安装包当前未签名（SmartScreen 可能提示未知发布者），正在申请 SignPath Foundation 免费代码签名——见[代码签名策略](CODE_SIGNING_POLICY.md)。人工验收记录见 [`docs/acceptance/P1-core.md`](docs/acceptance/P1-core.md) … [`P5-core.md`](docs/acceptance/P5-core.md)。
 
 ![晾在绳上的玻璃卡片](docs/experiments/P1-panel-ui-100pct-3cards.png)
@@ -34,13 +34,13 @@ P4 多屏 100%/150% 缩放放置（仅应用 UI，中性合成卡片；面板截
 
 更多 P4 证据：[`docs/experiments/P4-multimon-settings.md`](docs/experiments/P4-multimon-settings.md)、[`docs/acceptance/P4-core.md`](docs/acceptance/P4-core.md)。
 
-## 安装（1.3.0 发布）
+## 安装（1.3.1 发布）
 
 Windows 10 22H2 或 Windows 11，x64。可从 GitHub Release（配置后由 tag 工作流生成）下载，或按下方“从源码构建”用 `node scripts/release/build-release.mjs --sign` 在本地构建发布产物。
 
-- `Hangline_1.3.0_x64-setup.exe` —— 当前用户安装到 `%LOCALAPPDATA%\Programs\Hangline`（无需管理员），开始菜单快捷方式（桌面快捷方式可选）、HKCU 卸载项、内置 WebView2 引导（仅在没有 WebView2 的机器上需要联网）。卸载时会询问保留或删除 Hangline 数据（默认保留）。
-- `Hangline_1.3.0_x64-portable.zip` —— 解压即用；数据仍在 `%LOCALAPPDATA%\Hangline`（真正的便携模式尚未支持）。
-- **签名状态：** 截至 v1.3.0 的发布**未做 Authenticode 签名**，SmartScreen 会提示未知发布者。项目正在申请 SignPath Foundation 的免费代码签名；签名策略启用后，发布产物将带 Authenticode 签名。在此之前请用 `SHA256SUMS.txt` 校验下载。详见[代码签名策略](CODE_SIGNING_POLICY.md)。
+- `Hangline_1.3.1_x64-setup.exe` —— 当前用户安装到 `%LOCALAPPDATA%\Programs\Hangline`（无需管理员），开始菜单快捷方式（桌面快捷方式可选）、HKCU 卸载项、内置 WebView2 引导（仅在没有 WebView2 的机器上需要联网）。卸载时会询问保留或删除 Hangline 数据（默认保留）。
+- `Hangline_1.3.1_x64-portable.zip` —— 解压即用；数据仍在 `%LOCALAPPDATA%\Hangline`（真正的便携模式尚未支持）。
+- **签名状态：** 截至 v1.3.1 的发布**未做 Authenticode 签名**，SmartScreen 会提示未知发布者。项目正在申请 SignPath Foundation 的免费代码签名；签名策略启用后，发布产物将带 Authenticode 签名。在此之前请用 `SHA256SUMS.txt` 校验下载。详见[代码签名策略](CODE_SIGNING_POLICY.md)。
 - **网络：** 应用保持本地；**唯一**网络请求是更新检查（`autoCheckUpdates` 开启时每日一次，或托盘手动检查），更新包会先验签再安装。发布端点/仓库目前是占位，需运营者创建 GitHub 仓库后替换。
 
 发布/更新/签名/隐私手册：[`docs/RELEASE.md`](docs/RELEASE.md)。
@@ -158,10 +158,10 @@ cargo check --manifest-path src-tauri/Cargo.toml --all-targets # 0 warnings
 - **OCR 是本地 PoC**：`Windows.Media.Ocr` 把截图文字索引到本地 JSON（不下载、不联网）。30 张合成中文评测集关键词召回 **81.67%**；小字号/短文本、数字+中英混排、靠右的价格/时间可能漏识；索引增量构建（每次打开搜索窗最多 50 张）。删除索引只影响「图片文字」搜索，备注/标签搜索不受影响。
 - **停悬预览受面板高度限制**（面板窗口不放大），因此是大号预览而不是全屏查看器；细节查看仍走标注编辑器。
 
-Hangline 1.3.0 已发布；P1–P5 功能里程碑已实现，剩余为需人工/延后验证的项目（详见验收文档）：
+Hangline 1.3.1 已发布；P1–P5 功能里程碑已实现，剩余为需人工/延后验证的项目（详见验收文档）：
 
 - **人工验收待执行。** 以下项目仍需真人在解锁桌面上确认：真实物理 `Ctrl+Alt+S`/`Ctrl+Alt+T`、真实托盘点击、真实拖拽目标（微信/Figma、文件夹移动、回收站）、真实应用粘贴（微信/QQ/浏览器）、真实滚轮/触控板滚动、真人鼠标跨屏跟随、系统文件夹选择器。它们在 [`docs/acceptance/P1-core.md`](docs/acceptance/P1-core.md) 中标记为 `MANUAL-PENDING`，不是「已通过」。
-- **暂未签名。** 1.3.0 安装包/portable ZIP 由 tag 工作流构建并发布到 GitHub Releases；目前没有 Authenticode 签名（SmartScreen 会提示未知发布者）。从 v1.1.x 起计划通过 SignPath Foundation 做代码签名——在签名策略启用前，当前最新发布仍可能未签名，详见[代码签名策略](CODE_SIGNING_POLICY.md)。自动更新已接入并按 `tauri.conf.json` 中的更新公钥验签（见 `docs/RELEASE.md`）。
+- **暂未签名。** 1.3.1 安装包/portable ZIP 由 tag 工作流构建并发布到 GitHub Releases；目前没有 Authenticode 签名（SmartScreen 会提示未知发布者）。从 v1.1.x 起计划通过 SignPath Foundation 做代码签名——在签名策略启用前，当前最新发布仍可能未签名，详见[代码签名策略](CODE_SIGNING_POLICY.md)。自动更新已接入并按 `tauri.conf.json` 中的更新公钥验签（见 `docs/RELEASE.md`）。
 - **卡片菜单渲染在面板窗口内**（6 行 + 「取下线 ▸」子菜单），因此尺寸是紧凑设计。面板从不抢焦点，`Esc` 不能关闭菜单——点击别处即可。保存失败时截图会兜底进剪贴板（写日志，不弹额外对话框）。
 - **标注/录屏裁剪与全屏抑制**已在源码实现（P3/P4）；人工验收见 P3/P4 验收记录。
 - **语言：** 目前只内置英文与简体中文（更多语言属后续版本）；少数原生错误对话框尚未本地化（有的仅英文，有的仅中文）。
@@ -186,7 +186,7 @@ Hangline 1.3.0 已发布；P1–P5 功能里程碑已实现，剩余为需人工
 
 ## 许可与归属
 
-Hangline 以 [MIT License](LICENSE) 授权（1.3.0 发布）。第三方声明与依赖许可见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
+Hangline 以 [MIT License](LICENSE) 授权（1.3.1 发布）。第三方声明与依赖许可见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
 
 Hangline 的形态**灵感来自 [Tendedero](https://github.com/alejandrobujan/tendedero)**（MIT 附加名称/图标限制条款，© 2026 Alejandro Buján），一个 macOS 截图晾衣绳应用。Hangline 是独立的 Windows 实现：没有复制 Tendedero 的源代码、美术或翻译文本；Hangline 的名称、图标与界面美术均为本项目原创。Hangline 与 Tendedero 项目无隶属或背书关系。
 
