@@ -1009,6 +1009,8 @@ mod tests {
             created_at: 1,
             added_at: 2,
             updated_at: 0,
+            note: String::new(),
+            tags: Vec::new(),
         }
     }
 

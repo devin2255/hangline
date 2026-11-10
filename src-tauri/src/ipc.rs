@@ -1,13 +1,14 @@
 //! Tauri commands exposing the data layer (design spec 4.4).
 //!
 //! The frontend never owns state: it calls [`get_app_state`] once on startup and then follows the
-//! `state` event. [`set_setting`] is the only mutating command in this task; the item commands
-//! (copy/take-down/capture) arrive in later tasks and reuse [`crate::app_state::AppState`].
+//! `state` event. [`set_setting`] mutates the settings; [`set_item_note`]/[`set_item_tags`] are the
+//! Wave 2 item-metadata writes (one persisted mutation + one broadcast each, like every other
+//! `AppState` mutator).
 
 use serde_json::Value;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
-use crate::app_state::{AppState, PublicState};
+use crate::app_state::{self, AppState, PublicState};
 use crate::geometry::MonitorInfo;
 use crate::panel::{GeometryTarget, PanelGeometry};
 
@@ -47,6 +48,48 @@ pub fn set_setting(
     app: tauri::AppHandle,
 ) -> Result<PublicState, String> {
     crate::actions::apply(&app, &key, value)
+}
+
+/// Replaces one card's note (Wave 2 W2.1).
+///
+/// Validation (`≤ 2000` characters), the single revision bump and the single `state.json` write
+/// live in [`AppState::set_note`]; this command only maps the error and broadcasts the new snapshot
+/// once. An unchanged note is a no-op (no bump, no broadcast); a stale id returns a diagnostic error
+/// the search window can show inline.
+#[tauri::command]
+pub fn set_item_note(app: AppHandle, id: String, note: String) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let changed = state.set_note(&id, &note).map_err(|error| {
+        log::warn!("ipc: set_item_note rejected for {id}: {error:#}");
+        error.to_string()
+    })?;
+    if changed {
+        log::info!("ipc: set_item_note updated {id} ({} characters)", note.chars().count());
+        let _ = app_state::emit_state(&app);
+    }
+    Ok(())
+}
+
+/// Replaces one card's tags (Wave 2 W2.1).
+///
+/// The list is trimmed/de-duplicated/limited by [`AppState::set_tags`] (`≤ 32` characters per tag,
+/// `≤ 20` tags); one revision bump + one persist, then one broadcast. An unchanged normalized list
+/// is a no-op.
+#[tauri::command]
+pub fn set_item_tags(app: AppHandle, id: String, tags: Vec<String>) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let changed = state.set_tags(&id, &tags).map_err(|error| {
+        log::warn!("ipc: set_item_tags rejected for {id}: {error:#}");
+        error.to_string()
+    })?;
+    if changed {
+        log::info!(
+            "ipc: set_item_tags updated {id} ({} tag(s) stored)",
+            state.item(&id).map(|item| item.tags.len()).unwrap_or(0)
+        );
+        let _ = app_state::emit_state(&app);
+    }
+    Ok(())
 }
 
 /// Returns the monitors of the virtual desktop (design spec 4.4); a pure query.
@@ -90,7 +133,10 @@ pub fn sync_panel_geometry(app: AppHandle) -> PanelGeometry {
 mod tests {
     // The commands are thin wrappers over `AppState` (covered by its unit tests) and need a live
     // Tauri runtime for `State`/`AppHandle`; the end-to-end handshake is verified by the Task 14
-    // runtime evidence. The geometry-affecting setting predicate is unit-tested once in
+    // runtime evidence. The Wave 2 validation/normalization rules (`set_item_note`/`set_item_tags`)
+    // are unit-tested in `app_state::tests` (`validate_note`, `normalize_tags`, `set_note`,
+    // `set_tags`), including the "one revision bump per mutation" contract. The geometry-affecting
+    // setting predicate is unit-tested once in
     // `settings::tests::geometry_affecting_settings_are_card_size_and_keep_on_line`; the duplicate
     // copy that used to live here was removed by the Task 14 review fix.
 }

@@ -24,6 +24,8 @@ pub const DEFAULT_CAPTURE: &str = "Ctrl+Alt+S";
 pub const DEFAULT_TOGGLE: &str = "Ctrl+Alt+T";
 /// Default "edit the newest card" accelerator (Wave 1 W1.8; avoids QQ/WeChat/Snipaste defaults).
 pub const DEFAULT_EDIT_LATEST: &str = "Ctrl+Alt+E";
+/// Default "open search" accelerator (Wave 2 W2.3).
+pub const DEFAULT_SEARCH: &str = "Ctrl+Alt+F";
 
 /// Which action a global shortcut is bound to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -34,6 +36,8 @@ pub enum Target {
     Toggle,
     /// Open the newest card in its editor (markup for images, trim for recordings; W1.8).
     EditLatest,
+    /// Open the on-demand search window (Wave 2 W2.3).
+    Search,
 }
 
 impl Target {
@@ -43,6 +47,7 @@ impl Target {
             Self::Capture => "capture",
             Self::Toggle => "toggle",
             Self::EditLatest => "editLatest",
+            Self::Search => "search",
         }
     }
 
@@ -52,6 +57,7 @@ impl Target {
             Self::Capture => DEFAULT_CAPTURE,
             Self::Toggle => DEFAULT_TOGGLE,
             Self::EditLatest => DEFAULT_EDIT_LATEST,
+            Self::Search => DEFAULT_SEARCH,
         }
     }
 
@@ -61,6 +67,7 @@ impl Target {
             "capture" => Some(Self::Capture),
             "toggle" => Some(Self::Toggle),
             "editLatest" => Some(Self::EditLatest),
+            "search" => Some(Self::Search),
             _ => None,
         }
     }
@@ -71,6 +78,7 @@ impl Target {
             Self::Capture => strings.shortcut_capture,
             Self::Toggle => strings.shortcut_toggle,
             Self::EditLatest => strings.shortcut_edit_latest,
+            Self::Search => strings.shortcut_search,
         }
     }
 }
@@ -264,43 +272,49 @@ impl Hotkeys {
             .remove(&target);
     }
 
-    /// The current failures, in target order (capture → toggle → edit latest) for deterministic
-    /// tray hint and startup-dialog order.
+    /// The current failures, in target order (capture → toggle → edit latest → search) for
+    /// deterministic tray hint and startup-dialog order.
     fn failures(&self) -> Vec<HotkeyFailure> {
         let failures = self
             .failures
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        [Target::Capture, Target::Toggle, Target::EditLatest]
-            .iter()
-            .filter_map(|target| failures.get(target).cloned())
-            .collect()
+        [
+            Target::Capture,
+            Target::Toggle,
+            Target::EditLatest,
+            Target::Search,
+        ]
+        .iter()
+        .filter_map(|target| failures.get(target).cloned())
+        .collect()
     }
 }
 
-/// Returns the first registration failure (capture before toggle before edit latest), for the tray
-/// hint/tooltip.
+/// Returns the first registration failure (capture before toggle before edit latest before search),
+/// for the tray hint/tooltip.
 pub fn failure(app: &AppHandle) -> Option<HotkeyFailure> {
     all_failures(app).into_iter().next()
 }
 
-/// Every registration failure, in target order (W1.8/W1.7 startup dialog lists them all).
+/// Every registration failure, in target order (the W1.7 startup dialog lists them all).
 pub fn all_failures(app: &AppHandle) -> Vec<HotkeyFailure> {
     app.try_state::<Hotkeys>()
         .map(|state| state.failures())
         .unwrap_or_default()
 }
 
-/// The three `(target, accelerator)` pairs a startup must register, from the persisted settings.
+/// The four `(target, accelerator)` pairs a startup must register, from the persisted settings.
 ///
 /// This is the Task 15 fix for Task 3's "register the in-memory defaults": the source is now the
-/// user's `settings.json` (`captureHotkey`/`toggleHotkey`/`editLatestHotkey`, normalized by
-/// `Settings::set_json` when they were written).
-pub fn configured_accelerators(settings: &crate::settings::Settings) -> [(Target, String); 3] {
+/// user's `settings.json` (`captureHotkey`/`toggleHotkey`/`editLatestHotkey`/`searchHotkey`,
+/// normalized by `Settings::set_json` when they were written).
+pub fn configured_accelerators(settings: &crate::settings::Settings) -> [(Target, String); 4] {
     [
         (Target::Capture, settings.capture_hotkey.clone()),
         (Target::Toggle, settings.toggle_hotkey.clone()),
         (Target::EditLatest, settings.edit_latest_hotkey.clone()),
+        (Target::Search, settings.search_hotkey.clone()),
     ]
 }
 
@@ -434,6 +448,11 @@ fn handle_action(app: &AppHandle, target: Target) {
             log::info!("hotkeys: edit latest requested (dispatching to the editor worker thread)");
             crate::actions::edit_latest_in_background(app);
         }
+        Target::Search => {
+            // Same event-loop rule: the search window is created on a named worker thread (W2.2).
+            log::info!("hotkeys: search requested (dispatching to the search window worker thread)");
+            crate::search_window::open_in_background(app);
+        }
     }
 }
 
@@ -560,12 +579,14 @@ mod tests {
         settings.capture_hotkey = "Ctrl+Shift+F9".to_string();
         settings.toggle_hotkey = "Ctrl+Alt+Shift+T".to_string();
         settings.edit_latest_hotkey = "Ctrl+Shift+E".to_string();
+        settings.search_hotkey = "Ctrl+Shift+F".to_string();
         assert_eq!(
             configured_accelerators(&settings),
             [
                 (Target::Capture, "Ctrl+Shift+F9".to_string()),
                 (Target::Toggle, "Ctrl+Alt+Shift+T".to_string()),
                 (Target::EditLatest, "Ctrl+Shift+E".to_string()),
+                (Target::Search, "Ctrl+Shift+F".to_string()),
             ]
         );
         // The defaults remain the fallback source for an unmanaged/first-run state.
@@ -576,22 +597,31 @@ mod tests {
                 (Target::Capture, DEFAULT_CAPTURE.to_string()),
                 (Target::Toggle, DEFAULT_TOGGLE.to_string()),
                 (Target::EditLatest, DEFAULT_EDIT_LATEST.to_string()),
+                (Target::Search, DEFAULT_SEARCH.to_string()),
             ]
         );
         assert_eq!(Target::Capture.default_accelerator(), DEFAULT_CAPTURE);
         assert_eq!(Target::Toggle.default_accelerator(), DEFAULT_TOGGLE);
         assert_eq!(Target::EditLatest.default_accelerator(), DEFAULT_EDIT_LATEST);
+        assert_eq!(Target::Search.default_accelerator(), DEFAULT_SEARCH);
     }
 
-    /// W1.8: the third target uses the same wire names and `set_hotkey` parsing as the first two.
+    /// W1.8/W2.3: every target uses the same wire names and `set_hotkey` parsing.
     #[test]
-    fn edit_latest_target_round_trips_through_the_wire_names() {
-        for target in [Target::Capture, Target::Toggle, Target::EditLatest] {
+    fn targets_round_trip_through_the_wire_names() {
+        for target in [
+            Target::Capture,
+            Target::Toggle,
+            Target::EditLatest,
+            Target::Search,
+        ] {
             assert_eq!(Target::parse(target.as_str()), Some(target));
         }
         assert_eq!(Target::EditLatest.as_str(), "editLatest");
+        assert_eq!(Target::Search.as_str(), "search");
         assert_eq!(Target::parse("edit_latest"), None);
         assert_eq!(Target::parse("EditLatest"), None);
+        assert_eq!(Target::parse("Search"), None);
         assert_eq!(Target::parse(""), None);
     }
 
@@ -611,6 +641,11 @@ mod tests {
                 accelerator: "Ctrl+Alt+E".to_string(),
                 message: "access denied".to_string(),
             },
+            HotkeyFailure {
+                target: Target::Search,
+                accelerator: "Ctrl+Alt+F".to_string(),
+                message: "conflict".to_string(),
+            },
         ];
         let body = failure_dialog_body(strings, &failures);
         assert!(body.starts_with(strings.hotkey_error_intro), "got {body:?}");
@@ -619,6 +654,7 @@ mod tests {
             body.contains("Edit latest (Ctrl+Alt+E): access denied"),
             "got {body:?}"
         );
+        assert!(body.contains("Search (Ctrl+Alt+F): conflict"), "got {body:?}");
         assert!(body.ends_with(strings.hotkey_error_hint), "got {body:?}");
         // No failures means no dialog at all (the caller skips the box before building the body).
         assert!(Hotkeys::default().failures().is_empty());
@@ -642,11 +678,16 @@ mod tests {
         assert!(!is_registration_retry("banana", "banana"));
     }
 
-    /// The tray hint shows capture first, then toggle, then edit latest; a later success clears its
-    /// own failure only.
+    /// The tray hint shows capture first, then toggle, edit latest, search; a later success clears
+    /// its own failure only.
     #[test]
     fn recorded_failures_are_ordered_and_cleared_per_target() {
         let hotkeys = Hotkeys::default();
+        hotkeys.record_failure(HotkeyFailure {
+            target: Target::Search,
+            accelerator: "Ctrl+Alt+F".to_string(),
+            message: "search busy".to_string(),
+        });
         hotkeys.record_failure(HotkeyFailure {
             target: Target::Toggle,
             accelerator: "Ctrl+Alt+T".to_string(),
@@ -663,15 +704,17 @@ mod tests {
             message: "capture busy".to_string(),
         });
         let failures = hotkeys.failures();
-        assert_eq!(failures.len(), 3);
+        assert_eq!(failures.len(), 4);
         assert_eq!(failures[0].target, Target::Capture);
         assert_eq!(failures[1].target, Target::Toggle);
         assert_eq!(failures[2].target, Target::EditLatest);
+        assert_eq!(failures[3].target, Target::Search);
 
         hotkeys.clear_failure(Target::Capture);
         let failures = hotkeys.failures();
-        assert_eq!(failures.len(), 2);
+        assert_eq!(failures.len(), 3);
         assert_eq!(failures[0].target, Target::Toggle);
         assert_eq!(failures[1].target, Target::EditLatest);
+        assert_eq!(failures[2].target, Target::Search);
     }
 }

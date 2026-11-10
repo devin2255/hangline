@@ -38,6 +38,8 @@ pub enum SettingAction {
     ReRegisterToggleHotkey,
     /// Re-register the "edit latest" shortcut from the new setting (Wave 1 W1.8).
     ReRegisterEditLatestHotkey,
+    /// Re-register the "search" shortcut from the new setting (Wave 2 W2.3).
+    ReRegisterSearchHotkey,
     /// Stop and restart the folder watchers (watch switches / extra folders changed).
     RestartFolderWatchers,
     /// Start the clipboard listener (`watchClipboard` turned on).
@@ -61,6 +63,7 @@ impl SettingAction {
             Self::ReRegisterCaptureHotkey => "re-register capture hotkey",
             Self::ReRegisterToggleHotkey => "re-register toggle hotkey",
             Self::ReRegisterEditLatestHotkey => "re-register edit-latest hotkey",
+            Self::ReRegisterSearchHotkey => "re-register search hotkey",
             Self::RestartFolderWatchers => "restart folder watchers",
             Self::StartClipboardListener => "start clipboard listener",
             Self::StopClipboardListener => "stop clipboard listener",
@@ -81,6 +84,7 @@ impl SettingAction {
             Self::ReRegisterCaptureHotkey
                 | Self::ReRegisterToggleHotkey
                 | Self::ReRegisterEditLatestHotkey
+                | Self::ReRegisterSearchHotkey
                 | Self::EnableAutostart
                 | Self::DisableAutostart
         )
@@ -106,6 +110,9 @@ pub fn actions_for_change(key: &str, old: &Settings, new: &Settings) -> Vec<Sett
         }
         "editLatestHotkey" if old.edit_latest_hotkey != new.edit_latest_hotkey => {
             actions.push(SettingAction::ReRegisterEditLatestHotkey);
+        }
+        "searchHotkey" if old.search_hotkey != new.search_hotkey => {
+            actions.push(SettingAction::ReRegisterSearchHotkey);
         }
         "watchSystemScreenshots"
             if old.watch_system_screenshots != new.watch_system_screenshots =>
@@ -159,6 +166,7 @@ pub fn hotkey_target_for_key(key: &str) -> Option<hotkeys::Target> {
         "captureHotkey" => Some(hotkeys::Target::Capture),
         "toggleHotkey" => Some(hotkeys::Target::Toggle),
         "editLatestHotkey" => Some(hotkeys::Target::EditLatest),
+        "searchHotkey" => Some(hotkeys::Target::Search),
         _ => None,
     }
 }
@@ -252,6 +260,10 @@ fn run_actions(
                     settings.edit_latest_hotkey
                 )
             }),
+            SettingAction::ReRegisterSearchHotkey => {
+                hotkeys::register(app, hotkeys::Target::Search, &settings.search_hotkey)
+                    .map_err(|err| format!("search shortcut {}: {err}", settings.search_hotkey))
+            }
             SettingAction::RestartFolderWatchers => {
                 crate::watchers::restart_folder_watchers(app);
                 Ok(())
@@ -787,6 +799,10 @@ mod tests {
             vec![SettingAction::ReRegisterEditLatestHotkey]
         );
         assert_eq!(
+            actions("searchHotkey", json!("Ctrl+Shift+F")),
+            vec![SettingAction::ReRegisterSearchHotkey]
+        );
+        assert_eq!(
             actions("startAtLogin", json!(true)),
             vec![SettingAction::EnableAutostart]
         );
@@ -851,6 +867,7 @@ mod tests {
             "captureHotkey",
             "toggleHotkey",
             "editLatestHotkey",
+            "searchHotkey",
             "watchSystemScreenshots",
             "watchRecordings",
             "watchClipboard",
@@ -889,6 +906,7 @@ mod tests {
             SettingAction::ReRegisterCaptureHotkey,
             SettingAction::ReRegisterToggleHotkey,
             SettingAction::ReRegisterEditLatestHotkey,
+            SettingAction::ReRegisterSearchHotkey,
             SettingAction::EnableAutostart,
             SettingAction::DisableAutostart,
         ] {
@@ -923,12 +941,17 @@ mod tests {
             hotkey_target_for_key("editLatestHotkey"),
             Some(hotkeys::Target::EditLatest)
         );
+        assert_eq!(
+            hotkey_target_for_key("searchHotkey"),
+            Some(hotkeys::Target::Search)
+        );
         assert_eq!(hotkey_target_for_key("cardSize"), None);
         assert_eq!(hotkey_target_for_key("watchClipboard"), None);
         // The shortcut window/set_hotkey use the same mapping; the enum is stable.
         assert_eq!(hotkeys::Target::Capture.as_str(), "capture");
         assert_eq!(hotkeys::Target::Toggle.as_str(), "toggle");
         assert_eq!(hotkeys::Target::EditLatest.as_str(), "editLatest");
+        assert_eq!(hotkeys::Target::Search.as_str(), "search");
         // Touch the unused-import-adjacent types so this test also covers their defaults.
         assert_eq!(CardSize::default(), CardSize::Medium);
         assert_eq!(KeepOnLine::default(), KeepOnLine::Fit);

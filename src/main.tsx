@@ -8,6 +8,7 @@ import { Fly } from "./windows/fly/Fly";
 import { Shortcut } from "./windows/shortcut/Shortcut";
 import { Annotate } from "./windows/annotate/Annotate";
 import { Trim } from "./windows/trim/Trim";
+import { Search } from "./windows/search/Search";
 
 const win = new URLSearchParams(location.search).get("window") ?? "panel";
 
@@ -15,16 +16,23 @@ const win = new URLSearchParams(location.search).get("window") ?? "panel";
 // backdrop) applies on the very first paint instead of flashing the base surface.
 document.documentElement.dataset.window = win;
 
-// P2-8/P3: capture/shortcut/annotate/trim are separate webviews whose theme comes from the URL.
-// Resolve it before the first paint too, so a visible light window never flashes the dark base
+// P2-8/P3: capture/shortcut/annotate/trim/search are separate webviews whose theme comes from the
+// URL. Resolve it before the first paint too, so a visible light window never flashes the dark base
 // surface.
-if (win === "capture" || win === "shortcut" || win === "annotate" || win === "trim") {
+if (
+  win === "capture" ||
+  win === "shortcut" ||
+  win === "annotate" ||
+  win === "trim" ||
+  win === "search"
+) {
   document.documentElement.dataset.theme = themeFromLocation();
 }
 
-// P3-4/P3-6: the modal editors receive the Rust-resolved language in their URL, so their chrome is
-// localized on the first paint instead of switching from English after `get_app_state` resolves.
-if (win === "annotate" || win === "trim") {
+// P3-4/P3-6/W2: the modal editors and the search window receive the Rust-resolved language in
+// their URL, so their chrome is localized on the first paint instead of switching from English
+// after `get_app_state` resolves.
+if (win === "annotate" || win === "trim" || win === "search") {
   const language = new URLSearchParams(location.search).get("lang");
   if (language) setResolvedLanguage(language);
 }
@@ -41,6 +49,8 @@ function Root() {
   if (win === "annotate") return <Annotate />;
   // P3-6: the trim window (`?window=trim&id=…`), opened by `open_trim`.
   if (win === "trim") return <Trim />;
+  // Wave 2.2: the local search window (`?window=search&theme=…&lang=…`), opened by `open_search`.
+  if (win === "search") return <Search />;
   return <div data-window={win}>Hangline: {win}</div>;
 }
 

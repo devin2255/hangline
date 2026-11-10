@@ -28,6 +28,7 @@ mod item;
 mod panel;
 mod retention;
 mod reveal;
+mod search_window;
 mod settings;
 mod shortcut_window;
 mod sound;
@@ -672,11 +673,12 @@ fn take_down_side(app: tauri::AppHandle, id: String, side: String) -> Result<u32
 /// Changes one global shortcut.
 ///
 /// Task 15 routes this through the shared settings path: the accelerator is persisted in
-/// `settings.captureHotkey`/`toggleHotkey`/`editLatestHotkey` (the shortcut window's save),
-/// re-registered with the conflict-safe rollback in [`hotkeys::register`], broadcast as a new full
-/// state and reflected in the tray. On a conflict the previous shortcut stays live and the previous
-/// setting is restored; the error string is returned to the caller (design spec 4.4 `set_hotkey` /
-/// §3.11). W1.8 adds the third `"editLatest"` target on exactly the same contract.
+/// `settings.captureHotkey`/`toggleHotkey`/`editLatestHotkey`/`searchHotkey` (the shortcut window's
+/// save), re-registered with the conflict-safe rollback in [`hotkeys::register`], broadcast as a
+/// new full state and reflected in the tray. On a conflict the previous shortcut stays live and the
+/// previous setting is restored; the error string is returned to the caller (design spec 4.4
+/// `set_hotkey` / §3.11). W1.8 adds the third `"editLatest"` target and W2.3 the fourth `"search"`
+/// target on exactly the same contract.
 ///
 /// Saving the accelerator that is already persisted is handled here as a registration *retry*
 /// (M15): [`actions::apply`] only schedules a re-registration when the setting changes, so after a
@@ -695,6 +697,7 @@ fn set_hotkey(
         hotkeys::Target::Capture => "captureHotkey",
         hotkeys::Target::Toggle => "toggleHotkey",
         hotkeys::Target::EditLatest => "editLatestHotkey",
+        hotkeys::Target::Search => "searchHotkey",
     };
     debug_assert_eq!(actions::hotkey_target_for_key(key), Some(target));
 
@@ -704,6 +707,7 @@ fn set_hotkey(
             hotkeys::Target::Capture => state.snapshot().settings.capture_hotkey,
             hotkeys::Target::Toggle => state.snapshot().settings.toggle_hotkey,
             hotkeys::Target::EditLatest => state.snapshot().settings.edit_latest_hotkey,
+            hotkeys::Target::Search => state.snapshot().settings.search_hotkey,
         })
         .unwrap_or_default();
     if hotkeys::is_registration_retry(&persisted, &accelerator) {
@@ -738,6 +742,25 @@ fn set_hotkey(
 #[tauri::command]
 fn close_shortcut_window(app: tauri::AppHandle) {
     shortcut_window::close(&app);
+}
+
+/// Opens the on-demand search window (Wave 2 W2.2).
+///
+/// Deliberately `async`: window creation dispatches to the Tauri event loop and waits, so a
+/// synchronous command on the main thread would deadlock. The window is destroyed on close, so
+/// every call after a close creates a fresh page (see [`search_window`]).
+#[tauri::command]
+async fn open_search(app: tauri::AppHandle) -> Result<(), String> {
+    search_window::open(&app).map_err(|error| {
+        log::warn!("open_search: cannot open the search window: {error}");
+        error.to_string()
+    })
+}
+
+/// Closes (and destroys) the search window; a missing window is a logged no-op.
+#[tauri::command]
+fn close_search(app: tauri::AppHandle) {
+    search_window::close(&app);
 }
 
 /// Opens the P3 markup editor for item `id` (plan Task P3-2/P3-3).
@@ -936,6 +959,8 @@ pub fn run() {
             ipc::get_monitors,
             ipc::sync_panel_geometry,
             ipc::set_setting,
+            ipc::set_item_note,
+            ipc::set_item_tags,
             set_hit_rects,
             get_scale_factor,
             request_capture,
@@ -954,6 +979,8 @@ pub fn run() {
             after_drag,
             set_hotkey,
             close_shortcut_window,
+            open_search,
+            close_search,
             open_annotate,
             get_editor_target,
             save_annotation,

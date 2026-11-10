@@ -215,6 +215,8 @@ mod tests {
             created_at: 1,
             added_at,
             updated_at: added_at,
+            note: String::new(),
+            tags: Vec::new(),
         }
     }
 

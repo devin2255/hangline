@@ -113,7 +113,7 @@ export function formatAccelerator(accelerator: string): string {
 }
 
 /** Which global shortcut a change-shortcut window edits (W1.8 adds the third one). */
-export type ShortcutTarget = "capture" | "toggle" | "editLatest";
+export type ShortcutTarget = "capture" | "toggle" | "editLatest" | "search";
 
 /**
  * Parses the `?target=` query parameter / `shortcut-target` payload.
@@ -123,5 +123,5 @@ export type ShortcutTarget = "capture" | "toggle" | "editLatest";
  * tray row claims.
  */
 export function parseShortcutTarget(value: string | null | undefined): ShortcutTarget {
-  return value === "toggle" || value === "editLatest" ? value : "capture";
+  return value === "toggle" || value === "editLatest" || value === "search" ? value : "capture";
 }

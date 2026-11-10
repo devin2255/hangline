@@ -24,6 +24,7 @@ import {
   menuHeightFor,
   menuItemsFor,
   menuNodeHeight,
+  menuOuterHeightFor,
   openCardMenu,
   setSubmenuOpen,
   shouldSuppressCardGesture,
@@ -46,6 +47,8 @@ function makeItem(kind: ItemKind, id = "item-1"): Item {
     height: 600,
     createdAt: 1,
     addedAt: 1,
+    note: "",
+    tags: [],
   };
 }
 
@@ -60,7 +63,7 @@ function submenuOf(nodes: MenuNode[]): MenuSubmenuNode {
 }
 
 describe("menuItemsFor", () => {
-  it("gives an owned screenshot the full four-group menu with recycle/remove/side rows", () => {
+  it("gives an owned screenshot the full five-group menu with recycle/remove/side/search rows", () => {
     const nodes = menuItemsFor(makeItem("capture"), { index: 1, total: 3 });
     const actions = itemNodes(nodes).map((node) => node.action);
 
@@ -74,9 +77,10 @@ describe("menuItemsFor", () => {
       "takeDownRemove",
       "takeDownLeft",
       "takeDownRight",
+      "search",
     ]);
-    // Three group separators on the top level; the submenu adds its own before the side rows.
-    expect(nodes.filter((node) => node.kind === "separator")).toHaveLength(3);
+    // Four group separators on the top level; the submenu adds its own before the side rows.
+    expect(nodes.filter((node) => node.kind === "separator")).toHaveLength(4);
     const submenu = submenuOf(nodes);
     expect(submenu.labelKey).toBe("Take down");
     expect(submenu.items.filter((node) => node.kind === "item").map((n) => n.action)).toEqual([
@@ -87,7 +91,7 @@ describe("menuItemsFor", () => {
     ]);
   });
 
-  it("gives a recording copy-as-file, no markup, trim, and only the non-deleting take-downs", () => {
+  it("gives a recording copy-as-file, no markup, trim, the non-deleting take-downs and search", () => {
     const nodes = menuItemsFor(makeItem("recording"), { index: 1, total: 3 });
     const actions = itemNodes(nodes).map((node) => node.action);
 
@@ -99,10 +103,20 @@ describe("menuItemsFor", () => {
       "takeDownRemove",
       "takeDownLeft",
       "takeDownRight",
+      "search",
     ]);
     expect(actions).not.toContain("copyImage");
     expect(actions).not.toContain("markup");
     expect(actions).not.toContain("takeDownRecycle");
+  });
+
+  it("keeps the global Search row for every item kind", () => {
+    for (const kind of ["capture", "recording", "watchedFolder", "clipboard", "systemScreenshot"] as const) {
+      const actions = itemNodes(menuItemsFor(makeItem(kind), { index: 0, total: 1 })).map(
+        (node) => node.action,
+      );
+      expect(actions).toContain("search");
+    }
   });
 
   it("never offers the recycle bin for watched folders, clipboard items or system screenshots", () => {
@@ -166,26 +180,59 @@ describe("menuItemsFor", () => {
 });
 
 describe("menu geometry", () => {
-  it("keeps the image menu inside the 6-row/3-separator ≈180 dp budget", () => {
-    const nodes = menuItemsFor(makeItem("capture"), { index: 0, total: 1 });
-    const rows = nodes.filter((node) => node.kind !== "separator").length;
-    const separators = nodes.filter((node) => node.kind === "separator").length;
-    expect(rows).toBeLessThanOrEqual(6);
-    expect(separators).toBeLessThanOrEqual(3);
-    expect(menuHeightFor(nodes)).toBe(
+  it("keeps every row and compacts separators so the menu fits the 189/210/246 dp panels", () => {
+    const full = menuItemsFor(makeItem("capture"), { index: 0, total: 1 });
+    const fullRows = full.filter((node) => node.kind !== "separator");
+    expect(fullRows).toHaveLength(7); // Wave 2 added the Search row to the Wave 1 six
+    expect(full.filter((node) => node.kind === "separator")).toHaveLength(4);
+    expect(menuHeightFor(full)).toBe(
       CARD_MENU_PADDING_Y * 2 +
-        rows * CARD_MENU_ROW_HEIGHT +
-        separators * CARD_MENU_SEPARATOR_HEIGHT,
+        fullRows.length * CARD_MENU_ROW_HEIGHT +
+        4 * CARD_MENU_SEPARATOR_HEIGHT,
     );
-    expect(menuHeightFor(nodes)).toBe(178);
-    expect(menuHeightFor(nodes)).toBeLessThanOrEqual(180);
+    expect(menuHeightFor(full)).toBe(210);
+    expect(menuOuterHeightFor(full)).toBe(211);
+
+    // Large panel: the full grouped menu fits, no compaction.
+    const large = menuItemsFor(makeItem("capture"), { index: 0, total: 1, panelHeight: 246 });
+    expect(large.filter((node) => node.kind === "separator")).toHaveLength(4);
+    expect(menuOuterHeightFor(large)).toBeLessThanOrEqual(246);
+
+    // Medium panel: only the last separator (before Search) is dropped.
+    const medium = menuItemsFor(makeItem("capture"), { index: 0, total: 1, panelHeight: 210 });
+    expect(medium.filter((node) => node.kind === "separator")).toHaveLength(3);
+    expect(menuOuterHeightFor(medium)).toBeLessThanOrEqual(210);
+    expect(itemNodes(medium)).toHaveLength(itemNodes(full).length);
+    expect(itemNodes(medium).map((node) => node.action)).toContain("search");
+
+    // Small panel: every group separator is dropped, but no action is.
+    const small = menuItemsFor(makeItem("capture"), { index: 0, total: 1, panelHeight: 189 });
+    expect(small.filter((node) => node.kind === "separator")).toHaveLength(0);
+    expect(menuOuterHeightFor(small)).toBeLessThanOrEqual(189);
+    expect(itemNodes(small).map((node) => node.action)).toEqual(
+      itemNodes(full).map((node) => node.action),
+    );
+  });
+
+  it("keeps the recording menu inside the 189 dp panel without compaction", () => {
+    const recording = menuItemsFor(makeItem("recording"), {
+      index: 1,
+      total: 2,
+      panelHeight: 189,
+    });
+    // Six rows + the four separators are 185 dp outer — the small panel fits them untouched.
+    expect(recording.filter((node) => node.kind === "separator")).toHaveLength(4);
+    expect(menuOuterHeightFor(recording)).toBeLessThanOrEqual(189);
   });
 
   it("makes the recording menu shorter (one copy row, no recycle row)", () => {
-    const recordingHeight = menuHeightFor(menuItemsFor(makeItem("recording"), { index: 1, total: 2 }));
+    const recordingHeight = menuHeightFor(
+      menuItemsFor(makeItem("recording"), { index: 1, total: 2 }),
+    );
     const captureHeight = menuHeightFor(menuItemsFor(makeItem("capture"), { index: 1, total: 2 }));
     expect(recordingHeight).toBeLessThan(captureHeight);
-    expect(recordingHeight).toBe(152);
+    expect(recordingHeight).toBe(184);
+    expect(captureHeight).toBe(210);
   });
 
   it("measures separators and submenu rows for the submenu height", () => {
@@ -258,6 +305,30 @@ describe("menu geometry", () => {
     expect(clampedX + flipped).toBeGreaterThanOrEqual(CARD_MENU_EDGE_MARGIN);
     // A degenerate panel too narrow for either side keeps the design's right expansion.
     expect(submenuLeftFor(4, 100)).toBeGreaterThan(0);
+  });
+
+  it("shrinks the edge margin when the compact menu nearly fills the panel", () => {
+    // 187 dp menu in a 189 dp panel: only 2 dp spare, so the symmetric margin is 1 (not 4).
+    const tight = openCardMenu({
+      itemId: "item-1",
+      anchorX: 10,
+      anchorY: 10,
+      menuHeight: 187,
+      panelWidth: 1920,
+      panelHeight: 189,
+    });
+    expect(tight.y).toBe(1);
+    // An exact fit uses margin 0 instead of pushing the menu off the panel edge.
+    const exact = openCardMenu({
+      itemId: "item-1",
+      anchorX: 10,
+      anchorY: 10,
+      menuHeight: 189,
+      panelWidth: 1920,
+      panelHeight: 189,
+    });
+    expect(exact.y).toBe(0);
+    expect(exact.y + 189).toBeLessThanOrEqual(189);
   });
 
   it("toggles the submenu without mutating the closed state object", () => {
@@ -375,7 +446,7 @@ describe("interactiveRects", () => {
       menuItemsFor(makeItem("recording"), { index: 1, total: 3 }),
     );
     expect(captureRows.every((row) => row.kind === "item")).toBe(true);
-    expect(recordingRows).toHaveLength(7);
+    expect(recordingRows).toHaveLength(8);
     expect(new Set(captureRows.map((row) => row.action)).size).toBe(captureRows.length);
   });
 });

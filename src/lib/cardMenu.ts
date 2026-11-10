@@ -8,9 +8,11 @@
  * reports to Rust. Keeping it DOM-free makes the rules (which rows a recording gets, when the
  * side take-downs are disabled, how the anchor is clamped) unit-testable.
  *
- * Height budget: "6 rows + 3 separators ≈ 180 dp". With `CARD_MENU_ROW_HEIGHT` 26,
- * `CARD_MENU_SEPARATOR_HEIGHT` 6 and `CARD_MENU_PADDING_Y` 2 the image menu is 178 dp, which fits
- * the smallest 189 dp panel with the 4 dp edge margin.
+ * Height budget: the Wave 1 four-group menu was 6 rows + 3 separators ≈ 178 dp (fits the 189 dp
+ * small panel). Wave 2 appends a fifth group (`Search`), which pushes the full menu to 210 dp — taller
+ * than the medium (210 dp) and small (189 dp) panels. [`menuItemsFor`] therefore compacts itself via
+ * [`fitMenuToPanel`]: it drops top-level separators from the bottom up until the menu fits the panel
+ * passed in `MenuItemsOptions.panelHeight`. All rows are always kept; only decorative group breaks go.
  */
 
 import type { Item, PhysicalRect } from "./types";
@@ -26,7 +28,8 @@ export type MenuActionId =
   | "takeDownRecycle"
   | "takeDownRemove"
   | "takeDownLeft"
-  | "takeDownRight";
+  | "takeDownRight"
+  | "search";
 
 /** One executable row. `disabled` rows stay visible (they explain the state) but do nothing. */
 export interface MenuItemNode {
@@ -63,6 +66,11 @@ export interface MenuItemsOptions {
   index: number;
   /** Total number of items on the line. */
   total: number;
+  /**
+   * Panel window height in CSS pixels (`window.innerHeight`), used to compact the menu so it always
+   * fits the 189/210/246 dp panel. Omitted → the full menu (tests / callers that clamp themselves).
+   */
+  panelHeight?: number;
 }
 
 /** Compact menu metrics (dp); see the height-budget note in the file comment. */
@@ -77,6 +85,8 @@ export const CARD_SUBMENU_LEFT = CARD_MENU_WIDTH - 2;
 export const CARD_MENU_ROW_HEIGHT = 26;
 export const CARD_MENU_SEPARATOR_HEIGHT = 6;
 export const CARD_MENU_PADDING_Y = 2;
+/** CSS border of the menu surface (0.5 dp top + 0.5 dp bottom), part of its outer height. */
+export const CARD_MENU_BORDER_HEIGHT = 1;
 /** Space kept between the menu and the panel edges when clamping. */
 export const CARD_MENU_EDGE_MARGIN = 4;
 
@@ -106,16 +116,20 @@ function normalizePosition(index: number, total: number): { index: number; total
 }
 
 /**
- * Builds the four-group card menu for `item` (Wave 1.1):
+ * Builds the five-group card menu for `item` (Wave 1.1 + Wave 2.3):
  *
  * 1. copy — `Copy image` (images only) / `Copy as file`;
  * 2. open — `Open` / `Show in Explorer`;
  * 3. edit — `Markup` for images, `Trim recording` for recordings;
- * 4. take down — submenu with recycle/remove plus side take-downs.
+ * 4. take down — submenu with recycle/remove plus side take-downs;
+ * 5. search — the global `Search` window (last row, present for every item kind).
  *
  * `Take down to the left/right` removes every card on that side and never deletes files, so it is
  * disabled (not hidden) when the item has no neighbour on that side: the row stays visible so the
  * reason is readable instead of the menu silently missing an entry.
+ *
+ * When `options.panelHeight` is given the result is compacted by [`fitMenuToPanel`] (separators
+ * dropped from the bottom up) so the menu is always fully visible inside the short panel window.
  */
 export function menuItemsFor(item: Item, options: MenuItemsOptions): MenuNode[] {
   const recording = isRecordingItem(item);
@@ -152,7 +166,7 @@ export function menuItemsFor(item: Item, options: MenuItemsOptions): MenuNode[] 
     disabledReasonKey: rightDisabled ? "Nothing to take down" : undefined,
   });
 
-  return [
+  const nodes: MenuNode[] = [
     ...copyGroup,
     separator(),
     ...openGroup,
@@ -160,7 +174,10 @@ export function menuItemsFor(item: Item, options: MenuItemsOptions): MenuNode[] 
     ...editGroup,
     separator(),
     { kind: "submenu", id: "takeDown", labelKey: "Take down", items: takeDownItems },
+    separator(),
+    row("Search", "search"),
   ];
+  return fitMenuToPanel(nodes, options.panelHeight ?? 0);
 }
 
 /** Flattens a menu tree (top level + the take-down submenu) into its executable rows. */
@@ -188,6 +205,46 @@ export function menuHeightFor(nodes: readonly MenuNode[]): number {
   let height = CARD_MENU_PADDING_Y * 2;
   for (const node of nodes) height += menuNodeHeight(node);
   return height;
+}
+
+/** Outer dp height of the rendered menu surface (content + the 0.5 dp top/bottom border). */
+export function menuOuterHeightFor(nodes: readonly MenuNode[]): number {
+  return menuHeightFor(nodes) + CARD_MENU_BORDER_HEIGHT;
+}
+
+/** Number of top-level group separators in a menu (submenu separators are not counted). */
+function topLevelSeparatorCount(nodes: readonly MenuNode[]): number {
+  return nodes.filter((node) => node.kind === "separator").length;
+}
+
+/** Returns `nodes` without the last `count` top-level separators (all rows are preserved). */
+function withoutTrailingSeparators(nodes: readonly MenuNode[], count: number): MenuNode[] {
+  if (count <= 0) return [...nodes];
+  const separatorIndexes: number[] = [];
+  nodes.forEach((node, index) => {
+    if (node.kind === "separator") separatorIndexes.push(index);
+  });
+  const drop = new Set(separatorIndexes.slice(Math.max(0, separatorIndexes.length - count)));
+  return nodes.filter((node, index) => node.kind !== "separator" || !drop.has(index));
+}
+
+/**
+ * Compacts a menu until its outer height fits the panel window.
+ *
+ * Wave 2 appends the `Search` group, making the full menu taller than the 210 dp medium and
+ * 189 dp small panels. Rather than hiding actions (they are all relevant) the decorative
+ * separators are dropped from the bottom up until the menu fits: on medium the `Search` separator
+ * goes, on small every group break goes and the menu becomes a single column of rows. The panel's
+ * clamp ([`openCardMenu`]) also shrinks its edge margin for an exact fit.
+ */
+export function fitMenuToPanel(nodes: readonly MenuNode[], panelHeight: number): MenuNode[] {
+  if (!Number.isFinite(panelHeight) || panelHeight <= 0) return [...nodes];
+  const separatorCount = topLevelSeparatorCount(nodes);
+  for (let dropped = 0; dropped <= separatorCount; dropped += 1) {
+    const candidate = withoutTrailingSeparators(nodes, dropped);
+    if (menuOuterHeightFor(candidate) <= panelHeight) return candidate;
+  }
+  return withoutTrailingSeparators(nodes, separatorCount);
 }
 
 /** Total dp height of the take-down submenu. */
@@ -292,8 +349,22 @@ export interface OpenCardMenuInput {
   panelHeight: number;
 }
 
-/** Creates the open state for `itemId`, clamped inside the panel with the submenu closed. */
+/**
+ * Creates the open state for `itemId`, clamped inside the panel with the submenu closed.
+ *
+ * The edge margin shrinks when the menu nearly fills the panel (the Wave 2 compact menu can be an
+ * exact fit on the smallest panel): the largest symmetric margin that still keeps the menu fully
+ * inside is used, down to 0. The caller must pass the menu's **outer** height
+ * ([`menuOuterHeightFor`]) for this to be exact.
+ */
 export function openCardMenu(input: OpenCardMenuInput): CardMenuState {
+  const spare = Number.isFinite(input.panelHeight)
+    ? input.panelHeight - input.menuHeight
+    : Number.POSITIVE_INFINITY;
+  const maxMargin = Number.isFinite(spare)
+    ? Math.floor(spare / 2)
+    : CARD_MENU_EDGE_MARGIN;
+  const margin = Math.max(0, Math.min(CARD_MENU_EDGE_MARGIN, maxMargin));
   const position = clampMenuPosition(
     input.anchorX,
     input.anchorY,
@@ -301,6 +372,7 @@ export function openCardMenu(input: OpenCardMenuInput): CardMenuState {
     input.menuHeight,
     input.panelWidth,
     input.panelHeight,
+    margin,
   );
   return {
     itemId: input.itemId,

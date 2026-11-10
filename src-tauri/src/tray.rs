@@ -48,6 +48,8 @@ pub const ID_TAKE_ALL_DOWN: &str = "tray.take_all_down";
 pub const ID_CAPTURE: &str = "tray.capture";
 /// "Copy after screenshot" switch (`captureCopyOnFinish`, Wave 1 W1.5).
 pub const ID_CAPTURE_COPY_ON_FINISH: &str = "tray.capture_copy_on_finish";
+/// "Search…" action: opens the on-demand search window (Wave 2 W2.2/W2.3).
+pub const ID_SEARCH: &str = "tray.search";
 /// "Handle system screenshots" switch (`watchSystemScreenshots`).
 pub const ID_HANDLE_SCREENSHOTS: &str = "tray.handle_screenshots";
 /// "Hang copied images" switch (`watchClipboard`).
@@ -94,6 +96,8 @@ pub const ID_HOTKEY_CAPTURE: &str = "tray.hotkey.capture";
 pub const ID_HOTKEY_TOGGLE: &str = "tray.hotkey.toggle";
 /// "Shortcut ▸ Edit latest: <accel>" row (Wave 1 W1.8; opens the change window for editLatest).
 pub const ID_HOTKEY_EDIT_LATEST: &str = "tray.hotkey.edit_latest";
+/// "Shortcut ▸ Search: <accel>" row (Wave 2 W2.3; opens the change window for search).
+pub const ID_HOTKEY_SEARCH: &str = "tray.hotkey.search";
 /// "Shortcut ▸ <status>" disabled hint row (shows a registration failure).
 pub const ID_HOTKEY_STATUS: &str = "tray.hotkey.status";
 /// "Open screenshots folder".
@@ -129,6 +133,8 @@ pub enum TrayAction {
     TakeScreenshot,
     /// Toggle `captureCopyOnFinish` (copy a confirmed screenshot to the clipboard; W1.5).
     ToggleCaptureCopyOnFinish,
+    /// Open the on-demand search window (Wave 2 W2.2/W2.3).
+    OpenSearch,
     /// Toggle `watchSystemScreenshots` (restarts the folder watchers).
     ToggleWatchSystemScreenshots,
     /// Toggle `watchRecordings` (restarts the folder watchers).
@@ -177,6 +183,7 @@ impl TrayAction {
             Self::TakeEverythingDown => "take everything down",
             Self::TakeScreenshot => "take screenshot",
             Self::ToggleCaptureCopyOnFinish => "toggle capture copy on finish",
+            Self::OpenSearch => "open search",
             Self::ToggleWatchSystemScreenshots => "toggle system screenshots",
             Self::ToggleWatchRecordings => "toggle recordings",
             Self::ToggleWatchClipboard => "toggle clipboard",
@@ -220,6 +227,7 @@ pub fn action_for(id: &str) -> Option<TrayAction> {
         ID_TAKE_ALL_DOWN => TrayAction::TakeEverythingDown,
         ID_CAPTURE => TrayAction::TakeScreenshot,
         ID_CAPTURE_COPY_ON_FINISH => TrayAction::ToggleCaptureCopyOnFinish,
+        ID_SEARCH => TrayAction::OpenSearch,
         ID_HANDLE_SCREENSHOTS => TrayAction::ToggleWatchSystemScreenshots,
         ID_HANG_COPIED => TrayAction::ToggleWatchClipboard,
         ID_HANDLE_RECORDINGS => TrayAction::ToggleWatchRecordings,
@@ -241,6 +249,7 @@ pub fn action_for(id: &str) -> Option<TrayAction> {
         ID_HOTKEY_CAPTURE => TrayAction::ChangeShortcut(Target::Capture),
         ID_HOTKEY_TOGGLE => TrayAction::ChangeShortcut(Target::Toggle),
         ID_HOTKEY_EDIT_LATEST => TrayAction::ChangeShortcut(Target::EditLatest),
+        ID_HOTKEY_SEARCH => TrayAction::ChangeShortcut(Target::Search),
         ID_OPEN_SCREENSHOTS => TrayAction::OpenScreenshotsFolder,
         ID_SOUND => TrayAction::ToggleSound,
         ID_START_AT_LOGIN => TrayAction::ToggleStartAtLogin,
@@ -281,6 +290,8 @@ pub struct MenuState {
     pub toggle_hotkey: String,
     /// Whether the line's "edit latest" accelerator is shown (W1.8).
     pub edit_latest_hotkey: String,
+    /// Whether the line's "search" accelerator is shown (Wave 2 W2.3).
+    pub search_hotkey: String,
     /// Whether a confirmed screenshot is copied to the clipboard (`captureCopyOnFinish`, W1.5).
     pub capture_copy_on_finish: bool,
     /// "Take everything down" is enabled only when something is on the line.
@@ -339,6 +350,7 @@ pub fn menu_state(
         capture_hotkey: settings.capture_hotkey.clone(),
         toggle_hotkey: settings.toggle_hotkey.clone(),
         edit_latest_hotkey: settings.edit_latest_hotkey.clone(),
+        search_hotkey: settings.search_hotkey.clone(),
         capture_copy_on_finish: settings.capture_copy_on_finish,
         take_everything_down_enabled: item_count > 0,
         handle_screenshots: settings.watch_system_screenshots,
@@ -400,6 +412,7 @@ struct Items {
     take_all_down: MenuItem<Wry>,
     capture: MenuItem<Wry>,
     capture_copy_on_finish: CheckMenuItem<Wry>,
+    search: MenuItem<Wry>,
     handle_screenshots: CheckMenuItem<Wry>,
     hang_copied: CheckMenuItem<Wry>,
     handle_recordings: CheckMenuItem<Wry>,
@@ -425,6 +438,7 @@ struct Items {
     hotkey_capture: MenuItem<Wry>,
     hotkey_toggle: MenuItem<Wry>,
     hotkey_edit_latest: MenuItem<Wry>,
+    hotkey_search: MenuItem<Wry>,
     hotkey_status: MenuItem<Wry>,
     open_screenshots: MenuItem<Wry>,
     sound: CheckMenuItem<Wry>,
@@ -601,6 +615,8 @@ fn build_menu(
         state.capture_copy_on_finish,
         None::<&str>,
     )?;
+    // W2.3: the search entry point (also on its own global shortcut below).
+    let search = MenuItem::with_id(app, ID_SEARCH, strings.search, true, Some(state.search_hotkey.as_str()))?;
 
     let handle_screenshots = CheckMenuItem::with_id(
         app,
@@ -816,6 +832,10 @@ fn build_menu(
         .hotkey_error
         .as_ref()
         .is_some_and(|failure| failure.target == Target::EditLatest);
+    let failed_search = state
+        .hotkey_error
+        .as_ref()
+        .is_some_and(|failure| failure.target == Target::Search);
     let hotkey_capture = MenuItem::with_id(
         app,
         ID_HOTKEY_CAPTURE,
@@ -850,6 +870,14 @@ fn build_menu(
         true,
         None::<&str>,
     )?;
+    // W2.3: the fourth shortcut row.
+    let hotkey_search = MenuItem::with_id(
+        app,
+        ID_HOTKEY_SEARCH,
+        hotkey_row_label(strings.shortcut_search, &state.search_hotkey, failed_search),
+        true,
+        None::<&str>,
+    )?;
     let hotkey_status = MenuItem::with_id(
         app,
         ID_HOTKEY_STATUS,
@@ -865,6 +893,7 @@ fn build_menu(
             &hotkey_capture,
             &hotkey_toggle,
             &hotkey_edit_latest,
+            &hotkey_search,
             &PredefinedMenuItem::separator(app)?,
             &hotkey_status,
         ],
@@ -927,6 +956,7 @@ fn build_menu(
         take_all_down,
         capture,
         capture_copy_on_finish,
+        search,
         handle_screenshots,
         hang_copied,
         handle_recordings,
@@ -952,6 +982,7 @@ fn build_menu(
         hotkey_capture,
         hotkey_toggle,
         hotkey_edit_latest,
+        hotkey_search,
         hotkey_status,
         open_screenshots,
         sound,
@@ -971,6 +1002,7 @@ fn build_menu(
             &items.take_all_down,
             &items.capture,
             &items.capture_copy_on_finish,
+            &items.search,
             &PredefinedMenuItem::separator(app)?,
             &items.handle_screenshots,
             &items.hang_copied,
@@ -1061,6 +1093,11 @@ fn apply_state(
     items
         .capture_copy_on_finish
         .set_checked(state.capture_copy_on_finish)?;
+    // W2.3: the search item mirrors the fourth accelerator (label + displayed shortcut).
+    items.search.set_text(strings.search)?;
+    items
+        .search
+        .set_accelerator(Some(state.search_hotkey.as_str()))?;
     items
         .take_all_down
         .set_enabled(state.take_everything_down_enabled)?;
@@ -1145,6 +1182,10 @@ fn apply_state(
         .hotkey_error
         .as_ref()
         .is_some_and(|failure| failure.target == Target::EditLatest);
+    let failed_search = state
+        .hotkey_error
+        .as_ref()
+        .is_some_and(|failure| failure.target == Target::Search);
     items.hotkey_capture.set_text(hotkey_row_label(
         strings.shortcut_capture,
         &state.capture_hotkey,
@@ -1159,6 +1200,11 @@ fn apply_state(
         strings.shortcut_edit_latest,
         &state.edit_latest_hotkey,
         failed_edit_latest,
+    ))?;
+    items.hotkey_search.set_text(hotkey_row_label(
+        strings.shortcut_search,
+        &state.search_hotkey,
+        failed_search,
     ))?;
     items.hotkey_status.set_text(hotkey_status_text(strings, state))?;
 
@@ -1255,6 +1301,12 @@ fn handle_menu(app: &AppHandle, id: &str) {
             if let Err(error) = crate::shortcut_window::open(app, target) {
                 log::error!("tray: cannot open the change-shortcut window: {error}");
             }
+        }
+        TrayAction::OpenSearch => {
+            // W2.2/W2.3: the window is created on this action's own worker thread (creation
+            // dispatches to the event loop and waits, so it must never run on the menu thread).
+            log::info!("tray: search requested (dispatching to the search window worker thread)");
+            crate::search_window::open_in_background(app);
         }
         // Everything below mutates settings / starts watchers / runs the shell: never on the main
         // thread (a watcher restart joins threads and the modal folder picker blocks until closed).
@@ -1423,6 +1475,7 @@ mod tests {
         settings.card_size = CardSize::Large;
         settings.capture_copy_on_finish = true;
         settings.edit_latest_hotkey = "Ctrl+Shift+E".to_string();
+        settings.search_hotkey = "Ctrl+Shift+F".to_string();
         settings.extra_folders = vec![r"C:\Shots".to_string()];
         let state = menu_state(&settings, false, 1, None, true, Lang::En);
         assert!(!state.handle_screenshots);
@@ -1435,6 +1488,7 @@ mod tests {
         assert!(state.start_at_login);
         assert!(state.capture_copy_on_finish);
         assert_eq!(state.edit_latest_hotkey, "Ctrl+Shift+E");
+        assert_eq!(state.search_hotkey, "Ctrl+Shift+F");
         assert_eq!(state.keep_on_line, KeepOnLine::Limit(50));
         assert_eq!(state.keep_for_days, KeepForDays::Days(30));
         assert_eq!(state.card_size, CardSize::Large);
@@ -1493,6 +1547,7 @@ mod tests {
             action_for(ID_CAPTURE_COPY_ON_FINISH),
             Some(TrayAction::ToggleCaptureCopyOnFinish)
         );
+        assert_eq!(action_for(ID_SEARCH), Some(TrayAction::OpenSearch));
         // W1.7: the explanation rows are read-only (disabled) and map to no action.
         assert_eq!(action_for(ID_KEEP_INFO), None);
         assert_eq!(action_for(ID_KEEP_FOR_INFO), None);
@@ -1576,6 +1631,10 @@ mod tests {
         assert_eq!(
             action_for(ID_HOTKEY_EDIT_LATEST),
             Some(TrayAction::ChangeShortcut(Target::EditLatest))
+        );
+        assert_eq!(
+            action_for(ID_HOTKEY_SEARCH),
+            Some(TrayAction::ChangeShortcut(Target::Search))
         );
         assert_eq!(action_for(ID_HOTKEY_STATUS), None);
         assert_eq!(
@@ -1710,6 +1769,31 @@ mod tests {
         assert!(
             edit_status.contains("edit latest busy"),
             "got {edit_status:?}"
+        );
+
+        // W2.3: the fourth shortcut row/status covers "search" with its own label.
+        let search_failure = HotkeyFailure {
+            target: Target::Search,
+            accelerator: "Ctrl+Alt+F".to_string(),
+            message: "search busy".to_string(),
+        };
+        let search_state = menu_state(
+            &Settings::default(),
+            false,
+            0,
+            Some(search_failure),
+            false,
+            Lang::En,
+        );
+        assert_eq!(
+            hotkey_row_label(strings.shortcut_search, "Ctrl+Alt+F", true),
+            "Search: Ctrl+Alt+F ⚠"
+        );
+        let search_status = hotkey_status_text(strings, &search_state);
+        assert!(search_status.contains("Search"), "got {search_status:?}");
+        assert!(
+            search_status.contains("search busy"),
+            "got {search_status:?}"
         );
     }
 

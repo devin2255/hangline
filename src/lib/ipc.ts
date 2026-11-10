@@ -81,7 +81,7 @@ export function reportPanelReady(label: string): Promise<void> {
  * the rejection reason is the promise's error message (shown in the shortcut window).
  */
 export function setHotkey(
-  target: "capture" | "toggle" | "editLatest",
+  target: "capture" | "toggle" | "editLatest" | "search",
   accelerator: string,
 ): Promise<void> {
   return invoke("set_hotkey", { target, accelerator });
@@ -413,4 +413,39 @@ export function installUpdate(): Promise<void> {
  */
 export function getPendingUpdate(): Promise<UpdateInfo | null> {
   return invoke<UpdateInfo | null>("get_pending_update");
+}
+
+/**
+ * Opens the search window (`?window=search`, Wave 2.2).
+ *
+ * Rust creates (or re-focuses) the single search window; the page reads the item list through the
+ * normal `get_app_state`/`state` channel and filters locally — there is no backend search command.
+ */
+export function openSearch(): Promise<void> {
+  return invoke("open_search");
+}
+
+/** Closes the search window from its frontend (Esc / Close button). */
+export function closeSearch(): Promise<void> {
+  return invoke("close_search");
+}
+
+/**
+ * Replaces one item's note (Wave 2.3 detail editor).
+ *
+ * Rust persists the note and broadcasts a new `state` snapshot; the search window's store updates
+ * from the event, so no local copy is written here.
+ */
+export function setItemNote(id: string, note: string): Promise<void> {
+  return invoke("set_item_note", { id, note });
+}
+
+/**
+ * Replaces one item's tags (Wave 2.3 detail editor).
+ *
+ * `tags` is the already-parsed, trimmed array; Rust persists it and broadcasts a new `state`
+ * snapshot (the search list's tag chips update from the event).
+ */
+export function setItemTags(id: string, tags: string[]): Promise<void> {
+  return invoke("set_item_tags", { id, tags });
 }

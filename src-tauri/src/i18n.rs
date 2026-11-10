@@ -217,6 +217,8 @@ pub struct TrayStrings {
     pub capture: &'static str,
     /// W1.5 switch: copy a confirmed screenshot to the clipboard after saving.
     pub capture_copy_on_finish: &'static str,
+    /// "Search…" action that opens the on-demand search window (Wave 2 W2.2/W2.3).
+    pub search: &'static str,
     /// System-screenshot directory watcher switch.
     pub handle_screenshots: &'static str,
     /// Recordings directory watcher switch.
@@ -273,6 +275,8 @@ pub struct TrayStrings {
     pub shortcut_toggle: &'static str,
     /// W1.8 "edit the newest card" shortcut row (followed by the accelerator).
     pub shortcut_edit_latest: &'static str,
+    /// Wave 2 "search" shortcut row (followed by the accelerator).
+    pub shortcut_search: &'static str,
     /// Opens the change-shortcut window.
     pub shortcut_change: &'static str,
     /// Disabled status row when every shortcut is registered.
@@ -301,6 +305,8 @@ pub struct TrayStrings {
     pub picker_title: &'static str,
     /// Title of the minimal change-shortcut window.
     pub shortcut_window_title: &'static str,
+    /// Title of the on-demand search window (Wave 2 W2.2).
+    pub search_window_title: &'static str,
     /// W1.7 startup warning title (a global shortcut could not be registered).
     pub hotkey_error_title: &'static str,
     /// W1.7 startup warning intro line.
@@ -322,6 +328,7 @@ pub const EN: TrayStrings = TrayStrings {
     take_all_down_confirm_body: "Take all {} card(s) off the line?\n\nHangline's own screenshots go to the Recycle Bin (you can restore them); files from watched folders and system folders are not deleted.",
     capture: "Take screenshot…",
     capture_copy_on_finish: "Copy after screenshot",
+    search: "Search…",
     handle_screenshots: "Handle system screenshots",
     handle_recordings: "Handle recordings",
     hang_copied_images: "Hang copied images",
@@ -350,6 +357,7 @@ pub const EN: TrayStrings = TrayStrings {
     shortcut_capture: "Capture",
     shortcut_toggle: "Show/hide line",
     shortcut_edit_latest: "Edit latest",
+    shortcut_search: "Search",
     shortcut_change: "Change Shortcut…",
     hotkeys_ok: "Hotkeys are active",
     hotkey_unavailable: "Shortcut unavailable",
@@ -364,6 +372,7 @@ pub const EN: TrayStrings = TrayStrings {
     quit: "Quit Hangline",
     picker_title: "Choose a folder to watch",
     shortcut_window_title: "Hangline — Change shortcut",
+    search_window_title: "Hangline — Search",
     hotkey_error_title: "Hangline — Shortcut unavailable",
     hotkey_error_intro: "Hangline could not register these global shortcuts:",
     hotkey_error_detail: "• {} ({}): {}",
@@ -381,6 +390,7 @@ pub const ZH_HANS: TrayStrings = TrayStrings {
     take_all_down_confirm_body: "将把 {} 张卡片全部从线上取下。\n\nHangline 自有目录中的截图会进入回收站（可撤销）；监视文件夹与系统文件不会被删除。",
     capture: "截图…",
     capture_copy_on_finish: "截图后自动复制",
+    search: "搜索…",
     handle_screenshots: "处理系统截图",
     handle_recordings: "挂起录屏",
     hang_copied_images: "挂起复制的图片",
@@ -409,6 +419,7 @@ pub const ZH_HANS: TrayStrings = TrayStrings {
     shortcut_capture: "截图",
     shortcut_toggle: "显示/隐藏线",
     shortcut_edit_latest: "编辑最新一张",
+    shortcut_search: "搜索",
     shortcut_change: "修改快捷键…",
     hotkeys_ok: "快捷键已启用",
     hotkey_unavailable: "快捷键不可用",
@@ -423,6 +434,7 @@ pub const ZH_HANS: TrayStrings = TrayStrings {
     quit: "退出 Hangline",
     picker_title: "选择要监听的文件夹",
     shortcut_window_title: "Hangline — 修改快捷键",
+    search_window_title: "Hangline — 搜索",
     hotkey_error_title: "Hangline — 快捷键不可用",
     hotkey_error_intro: "Hangline 无法注册以下全局快捷键：",
     hotkey_error_detail: "• {}（{}）：{}",
@@ -455,6 +467,7 @@ impl TrayStrings {
             ("take_all_down_confirm_body", self.take_all_down_confirm_body),
             ("capture", self.capture),
             ("capture_copy_on_finish", self.capture_copy_on_finish),
+            ("search", self.search),
             ("handle_screenshots", self.handle_screenshots),
             ("handle_recordings", self.handle_recordings),
             ("hang_copied_images", self.hang_copied_images),
@@ -483,6 +496,7 @@ impl TrayStrings {
             ("shortcut_capture", self.shortcut_capture),
             ("shortcut_toggle", self.shortcut_toggle),
             ("shortcut_edit_latest", self.shortcut_edit_latest),
+            ("shortcut_search", self.shortcut_search),
             ("shortcut_change", self.shortcut_change),
             ("hotkeys_ok", self.hotkeys_ok),
             ("hotkey_unavailable", self.hotkey_unavailable),
@@ -497,6 +511,7 @@ impl TrayStrings {
             ("quit", self.quit),
             ("picker_title", self.picker_title),
             ("shortcut_window_title", self.shortcut_window_title),
+            ("search_window_title", self.search_window_title),
             ("hotkey_error_title", self.hotkey_error_title),
             ("hotkey_error_intro", self.hotkey_error_intro),
             ("hotkey_error_detail", self.hotkey_error_detail),
@@ -671,5 +686,17 @@ mod tests {
         assert_eq!(ZH_HANS.shortcut_edit_latest, "编辑最新一张");
         assert!(!EN.keep_info.is_empty() && !ZH_HANS.keep_info.is_empty());
         assert!(!EN.keep_for_info.is_empty() && !ZH_HANS.keep_for_info.is_empty());
+    }
+
+    /// Wave 2: the search tray item, shortcut row and window title exist in both frozen tables
+    /// (the parity test above covers the key set/blank rule).
+    #[test]
+    fn w2_search_strings_are_translated() {
+        assert_eq!(EN.search, "Search…");
+        assert_eq!(ZH_HANS.search, "搜索…");
+        assert_eq!(EN.shortcut_search, "Search");
+        assert_eq!(ZH_HANS.shortcut_search, "搜索");
+        assert_eq!(EN.search_window_title, "Hangline — Search");
+        assert_eq!(ZH_HANS.search_window_title, "Hangline — 搜索");
     }
 }

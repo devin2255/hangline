@@ -103,6 +103,7 @@ describe("parseShortcutTarget", () => {
     expect(parseShortcutTarget("capture")).toBe("capture");
     expect(parseShortcutTarget("toggle")).toBe("toggle");
     expect(parseShortcutTarget("editLatest")).toBe("editLatest");
+    expect(parseShortcutTarget("search")).toBe("search");
   });
 
   it("falls back to capture for unknown, empty or missing values", () => {

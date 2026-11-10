@@ -69,5 +69,21 @@
   "Highlight": "高亮",
   "Failed to open menu": "菜单打开失败",
   "Nothing to take down": "没有可下线的截图",
-  "Edit latest": "编辑最新一张"
+  "Edit latest": "编辑最新一张",
+  "Search": "搜索",
+  "Search screenshots": "搜索截图",
+  "Search by file name, note or tag": "按文件名、备注或标签搜索",
+  "No matches": "没有匹配项",
+  "Note": "备注",
+  "Tags": "标签",
+  "Add tag": "添加标签",
+  "Remove tag": "移除标签",
+  "Saved": "已保存",
+  "Search failed": "搜索失败",
+  "Close": "关闭",
+  "Name": "名称",
+  "Source": "来源",
+  "Added": "添加时间",
+  "No note": "无备注",
+  "No tags": "无标签"
 }

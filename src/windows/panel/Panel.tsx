@@ -32,6 +32,7 @@ import {
   installUpdate,
   openAnnotate,
   openItem,
+  openSearch,
   openTrim,
   reportPanelReady,
   setHitRects,
@@ -47,8 +48,8 @@ import {
 } from "../../lib/ipc";
 import {
   interactiveRects,
-  menuHeightFor,
   menuItemsFor,
+  menuOuterHeightFor,
   openCardMenu,
   setSubmenuOpen,
   shouldSuppressCardGesture,
@@ -474,7 +475,13 @@ export function Panel() {
       const list = layoutRef.current.items;
       const index = list.findIndex((candidate) => candidate.id === item.id);
       if (index < 0) return;
-      const nodes = menuItemsFor(item, { index, total: list.length });
+      // `panelHeight` lets the pure model compact itself (Wave 2: the Search group makes the full
+      // menu taller than the medium/small panel); the outer height includes the menu border.
+      const nodes = menuItemsFor(item, {
+        index,
+        total: list.length,
+        panelHeight: window.innerHeight,
+      });
       // The reveal/tuck transform moves every client rect; absolute children are positioned in the
       // panel's untransformed client space, so the anchor must be un-translated first.
       const offsetY = panelRef.current ? currentTranslateY(panelRef.current) : 0;
@@ -485,7 +492,7 @@ export function Panel() {
           itemId: item.id,
           anchorX: anchorClientX,
           anchorY: anchorClientY - offsetY,
-          menuHeight: menuHeightFor(nodes),
+          menuHeight: menuOuterHeightFor(nodes),
           panelWidth: window.innerWidth,
           panelHeight: window.innerHeight,
         }),
@@ -1014,6 +1021,13 @@ export function Panel() {
         return;
       }
       closeCardMenu(false);
+      // `Search` is a global action: it does not need the card, only the window.
+      if (action === "search") {
+        void openSearch().catch((error: unknown) => {
+          console.warn("Hangline panel: open_search failed", error);
+        });
+        return;
+      }
       if (!item) return;
       switch (action) {
         case "copyImage":
@@ -2283,15 +2297,17 @@ export function Panel() {
     transform: `translateX(${shift}px)`,
   } as CSSProperties;
 
-  // Rows for the open menu (Wave 1.1). Built from the *live* item list so the side take-downs are
-  // disabled correctly when the line changes under an open menu; a menu whose item disappeared is
-  // closed by the effect above and renders nothing.
+  // Rows for the open menu (Wave 1.1 + Wave 2.3). Built from the *live* item list so the side
+  // take-downs are disabled correctly when the line changes under an open menu; `panelHeight`
+  // applies the same compaction the open path used, so the rendered height matches the clamped
+  // position. A menu whose item disappeared is closed by the effect above and renders nothing.
   const menuItem = menu ? (items.find((item) => item.id === menu.itemId) ?? null) : null;
   const menuNodes =
     menu && menuItem
       ? menuItemsFor(menuItem, {
           index: items.findIndex((item) => item.id === menuItem.id),
           total: items.length,
+          panelHeight: window.innerHeight,
         })
       : null;
 

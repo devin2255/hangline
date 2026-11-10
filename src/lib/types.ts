@@ -123,6 +123,16 @@ export interface Item {
    * (`assetUrl(path, updatedAt)` appends `?v=`).
    */
   updatedAt?: number;
+  /**
+   * Wave 2 item note (searchable). Rust always sends a string; items persisted before W2 carry
+   * `""`.
+   */
+  note: string;
+  /**
+   * Wave 2 item tags (searchable). Rust always sends an array; items persisted before W2 carry
+   * `[]`. Tag values are free-form and trimmed server-side.
+   */
+  tags: string[];
 }
 
 /** The 18 design-spec user settings plus the `keepForDays` age-retention extension (Rust `Settings`). */
@@ -136,6 +146,8 @@ export interface Settings {
    * unbound). Mirrors Rust `edit_latest_hotkey`.
    */
   editLatestHotkey: string;
+  /** Fourth global shortcut: open the search window (default Ctrl+Alt+F). */
+  searchHotkey: string;
   /** Wave 1.5: also put the finished capture on the clipboard (in addition to saving/hanging it). */
   captureCopyOnFinish: boolean;
   watchSystemScreenshots: boolean;

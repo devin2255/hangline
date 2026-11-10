@@ -62,6 +62,15 @@ const CAPTURE_ORIGIN_TTL: Duration = Duration::from_secs(30);
 /// Maximum number of pending capture origins kept (P2-5 brief: bounded map of 8).
 const CAPTURE_ORIGIN_MAX: usize = 8;
 
+/// Maximum number of characters in one item note (W2.1; the frontend mirrors the limit).
+pub const MAX_NOTE_CHARS: usize = 2000;
+
+/// Maximum number of tags on one item (W2.1).
+pub const MAX_TAGS: usize = 20;
+
+/// Maximum length of one tag in characters (W2.1).
+pub const MAX_TAG_CHARS: usize = 32;
+
 /// One capture rect waiting to be consumed by the fly-in overlay (keyed by the new item id).
 #[derive(Debug)]
 struct CaptureOrigin {
@@ -237,6 +246,55 @@ fn drop_expired(items: &mut Vec<Item>, policy: KeepForDays, now_ms: i64) -> Vec<
     }
     *items = kept;
     expired
+}
+
+/// Validates an item note (W2.1): at most [`MAX_NOTE_CHARS`] characters.
+///
+/// Pure, so the limit is unit-tested without a state; the message is user-facing (the command
+/// returns it unchanged). Notes are otherwise free-form (newlines/emoji included).
+pub fn validate_note(note: &str) -> Result<(), String> {
+    let chars = note.chars().count();
+    if chars > MAX_NOTE_CHARS {
+        return Err(format!(
+            "note is too long: {chars} characters (limit {MAX_NOTE_CHARS})"
+        ));
+    }
+    Ok(())
+}
+
+/// Normalizes item tags (W2.1): trim, drop empty, de-duplicate (ASCII case-insensitive) and enforce
+/// the per-tag/collection limits.
+///
+/// The cleaned list keeps first-seen order; `Err` is a user-facing message (the command returns it
+/// unchanged). Pure, so the whole contract is unit-tested without a state.
+pub fn normalize_tags(tags: &[String]) -> Result<Vec<String>, String> {
+    let mut normalized: Vec<String> = Vec::with_capacity(tags.len());
+    for tag in tags {
+        let cleaned = tag.trim();
+        if cleaned.is_empty() {
+            continue;
+        }
+        let chars = cleaned.chars().count();
+        if chars > MAX_TAG_CHARS {
+            return Err(format!(
+                "tag is too long: {chars} characters (limit {MAX_TAG_CHARS})"
+            ));
+        }
+        if normalized
+            .iter()
+            .any(|existing| existing.eq_ignore_ascii_case(cleaned))
+        {
+            continue;
+        }
+        normalized.push(cleaned.to_string());
+    }
+    if normalized.len() > MAX_TAGS {
+        return Err(format!(
+            "too many tags: {} (limit {MAX_TAGS})",
+            normalized.len()
+        ));
+    }
+    Ok(normalized)
 }
 
 /// One side of the target card a side take-down removes (`take_down_side`).
@@ -567,6 +625,48 @@ impl AppState {
         Ok(inner.snapshot())
     }
 
+    /// Validates and replaces one card's note (W2.1, `set_item_note`).
+    ///
+    /// One mutation = one revision bump + one `state.json` write; the command broadcasts the new
+    /// snapshot once. Returns whether the value actually changed — an unchanged save neither
+    /// rewrites the file nor bumps the revision, so a repeated UI save is free. A missing id is a
+    /// diagnostic error the frontend can surface.
+    pub fn set_note(&self, id: &str, note: &str) -> anyhow::Result<bool> {
+        validate_note(note).map_err(anyhow::Error::msg)?;
+        let mut inner = self.lock();
+        let Some(existing) = inner.items.iter_mut().find(|item| item.id == id) else {
+            anyhow::bail!("cannot set the note: item {id} is not on the line");
+        };
+        if existing.note == note {
+            return Ok(false);
+        }
+        existing.note = note.to_string();
+        inner.bump();
+        store::save_atomic(&inner.dir, &inner.items)
+            .context("failed to persist the item note")?;
+        Ok(true)
+    }
+
+    /// Validates and replaces one card's tags (W2.1, `set_item_tags`).
+    ///
+    /// The list is normalized exactly as [`normalize_tags`] documents. One mutation = one revision
+    /// bump + one persist; returns whether the stored list actually changed.
+    pub fn set_tags(&self, id: &str, tags: &[String]) -> anyhow::Result<bool> {
+        let normalized = normalize_tags(tags).map_err(anyhow::Error::msg)?;
+        let mut inner = self.lock();
+        let Some(existing) = inner.items.iter_mut().find(|item| item.id == id) else {
+            anyhow::bail!("cannot set the tags: item {id} is not on the line");
+        };
+        if existing.tags == normalized {
+            return Ok(false);
+        }
+        existing.tags = normalized;
+        inner.bump();
+        store::save_atomic(&inner.dir, &inner.items)
+            .context("failed to persist the item tags")?;
+        Ok(true)
+    }
+
     /// Removes the item with `id` (if any), persists, and returns the removed item.
     #[allow(dead_code)] // Task 12/13 (take-down / drag-away) remove items.
     pub fn remove(&self, id: &str) -> anyhow::Result<Option<Item>> {
@@ -747,6 +847,8 @@ mod tests {
             created_at: 1,
             added_at,
             updated_at: added_at,
+            note: String::new(),
+            tags: Vec::new(),
         }
     }
 
@@ -1741,6 +1843,138 @@ mod tests {
             .expect("stale id")
             .is_empty());
         assert_eq!(state.snapshot(), unchanged);
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// W2.1: the note limit counts characters (not bytes); the boundary is allowed.
+    #[test]
+    fn validate_note_counts_characters_and_allows_the_boundary() {
+        assert!(validate_note("").is_ok());
+        assert!(validate_note(&"a".repeat(MAX_NOTE_CHARS)).is_ok());
+        // 2000 multibyte characters are 2000 characters, not 6000 bytes.
+        assert!(validate_note(&"备".repeat(MAX_NOTE_CHARS)).is_ok());
+        let error = validate_note(&"a".repeat(MAX_NOTE_CHARS + 1)).expect_err("over the limit");
+        assert!(error.contains("too long"), "clear error: {error}");
+        assert!(error.contains(&MAX_NOTE_CHARS.to_string()));
+    }
+
+    /// W2.1: tags are trimmed, empty entries dropped and duplicates (ASCII case-insensitive)
+    /// removed while keeping the first-seen spelling/order.
+    #[test]
+    fn normalize_tags_trims_dedupes_and_ignores_empty_entries() {
+        let input: Vec<String> = ["  work ", "Work", "", "   ", "travel", "work", "旅行"]
+            .iter()
+            .map(|tag| tag.to_string())
+            .collect();
+        assert_eq!(
+            normalize_tags(&input).expect("valid tags"),
+            vec![
+                "work".to_string(),
+                "travel".to_string(),
+                "旅行".to_string()
+            ]
+        );
+        assert!(normalize_tags(&[]).expect("empty list is valid").is_empty());
+    }
+
+    /// W2.1: per-tag and collection limits are rejected with diagnostic messages (never truncated).
+    #[test]
+    fn normalize_tags_enforces_the_limits() {
+        let too_long = "a".repeat(MAX_TAG_CHARS + 1);
+        let error = normalize_tags(&[too_long]).expect_err("over-long tag");
+        assert!(error.contains("too long"), "clear error: {error}");
+        // 32 multibyte characters are allowed: the limit counts characters.
+        assert_eq!(
+            normalize_tags(&["备".repeat(MAX_TAG_CHARS)]).expect("boundary tag"),
+            vec!["备".repeat(MAX_TAG_CHARS)]
+        );
+        let too_many: Vec<String> = (0..=MAX_TAGS).map(|index| format!("t{index}")).collect();
+        let error = normalize_tags(&too_many).expect_err("too many tags");
+        assert!(error.contains("too many tags"), "clear error: {error}");
+        assert_eq!(
+            normalize_tags(&too_many[..MAX_TAGS]).expect("exactly the limit"),
+            too_many[..MAX_TAGS].to_vec()
+        );
+    }
+
+    /// W2.1: `set_note` is one revision bump + one persisted write, and an unchanged save is free.
+    #[test]
+    fn set_note_persists_with_one_revision_bump() {
+        let dir = test_dir("set-note");
+        let state = AppState::load(dir.clone());
+        let path = existing_file(&dir, "note.png");
+        let fixture = item("note-item", &path, 1);
+        state.add_item(fixture.clone()).expect("add the fixture");
+        let before = state.snapshot().revision;
+
+        assert!(state
+            .set_note(&fixture.id, "first note 备注\nsecond line")
+            .expect("set the note"));
+        let after = state.snapshot();
+        assert_eq!(after.revision, before + 1, "one note write is one revision");
+        assert_eq!(after.items[0].note, "first note 备注\nsecond line");
+        assert_eq!(store::load(&dir)[0].note, "first note 备注\nsecond line");
+
+        // Saving the same value again is a no-op (no bump, no rewrite).
+        assert!(!state.set_note(&fixture.id, "first note 备注\nsecond line").expect("same note"));
+        assert_eq!(state.snapshot().revision, after.revision);
+
+        // A missing id and an over-long note are diagnostic errors that leave the state untouched.
+        let error = state.set_note("not-on-the-line", "x").expect_err("missing id");
+        assert!(error.to_string().contains("not on the line"), "got {error:#}");
+        let error = state
+            .set_note(&fixture.id, &"a".repeat(MAX_NOTE_CHARS + 1))
+            .expect_err("over-long note");
+        assert!(error.to_string().contains("too long"), "got {error:#}");
+        assert_eq!(state.snapshot(), after);
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// W2.1: `set_tags` persists the normalized list with one revision bump; invalid lists are
+    /// rejected without touching memory or disk.
+    #[test]
+    fn set_tags_persists_the_normalized_list() {
+        let dir = test_dir("set-tags");
+        let state = AppState::load(dir.clone());
+        let path = existing_file(&dir, "tags.png");
+        let fixture = item("tags-item", &path, 1);
+        state.add_item(fixture.clone()).expect("add the fixture");
+        let before = state.snapshot().revision;
+
+        let raw: Vec<String> = ["  work ", "Work", "", "travel"]
+            .iter()
+            .map(|tag| tag.to_string())
+            .collect();
+        assert!(state.set_tags(&fixture.id, &raw).expect("set the tags"));
+        let after = state.snapshot();
+        assert_eq!(after.revision, before + 1, "one tags write is one revision");
+        assert_eq!(
+            after.items[0].tags,
+            vec!["work".to_string(), "travel".to_string()]
+        );
+        assert_eq!(
+            store::load(&dir)[0].tags,
+            vec!["work".to_string(), "travel".to_string()]
+        );
+
+        // Same normalized list (different spelling) is a no-op.
+        assert!(!state
+            .set_tags(&fixture.id, &["work".to_string(), "travel".to_string()])
+            .expect("same tags"));
+        assert_eq!(state.snapshot().revision, after.revision);
+
+        // An invalid list is rejected before the lock; nothing changes.
+        let error = state
+            .set_tags(&fixture.id, &["a".repeat(MAX_TAG_CHARS + 1)])
+            .expect_err("over-long tag");
+        assert!(error.to_string().contains("too long"), "got {error:#}");
+        assert_eq!(state.snapshot(), after);
+        // An empty list clears the tags (a real change).
+        assert!(state.set_tags(&fixture.id, &[]).expect("clear tags"));
+        assert!(state.snapshot().items[0].tags.is_empty());
+        assert_eq!(state.snapshot().revision, after.revision + 1);
 
         let _ = fs::remove_dir_all(dir);
     }

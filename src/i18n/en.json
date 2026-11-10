@@ -69,5 +69,21 @@
   "Highlight": "Highlight",
   "Failed to open menu": "Failed to open menu",
   "Nothing to take down": "Nothing to take down",
-  "Edit latest": "Edit latest"
+  "Edit latest": "Edit latest",
+  "Search": "Search",
+  "Search screenshots": "Search screenshots",
+  "Search by file name, note or tag": "Search by file name, note or tag",
+  "No matches": "No matches",
+  "Note": "Note",
+  "Tags": "Tags",
+  "Add tag": "Add tag",
+  "Remove tag": "Remove tag",
+  "Saved": "Saved",
+  "Search failed": "Search failed",
+  "Close": "Close",
+  "Name": "Name",
+  "Source": "Source",
+  "Added": "Added",
+  "No note": "No note",
+  "No tags": "No tags"
 }

@@ -193,6 +193,8 @@ mod tests {
             created_at: 0,
             added_at,
             updated_at: added_at,
+            note: String::new(),
+            tags: Vec::new(),
         }
     }
 

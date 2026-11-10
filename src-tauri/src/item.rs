@@ -73,6 +73,14 @@ pub struct Item {
     /// WebView's byte cache after an in-place rewrite.
     #[serde(default)]
     pub updated_at: i64,
+    /// User note (Wave 2 W2.1; empty for items persisted before Wave 2 — the serde default is the
+    /// read-time migration, so an old `state.json` loads unchanged).
+    #[serde(default)]
+    pub note: String,
+    /// User tags (Wave 2 W2.1). Normalized by `AppState::set_tags` (trimmed, de-duplicated, at most
+    /// 20 non-empty tags of at most 32 characters); empty for pre-Wave-2 items.
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 impl Item {
@@ -98,6 +106,8 @@ impl Item {
             created_at,
             added_at,
             updated_at: added_at,
+            note: String::new(),
+            tags: Vec::new(),
         }
     }
 }
@@ -184,6 +194,8 @@ mod tests {
             item.updated_at, item.added_at,
             "a new item is not rewritten yet: updatedAt starts at addedAt"
         );
+        assert!(item.note.is_empty(), "a new item has no note yet");
+        assert!(item.tags.is_empty(), "a new item has no tags yet");
 
         // Two items for the same file must still be distinguishable.
         let second = Item::new(path, ItemKind::SystemScreenshot, 0xDEAD_BEEF_CAFE_BABE, 640, 480);
@@ -230,6 +242,8 @@ mod tests {
             created_at: 1_700_000_000_000,
             added_at: 1_700_000_000_500,
             updated_at: 1_700_000_000_900,
+            note: "A useful screenshot".to_string(),
+            tags: vec!["work".to_string(), "reference".to_string()],
         };
         let value = serde_json::to_value(&item).expect("serialize item");
         assert_eq!(
@@ -244,11 +258,54 @@ mod tests {
                 "createdAt": 1_700_000_000_000i64,
                 "addedAt": 1_700_000_000_500i64,
                 "updatedAt": 1_700_000_000_900i64,
+                "note": "A useful screenshot",
+                "tags": ["work", "reference"],
             }),
-            "a None thumbPath is omitted from state.json"
+            "a None thumbPath is omitted from state.json; note/tags are always written"
         );
         let parsed: Item = serde_json::from_value(value).expect("deserialize item");
         assert_eq!(parsed, item);
+    }
+
+    /// W2.1: `note`/`tags` survive a round-trip, and a pre-Wave-2 row (no such fields) loads with
+    /// the serde defaults — the read-time migration the task requires.
+    #[test]
+    fn note_and_tags_round_trip_and_legacy_rows_default_to_empty() {
+        let mut item = Item::new(
+            PathBuf::from(r"C:\Users\Example\Pictures\Screenshots\shot.png"),
+            ItemKind::Capture,
+            7,
+            800,
+            600,
+        );
+        item.note = "remember this 备注".to_string();
+        item.tags = vec!["截图".to_string(), "工作".to_string()];
+        let value = serde_json::to_value(&item).expect("serialize item");
+        assert_eq!(value.get("note").and_then(|note| note.as_str()), Some("remember this 备注"));
+        assert_eq!(
+            value.get("tags"),
+            Some(&json!(["截图", "工作"])),
+            "tags serialize as a JSON array in item order"
+        );
+        let parsed: Item = serde_json::from_value(value).expect("deserialize item");
+        assert_eq!(parsed, item);
+
+        // A state.json written before Wave 2 has neither field: both default to empty.
+        let legacy = json!({
+            "id": "0123456789abcdef0123456789abcdef",
+            "path": r"C:\shot.png",
+            "kind": "capture",
+            "hash": 1,
+            "width": 10,
+            "height": 20,
+            "createdAt": 1,
+            "addedAt": 2,
+            "updatedAt": 3,
+        });
+        let parsed: Item = serde_json::from_value(legacy).expect("legacy item");
+        assert_eq!(parsed.note, "");
+        assert!(parsed.tags.is_empty());
+        assert_eq!(parsed.updated_at, 3, "migration must not rewrite other fields");
     }
 
     #[test]

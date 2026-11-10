@@ -60,13 +60,17 @@ export function Shortcut() {
       ? state?.settings.captureHotkey
       : target === "toggle"
         ? state?.settings.toggleHotkey
-        : state?.settings.editLatestHotkey;
+        : target === "editLatest"
+          ? state?.settings.editLatestHotkey
+          : state?.settings.searchHotkey;
   const targetLabel =
     target === "capture"
       ? t("Capture")
       : target === "toggle"
         ? t("Show/hide line")
-        : t("Edit latest");
+        : target === "editLatest"
+          ? t("Edit latest")
+          : t("Search");
 
   // Full-state handshake so the window can show the current accelerator and follow a language
   // switch while it is open (the store picks the i18n table before re-rendering).
