@@ -32,6 +32,7 @@ import { t } from "../lib/i18n";
 import { copyItem, openItem, takeDown } from "../lib/ipc";
 import { createLongPress, LONG_PRESS_MOVE_THRESHOLD_PX } from "../lib/longPress";
 import type { LongPress } from "../lib/longPress";
+import { PREVIEW_HOVER_DELAY_MS, shouldStartPreviewTimer } from "../lib/panel";
 import {
   CARD_PIN_OVERLAP,
   CARD_RADIUS,
@@ -254,6 +255,13 @@ export interface GlassCardProps {
   onEdit?: (item: Item) => void;
   /** Reports the mounted hover capsule so the panel adds its rect to the click-through hit rects. */
   onActionsElement?: (element: HTMLElement | null) => void;
+  /**
+   * Wave 2.4 hover preview: after the 300 ms dwell the card asks the panel to show the enlarged
+   * original (`item` + the card element used for geometry); `null` hides it immediately.
+   *
+   * The panel owns the single rendered preview — cards never render large images themselves.
+   */
+  onPreviewRequest?: (item: Item | null, card: HTMLElement | null) => void;
 }
 
 export function GlassCard({
@@ -283,6 +291,7 @@ export function GlassCard({
   onMoreActions,
   onEdit,
   onActionsElement,
+  onPreviewRequest,
 }: GlassCardProps) {
   const slotWidth = cardWidth(size);
   const visual = cardVisualSize(item, size);
@@ -361,6 +370,65 @@ export function GlassCard({
     },
     [onActionsElement],
   );
+
+  // --- Wave 2.4 hover preview: 300 ms dwell, one request per pointer enter ----------------------
+  /** Pending dwell timer (armed on enter / capsule leave, cleared on leave / interaction). */
+  const previewTimerRef = useRef<number | null>(null);
+  /** A preview request is currently shown by the panel (so a hide request is needed). */
+  const previewShownRef = useRef(false);
+  const clearPreviewTimer = useCallback(() => {
+    if (previewTimerRef.current !== null) {
+      window.clearTimeout(previewTimerRef.current);
+      previewTimerRef.current = null;
+    }
+  }, []);
+  /** Hides an already-visible preview (and drops a pending one); safe to call repeatedly. */
+  const cancelPreview = useCallback(() => {
+    clearPreviewTimer();
+    if (!previewShownRef.current) return;
+    previewShownRef.current = false;
+    onPreviewRequest?.(null, null);
+  }, [clearPreviewTimer, onPreviewRequest]);
+  /**
+   * Arms the dwell timer once per pointer enter.
+   *
+   * Mousemove inside the card never restarts it (no per-frame state churn); the callback
+   * re-validates the gate so a menu open / drag / pause that starts inside the 300 ms window wins.
+   */
+  const armPreviewTimer = useCallback(() => {
+    if (!onPreviewRequest) return;
+    if (
+      !shouldStartPreviewTimer({
+        hovering: hoveredRef.current,
+        recording: isRecording,
+        locked: gesturesLocked,
+        paused,
+        dragging,
+      })
+    ) {
+      return;
+    }
+    clearPreviewTimer();
+    previewTimerRef.current = window.setTimeout(() => {
+      previewTimerRef.current = null;
+      if (previewShownRef.current || !hoveredRef.current) return;
+      if (gesturesLocked || paused || dragging) return;
+      const card = articleRef.current;
+      if (!card) return;
+      previewShownRef.current = true;
+      onPreviewRequest(itemRef.current, card);
+    }, PREVIEW_HOVER_DELAY_MS);
+  }, [clearPreviewTimer, dragging, gesturesLocked, isRecording, onPreviewRequest, paused]);
+
+  // Anything that suspends card interaction also hides an already-visible preview immediately.
+  useEffect(() => {
+    if (paused || dragging || gesturesLocked) cancelPreview();
+  }, [cancelPreview, dragging, gesturesLocked, paused]);
+
+  // A detached card must not fire the delayed request or leave a timer behind.
+  useEffect(() => {
+    return () => clearPreviewTimer();
+  }, [clearPreviewTimer]);
 
   useSlotSpring(slotRef, x, top, paused, reducedMotion);
 
@@ -633,6 +701,7 @@ export function GlassCard({
             hoveredRef.current = true;
             setHovered(true);
             syncTargets();
+            armPreviewTimer();
           }}
           onPointerLeave={() => {
             longPress.current?.cancel();
@@ -641,6 +710,7 @@ export function GlassCard({
             pressedRef.current = false;
             setHovered(false);
             syncTargets();
+            cancelPreview();
           }}
           onPointerMove={(event) => {
             // The controller compares the radial travel with the same 4 dp drag threshold: moving
@@ -668,6 +738,9 @@ export function GlassCard({
             }
             // The take-down cross and the hover capsule keep their own click targets.
             if ((event.target as HTMLElement).closest("[data-action]")) return;
+            // A press is the start of a gesture (click / hold / drag): a large preview would only
+            // obstruct it.
+            cancelPreview();
             pressedRef.current = true;
             pressOrigin.current = { x: event.clientX, y: event.clientY };
             movedPress.current = false;
@@ -827,6 +900,9 @@ export function GlassCard({
               role="group"
               aria-label={t("More actions")}
               ref={attachActionsRef}
+              // The capsule is the foreground interaction surface: it always wins over the peek.
+              onPointerEnter={() => cancelPreview()}
+              onPointerLeave={() => armPreviewTimer()}
               onPointerDown={(event) => event.stopPropagation()}
               onClick={(event) => event.stopPropagation()}
               onDoubleClick={(event) => event.stopPropagation()}

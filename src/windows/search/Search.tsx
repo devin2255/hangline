@@ -1,11 +1,18 @@
 /**
- * The search window (`index.html?window=search&theme=…&lang=…`, Wave 2.2).
+ * The search window (`index.html?window=search&theme=…&lang=…`, Wave 2.2 + Wave 2.5).
  *
  * Opened by the panel's card menu (`open_search`), destroyed by Rust on close. The page owns the
  * whole search experience locally: it reads the same full `AppState` snapshot as every other window
  * (`initAppState`/`useAppStore`) and filters in the webview — there is no backend search command.
  * Matching is case-insensitive across the file name, note, tags and the full path; an empty query
  * lists everything newest-first.
+ *
+ * Wave 2.5 adds the local OCR index as an **optional enhancement** on top of that local filter:
+ * on open the page asks `ocr_status`, starts one bounded background `build_ocr_index` and then,
+ * for queries of at least two characters, debounces `search_ocr` (250 ms). OCR-only hits are
+ * appended after the local matches (deduplicated by item id), marked "Contains image text" and
+ * expand the recognized excerpt in the detail pane. Every OCR failure is silent: the window just
+ * keeps filtering locally.
  *
  * Interaction map (keyboard-first, mouse optional):
  * - the search field is focused on open; ↑/↓ move the active row, Enter copies it and closes,
@@ -21,16 +28,19 @@ import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { assetUrl } from "../../lib/assetUrl";
 import { t } from "../../lib/i18n";
 import {
+  buildOcrIndex,
   closeSearch,
   copyItem,
+  ocrStatus,
   openItem,
+  searchOcr,
   setItemNote,
   setItemTags,
 } from "../../lib/ipc";
 import { fileNameOf, showCardImage } from "../../lib/layout";
 import { initAppState, useAppStore } from "../../lib/state";
 import { themeSettingFromLocation, useResolvedTheme } from "../../lib/theme";
-import type { Item } from "../../lib/types";
+import type { Item, OcrHit } from "../../lib/types";
 import "./Search.css";
 
 /** How long the green "Saved" confirmation stays visible (ms). */
@@ -43,6 +53,15 @@ const SAVED_STATUS_MS = 1800;
  * a pasted/over-limit value still surfaces Rust's user-facing error in the status line.
  */
 const MAX_NOTE_CHARS = 2000;
+
+/** Minimum query length before the OCR index is queried (Wave 2.5). */
+export const OCR_MIN_QUERY_CHARS = 2;
+
+/** Debounce between the last keystroke and `search_ocr` (ms, Wave 2.5). */
+export const OCR_QUERY_DEBOUNCE_MS = 250;
+
+/** OCR attempts per background index build (bounded so opening the window stays responsive). */
+const OCR_BUILD_LIMIT = 50;
 
 /** No stable empty array: `useMemo` over a fresh `[]` would re-filter on every render. */
 const NO_ITEMS: Item[] = [];
@@ -135,6 +154,80 @@ export function formatAdded(addedAt: number): string {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Wave 2.5: OCR index integration
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Lifecycle of the local OCR index, as shown in the list's status line.
+ *
+ * - `unknown`: the status query has not answered yet (no line, no OCR queries);
+ * - `unavailable`: no Windows OCR engine / no index (line says so, queries stay local-only);
+ * - `building`: an index build is running (line says so, queries stay local-only until it ends);
+ * - `ready`: the persisted index can be searched.
+ */
+export type OcrPhase = "unknown" | "unavailable" | "building" | "ready";
+
+/**
+ * Whether a query should be sent to `search_ocr`.
+ *
+ * The OCR index is only queried for a non-trivial query (≥2 trimmed characters) once the index is
+ * ready; before that the window degrades silently to local filtering.
+ */
+export function shouldQueryOcr(query: string, phase: OcrPhase): boolean {
+  return phase === "ready" && query.trim().length >= OCR_MIN_QUERY_CHARS;
+}
+
+/**
+ * One merged result row.
+ *
+ * `ocrOnly` marks an item that the local filter did not match but whose recognized image text did;
+ * `excerpt` carries the OCR context window for the detail pane (hardened to plain text — it is
+ * untrusted file content and is only ever rendered as a React text node).
+ */
+export interface MergedResult {
+  item: Item;
+  ocrOnly: boolean;
+  excerpt: string | null;
+}
+
+/**
+ * Merges local filter results with OCR index hits (Wave 2.5).
+ *
+ * Local matches always come first in their existing newest-first order and win a duplicate: an OCR
+ * hit for an already-listed item is ignored instead of reordering or duplicating the row. OCR-only
+ * hits are resolved through the full item list (the index can contain ids that are no longer on the
+ * line — those are dropped silently) and appended newest-first.
+ */
+export function mergeSearchResults(
+  localResults: readonly Item[],
+  ocrHits: readonly OcrHit[],
+  allItems: readonly Item[],
+): MergedResult[] {
+  const byId = new Map(allItems.map((item) => [item.id, item] as const));
+  const seen = new Set<string>();
+  const merged: MergedResult[] = [];
+  for (const item of localResults) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    merged.push({ item, ocrOnly: false, excerpt: null });
+  }
+  const ocrOnly: MergedResult[] = [];
+  for (const hit of ocrHits) {
+    if (!hit || typeof hit.id !== "string" || seen.has(hit.id)) continue;
+    const item = byId.get(hit.id);
+    if (!item) continue;
+    seen.add(hit.id);
+    ocrOnly.push({
+      item,
+      ocrOnly: true,
+      excerpt: typeof hit.excerpt === "string" ? hit.excerpt : "",
+    });
+  }
+  ocrOnly.sort((left, right) => (right.item.addedAt ?? 0) - (left.item.addedAt ?? 0));
+  return [...merged, ...ocrOnly];
+}
+
+// ---------------------------------------------------------------------------------------------
 // Thumbnail
 // ---------------------------------------------------------------------------------------------
 
@@ -213,13 +306,92 @@ export function Search() {
   const items = state?.items ?? NO_ITEMS;
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  /** Wave 2.5 OCR index lifecycle + size of the last successful build. */
+  const [ocrPhase, setOcrPhase] = useState<OcrPhase>("unknown");
+  const [ocrIndexed, setOcrIndexed] = useState(0);
+  const [ocrHits, setOcrHits] = useState<OcrHit[]>([]);
+
   const filtered = useMemo(() => filterItems(items, query), [items, query]);
+  /** Local results first, OCR-only hits appended (deduplicated by item id). */
+  const merged = useMemo(
+    () => mergeSearchResults(filtered, ocrHits, items),
+    [filtered, items, ocrHits],
+  );
   /** Active row: the explicit selection when it still matches, else the first result. */
   const activeId =
-    selectedId && filtered.some((item) => item.id === selectedId)
+    selectedId && merged.some((result) => result.item.id === selectedId)
       ? selectedId
-      : (filtered[0]?.id ?? null);
-  const selected = filtered.find((item) => item.id === activeId) ?? null;
+      : (merged[0]?.item.id ?? null);
+  const selectedResult = merged.find((result) => result.item.id === activeId) ?? null;
+  const selected = selectedResult?.item ?? null;
+
+  // Wave 2.5: on open, ask for engine availability and kick off one bounded background index
+  // build. OCR is an optional enhancement — every failure path degrades to local-only search
+  // silently (no dialog, no blocking).
+  useEffect(() => {
+    let disposed = false;
+    void (async () => {
+      try {
+        const availability = await ocrStatus();
+        if (disposed) return;
+        if (!availability.available) {
+          setOcrPhase("unavailable");
+          return;
+        }
+        setOcrPhase("building");
+        try {
+          const report = await buildOcrIndex(false, OCR_BUILD_LIMIT);
+          if (disposed) return;
+          if (!report.available) {
+            setOcrPhase("unavailable");
+            return;
+          }
+          // `skipped` counts rows already indexed for an unchanged hash: total usable rows now.
+          setOcrIndexed(report.indexed + report.skipped);
+          setOcrPhase("ready");
+        } catch (error) {
+          if (disposed) return;
+          // Single-flight rejection means another window is already building: keep searching the
+          // rows that exist and flip to ready (the debounced query re-runs on the phase change).
+          console.info("Hangline search: OCR index build not started here", error);
+          setOcrPhase("ready");
+        }
+      } catch (error) {
+        if (disposed) return;
+        console.info("Hangline search: OCR index unavailable; local search only", error);
+        setOcrPhase("unavailable");
+      }
+    })();
+    return () => {
+      disposed = true;
+    };
+  }, []);
+
+  // Wave 2.5: debounce OCR queries (≥2 chars) once the index is ready. Empty / building /
+  // unavailable states clear the hits so the list is local-only, with no error surface.
+  useEffect(() => {
+    if (!shouldQueryOcr(query, ocrPhase)) {
+      setOcrHits((current) => (current.length === 0 ? current : []));
+      return;
+    }
+    let cancelled = false;
+    const needle = query.trim();
+    const timer = window.setTimeout(() => {
+      void searchOcr(needle)
+        .then((hits) => {
+          if (!cancelled) setOcrHits(Array.isArray(hits) ? hits : []);
+        })
+        .catch((error: unknown) => {
+          if (cancelled) return;
+          console.info("Hangline search: search_ocr unavailable; local results only", error);
+          setOcrHits([]);
+        });
+    }, OCR_QUERY_DEBOUNCE_MS);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [ocrPhase, query]);
 
   // Detail drafts, loaded when the active item changes. A `state` broadcast replaces every item
   // object; the `lastLoadedIdRef` guard keeps those identity changes from wiping in-progress edits.
@@ -265,16 +437,16 @@ export function Search() {
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [close]);
 
-  /** Moves the active row by `delta`, wrapping at both ends. */
+  /** Moves the active row by `delta`, wrapping at both ends (local + OCR-only rows). */
   const moveSelection = useCallback(
     (delta: number) => {
-      if (filtered.length === 0) return;
-      const currentIndex = filtered.findIndex((item) => item.id === activeId);
+      if (merged.length === 0) return;
+      const currentIndex = merged.findIndex((result) => result.item.id === activeId);
       const base = currentIndex < 0 ? (delta > 0 ? -1 : 0) : currentIndex;
-      const nextIndex = (base + delta + filtered.length) % filtered.length;
-      setSelectedId(filtered[nextIndex].id);
+      const nextIndex = (base + delta + merged.length) % merged.length;
+      setSelectedId(merged[nextIndex].item.id);
     },
-    [activeId, filtered],
+    [activeId, merged],
   );
 
   /** Enter / copy: write the item to the clipboard, then close (the copy is the intent). */
@@ -373,19 +545,32 @@ export function Search() {
 
       <main className="search__body">
         <section className="search__list" aria-label={t("Search screenshots")}>
+          {/* Wave 2.5: one line of OCR index status. Unavailable/building never block searching;
+              they only explain why image text is not contributing hits yet. */}
+          {ocrPhase === "unknown" ? null : (
+            <p className="search__index-status" data-phase={ocrPhase}>
+              {ocrPhase === "building"
+                ? t("Building text index…")
+                : ocrPhase === "unavailable"
+                  ? t("Text index unavailable")
+                  : ocrIndexed > 0
+                    ? `${t("Text index ready")} · ${ocrIndexed}`
+                    : t("Text index ready")}
+            </p>
+          )}
           <div className="search__pane-head">
             <h2 className="search__pane-title">{t("Search screenshots")}</h2>
             {/* R4: the window searches the full state, which can hold more items than the line
-                shows; the count keeps that difference visible instead of looking broken. */}
-            <span className="search__count" aria-label={`${filtered.length}`}>
-              {filtered.length}
+                shows; the count keeps that difference visible (local + OCR-only hits). */}
+            <span className="search__count" aria-label={`${merged.length}`}>
+              {merged.length}
             </span>
           </div>
           {state === null ? (
             <p className="search__empty">{t("Loading…")}</p>
           ) : noItems ? (
             <p className="search__empty">{t("Take a screenshot and it will hang here")}</p>
-          ) : filtered.length === 0 ? (
+          ) : merged.length === 0 ? (
             <p className="search__empty">{t("No matches")}</p>
           ) : (
             <ul
@@ -394,37 +579,46 @@ export function Search() {
               role="listbox"
               aria-label={t("Search screenshots")}
             >
-              {filtered.map((item) => (
-                <li
-                  key={item.id}
-                  id={`search-result-${item.id}`}
-                  role="option"
-                  aria-selected={item.id === activeId}
-                  className="search__row"
-                  data-active={item.id === activeId ? "true" : undefined}
-                  onClick={() => setSelectedId(item.id)}
-                  onDoubleClick={openSelected}
-                  title={item.path}
-                >
-                  <ResultThumb item={item} />
-                  <span className="search__row-body">
-                    <span className="search__name">{fileNameOf(item.path)}</span>
-                    <span className="search__meta">
-                      {sourceLabel(item)} · {formatAdded(item.addedAt)}
-                    </span>
-                    {item.note ? <span className="search__note">{item.note}</span> : null}
-                    {item.tags && item.tags.length > 0 ? (
-                      <span className="search__tags">
-                        {item.tags.map((tag) => (
-                          <span key={tag} className="search__tag">
-                            {tag}
-                          </span>
-                        ))}
+              {merged.map((result) => {
+                const item = result.item;
+                return (
+                  <li
+                    key={item.id}
+                    id={`search-result-${item.id}`}
+                    role="option"
+                    aria-selected={item.id === activeId}
+                    className="search__row"
+                    data-active={item.id === activeId ? "true" : undefined}
+                    data-ocr-only={result.ocrOnly ? "true" : undefined}
+                    onClick={() => setSelectedId(item.id)}
+                    onDoubleClick={openSelected}
+                    title={item.path}
+                  >
+                    <ResultThumb item={item} />
+                    <span className="search__row-body">
+                      <span className="search__name">{fileNameOf(item.path)}</span>
+                      <span className="search__meta">
+                        {sourceLabel(item)} · {formatAdded(item.addedAt)}
                       </span>
-                    ) : null}
-                  </span>
-                </li>
-              ))}
+                      {result.ocrOnly ? (
+                        <span className="search__badge" title={t("Contains image text")}>
+                          {t("Contains image text")}
+                        </span>
+                      ) : null}
+                      {item.note ? <span className="search__note">{item.note}</span> : null}
+                      {item.tags && item.tags.length > 0 ? (
+                        <span className="search__tags">
+                          {item.tags.map((tag) => (
+                            <span key={tag} className="search__tag">
+                              {tag}
+                            </span>
+                          ))}
+                        </span>
+                      ) : null}
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>
@@ -443,6 +637,16 @@ export function Search() {
                 <dt>{t("Name")}</dt>
                 <dd title={selected.path}>{selected.path}</dd>
               </dl>
+
+              {/* OCR-only hit (Wave 2.5): show the recognized context window around the match.
+                  The excerpt is untrusted image content and is rendered as a plain React text
+                  node — never as HTML. */}
+              {selectedResult?.ocrOnly ? (
+                <div className="search__field">
+                  <span className="search__label">{t("Image text")}</span>
+                  <p className="search__ocr-excerpt">{selectedResult.excerpt || "—"}</p>
+                </div>
+              ) : null}
 
               <label className="search__field">
                 <span className="search__label">{t("Note")}</span>

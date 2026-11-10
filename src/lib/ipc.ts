@@ -14,6 +14,9 @@ import type {
   FlyReady,
   Item,
   MonitorInfo,
+  OcrAvailability,
+  OcrBuildReport,
+  OcrHit,
   PanelGeometry,
   PhysicalRect,
   Settings,
@@ -448,4 +451,34 @@ export function setItemNote(id: string, note: string): Promise<void> {
  */
 export function setItemTags(id: string, tags: string[]): Promise<void> {
   return invoke("set_item_tags", { id, tags });
+}
+
+// ---------------------------------------------------------------------------------------------
+// Wave 2.5: local OCR index (Windows.Media.Ocr; offline, optional enhancement)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Reports the Windows OCR engine availability (`ocr_status`).
+ *
+ * The OCR index is an optional enhancement: callers must treat a rejection as "unavailable" and
+ * silently fall back to local filtering (no error UI).
+ */
+export function ocrStatus(): Promise<OcrAvailability> {
+  return invoke<OcrAvailability>("ocr_status");
+}
+
+/**
+ * Builds (or incrementally extends) the local OCR index in the background (`build_ocr_index`).
+ *
+ * Rust runs the CPU/COM work on a blocking worker; `limit` caps the number of OCR attempts per
+ * call (`0` = no cap) and `force` re-runs unchanged rows. The command is single-flight — a second
+ * concurrent call is rejected, which callers treat as "another build is already running".
+ */
+export function buildOcrIndex(force = false, limit = 50): Promise<OcrBuildReport> {
+  return invoke<OcrBuildReport>("build_ocr_index", { force, limit });
+}
+
+/** Searches the persisted OCR index; only already-indexed items can hit (`search_ocr`). */
+export function searchOcr(query: string): Promise<OcrHit[]> {
+  return invoke<OcrHit[]>("search_ocr", { query });
 }

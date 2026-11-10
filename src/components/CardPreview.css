@@ -1,0 +1,49 @@
+/*
+ * Wave 2.4 hover preview: an in-panel overlay, never a window.
+ *
+ * `pointer-events: none` keeps the hovered card (and its action capsule) fully interactive and
+ * keeps the overlay out of the hit-rect report. z-index 6 sits above ordinary cards but below the
+ * hovered card slot (raised to 7 in Panel.css), so the capsule, the menu (9/10) and the hovered
+ * card itself are never covered by the enlarged image.
+ */
+
+.panel__card-preview {
+  position: absolute;
+  z-index: 6;
+  overflow: hidden;
+  border: 0.5px solid var(--glass-border);
+  border-radius: 14px;
+  background: var(--photo-bg);
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.34),
+    inset 0 0.75px 0 rgba(255, 255, 255, 0.4);
+  pointer-events: none;
+  animation: panel-card-preview-in 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.panel__card-preview__image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+@keyframes panel-card-preview-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel__card-preview {
+    animation: none;
+  }
+}

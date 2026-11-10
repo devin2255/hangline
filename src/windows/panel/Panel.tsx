@@ -20,6 +20,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import { CardContextMenu } from "../../components/CardContextMenu";
+import { CardPreview } from "../../components/CardPreview";
 import { GlassCard } from "../../components/GlassCard";
 import { Rope } from "../../components/Rope";
 import {
@@ -58,6 +59,12 @@ import {
   type MenuActionId,
 } from "../../lib/cardMenu";
 import { nextGustDelay } from "../../lib/gust";
+import {
+  panelLocalBox,
+  previewGeometryFor,
+  previewIsAllowed,
+  type PreviewGeometry,
+} from "../../lib/panel";
 import { FALL, FLY } from "../../lib/motion";
 import {
   createFrameRing,
@@ -514,6 +521,52 @@ export function Panel() {
   const setMenuSubmenu = useCallback((open: boolean) => {
     setMenu((current) => setSubmenuOpen(current, open));
   }, []);
+
+  // --- Wave 2.4 hover preview -----------------------------------------------------------------
+  /**
+   * The single rendered large preview (never a window).
+   *
+   * `atScrollOffset` records the wheel position when the card requested it: scrolling moves the
+   * line under the preview, so a mismatch hides the stale overlay. The geometry is computed once
+   * here (at request time), never per mousemove.
+   */
+  const [preview, setPreview] = useState<{
+    item: Item;
+    geometry: PreviewGeometry;
+    atScrollOffset: number;
+  } | null>(null);
+
+  /**
+   * Hovered card → panel: show (item + card element) or hide (`null`).
+   *
+   * The card keeps the 300 ms dwell timer; the panel owns the geometry (panel-local CSS pixels,
+   * reveal translate removed) and the only preview instance.
+   */
+  const handlePreviewRequest = useCallback(
+    (item: Item | null, card: HTMLElement | null) => {
+      if (!item || !card) {
+        setPreview(null);
+        return;
+      }
+      const rect = card.getBoundingClientRect();
+      const offsetY = panelRef.current ? currentTranslateY(panelRef.current) : 0;
+      const geometry = previewGeometryFor({
+        card: panelLocalBox(
+          { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+          offsetY,
+        ),
+        image: { w: item.width, h: item.height },
+        panel: { w: window.innerWidth, h: window.innerHeight },
+        recording: item.kind === "recording",
+      });
+      if (!geometry) {
+        setPreview(null);
+        return;
+      }
+      setPreview({ item, geometry, atScrollOffset: scrollOffset });
+    },
+    [scrollOffset],
+  );
   /** Id of the overlay card (mirrored in a ref so async paths never read a stale state). */
   const flyingIdRef = useRef<string | null>(null);
   /** A flight waiting for the line to be revealed (new-item `state` arrives before `reveal`). */
@@ -602,8 +655,9 @@ export function Panel() {
     if (!track) return;
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
-      // Scrolling moves the line under the menu; a menu anchored to the old layout must close.
+      // Scrolling moves the line under the menu/preview; both are anchored to the old layout.
       closeCardMenu(false);
+      setPreview(null);
       setScrollOffset((current) =>
         nextScrollOffset(current, event.deltaX, event.deltaY, maxOffset),
       );
@@ -664,6 +718,29 @@ export function Panel() {
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, []);
+
+  // A hover preview is a transient affordance: it must vanish the moment the panel changes mode
+  // (menu/drag), the line moves (wheel or capacity clamp), or the window tucks/hides. The card
+  // also requests a hide on pointer leave/capsule entry; this is the panel-side safety net.
+  useEffect(() => {
+    if (!preview) return;
+    const outdatedScroll = preview.atScrollOffset !== scrollOffset;
+    const allowed = previewIsAllowed({
+      menuOpen: menu !== null,
+      dragging: draggingId !== null,
+      panelRevealed: revealed,
+      panelHidden: documentHidden,
+      recording: preview.item.kind === "recording",
+    });
+    if (!allowed || outdatedScroll) setPreview(null);
+  }, [documentHidden, draggingId, menu, preview, revealed, scrollOffset]);
+
+  // Removing the hovered card (take-down, tray prune, side take-down) must not leave an orphan
+  // enlarged image floating over the line.
+  useEffect(() => {
+    if (!preview) return;
+    if (!items.some((item) => item.id === preview.item.id)) setPreview(null);
+  }, [items, preview]);
 
   // P2-9/P4-5: expose the frame ring, the motion trace and the line-offset trace to the CDP
   // harnesses. Development only: `DEV_INSTRUMENTATION` is statically false in a release build, so
@@ -1445,8 +1522,9 @@ export function Panel() {
 
   /** Rust asked to hide the line: CSS ease-in 220 ms; Rust hides the window ~300 ms later. */
   const tuck = useCallback(() => {
-    // A menu belongs to the revealed line: tucking hides its anchor and any click islands.
+    // A menu/preview belongs to the revealed line: tucking hides their anchors.
     closeCardMenu(false);
+    setPreview(null);
     stopSpring();
     const panel = panelRef.current;
     panel?.classList.remove(SPRINGING_CLASS);
@@ -2361,6 +2439,7 @@ export function Panel() {
       data-origin-y={panelOrigin.y}
       data-falling-count={fallingIds.size}
       data-card-menu-open={menu !== null}
+      data-preview-open={preview !== null}
       // The panel is a custom chrome: the WebView2 default context menu must never appear, not
       // even on the transparent studio area around the line (Wave 1.1).
       onContextMenu={(event) => event.preventDefault()}
@@ -2409,6 +2488,7 @@ export function Panel() {
                 onContextMenu={openCardMenuAt}
                 onMoreActions={openCardMenuAtElement}
                 onActionsElement={setActionsElement}
+                onPreviewRequest={handlePreviewRequest}
                 gesturesLocked={menuSuppressed}
                 reducedMotion={reducedMotion}
                 doubleClickMs={doubleClickMs}
@@ -2419,6 +2499,14 @@ export function Panel() {
           })}
         </div>
       </div>
+      {/*
+        Wave 2.4 hover preview: one in-panel overlay (never a window), rendered behind the hovered
+        card slot and above the other cards. It is `pointer-events: none` and is deliberately not
+        added to the click-through hit rects.
+      */}
+      {preview ? (
+        <CardPreview key={preview.item.id} item={preview.item} geometry={preview.geometry} />
+      ) : null}
       {updateNoticeLabel ? (
         <div
           className="panel__update"

@@ -1,9 +1,8 @@
 # Changelog
 
-## Unreleased — Wave 2 (memory & search)
+## 1.3.0 — 2026-11-10
 
-> Not released yet: Wave 2 has no version bump until batch 2 (hover preview + OCR index PoC) lands
-> and the real-machine acceptance is complete.
+> Wave 2 (memory & search). Still **unsigned**: see the [Code signing policy](CODE_SIGNING_POLICY.md).
 
 - **Item notes and tags**: every card can carry a plain-text note (≤2000 chars) and up to 20 tags
   (≤32 chars each, trimmed/deduplicated); older `state.json` files load with empty values, and the
@@ -17,6 +16,13 @@
   window (`target=search`).
 - Notes and tags are edited in the search window's detail pane (the panel never takes focus); all
   values are plain text rendered as React text nodes.
+- **Hover preview**: a 300 ms dwell floats the original screenshot inside the panel window
+  (bottom-aligned, card-centred, capped by the panel height); leaving, scrolling, dragging or opening
+  the menu hides it immediately. No extra window, no focus.
+- **Local OCR text index (PoC)**: `Windows.Media.Ocr` indexes text inside screenshots into
+  `%LOCALAPPDATA%\Hangline\ocr-index.json` (0-byte install increment, offline, deletable/rebuildable).
+  Evaluated on 30 synthetic Chinese screenshots: **81.67% keyword recall** (98/120, 94.6 ms/image);
+  the search window merges in-image matches with an "image text" badge and an excerpt.
 ## 1.2.0 — 2026-11-10
 
 > Wave 1 (card action surface). Still **unsigned**: see the [Code signing policy](CODE_SIGNING_POLICY.md).

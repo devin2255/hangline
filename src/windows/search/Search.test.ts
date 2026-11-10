@@ -1,22 +1,27 @@
 /**
- * Pure search rules for the Wave 2.2 search window.
+ * Pure search rules for the Wave 2.2 + Wave 2.5 search window.
  *
  * The window itself is DOM-only (not rendered under the Node test environment), but every rule
- * that decides what a query matches, how the tag text becomes a tag list, and which key does what
- * lives in exported helpers of `Search.tsx`. These tests lock the four searchable fields
- * (file name / note / tags / path), the newest-first order, the tag normalization that mirrors
- * Rust's `normalize_tags`, and the ↑/↓/Enter keyboard mapping.
+ * that decides what a query matches, how the tag text becomes a tag list, which key does what, and
+ * how OCR index hits merge with local results lives in exported helpers of `Search.tsx`. These
+ * tests lock the four searchable fields (file name / note / tags / path), the newest-first order,
+ * the tag normalization that mirrors Rust's `normalize_tags`, the ↑/↓/Enter keyboard mapping, and
+ * the Wave 2.5 OCR merge/gate rules.
  */
 
 import { describe, expect, it } from "vitest";
-import type { Item, ItemKind } from "../../lib/types";
+import type { Item, ItemKind, OcrHit } from "../../lib/types";
 import {
+  OCR_MIN_QUERY_CHARS,
+  OCR_QUERY_DEBOUNCE_MS,
   filterItems,
   formatAdded,
   formatTags,
   matchesQuery,
+  mergeSearchResults,
   parseTags,
   searchKeyAction,
+  shouldQueryOcr,
   sourceLabel,
 } from "./Search";
 
@@ -130,5 +135,76 @@ describe("row metadata helpers", () => {
     expect(formatAdded(0)).toBe("—");
     expect(formatAdded(Number.NaN)).toBe("—");
     expect(formatAdded(1_700_000_000_000)).not.toBe("—");
+  });
+});
+
+describe("Wave 2.5 OCR merge", () => {
+  const local = makeItem({ id: "local", addedAt: 100 });
+  const ocrOld = makeItem({ id: "ocr-old", addedAt: 50 });
+  const ocrNew = makeItem({ id: "ocr-new", addedAt: 300 });
+  const allItems = [local, ocrOld, ocrNew];
+
+  it("keeps local matches first and appends OCR-only hits newest-first", () => {
+    const merged = mergeSearchResults(
+      [local],
+      [
+        { id: "ocr-old", excerpt: "旧图片文字" },
+        { id: "ocr-new", excerpt: "新图片文字" },
+      ] satisfies OcrHit[],
+      allItems,
+    );
+    expect(merged.map((result) => result.item.id)).toEqual(["local", "ocr-new", "ocr-old"]);
+    expect(merged.map((result) => result.ocrOnly)).toEqual([false, true, true]);
+    expect(merged[0].excerpt).toBeNull();
+    expect(merged[1].excerpt).toBe("新图片文字");
+  });
+
+  it("never duplicates an item that both the local filter and OCR matched", () => {
+    const merged = mergeSearchResults(
+      [local],
+      [{ id: "local", excerpt: "图片里的文字" }],
+      allItems,
+    );
+    expect(merged).toHaveLength(1);
+    expect(merged[0].ocrOnly).toBe(false);
+    expect(merged[0].excerpt).toBeNull();
+  });
+
+  it("drops stale index rows (removed items) and malformed hits silently", () => {
+    const merged = mergeSearchResults(
+      [],
+      [
+        { id: "gone", excerpt: "deleted item" },
+        { id: "local", excerpt: "" },
+        { id: 42, excerpt: "not a string id" } as unknown as OcrHit,
+        null as unknown as OcrHit,
+      ],
+      allItems,
+    );
+    expect(merged.map((result) => result.item.id)).toEqual(["local"]);
+    expect(merged[0].ocrOnly).toBe(true);
+    expect(merged[0].excerpt).toBe("");
+  });
+
+  it("returns an empty merge for no inputs", () => {
+    expect(mergeSearchResults([], [], [])).toEqual([]);
+  });
+});
+
+describe("Wave 2.5 OCR query gate", () => {
+  it("only queries the index once it is ready", () => {
+    expect(shouldQueryOcr("login", "ready")).toBe(true);
+    expect(shouldQueryOcr("login", "building")).toBe(false);
+    expect(shouldQueryOcr("login", "unavailable")).toBe(false);
+    expect(shouldQueryOcr("login", "unknown")).toBe(false);
+  });
+
+  it("requires at least two trimmed characters", () => {
+    expect(shouldQueryOcr(" a ", "ready")).toBe(false);
+    expect(shouldQueryOcr("  ", "ready")).toBe(false);
+    expect(shouldQueryOcr("ab", "ready")).toBe(true);
+    expect(shouldQueryOcr("  登录  ", "ready")).toBe(true);
+    expect(OCR_MIN_QUERY_CHARS).toBe(2);
+    expect(OCR_QUERY_DEBOUNCE_MS).toBe(250);
   });
 });

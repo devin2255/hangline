@@ -194,9 +194,15 @@
   visibility: hidden;
 }
 
-/* A hovered card is raised above its neighbours (replaces the old `.glass-card-slot:hover`). */
+/*
+ * A hovered card is raised above its neighbours (replaces the old `.glass-card-slot:hover`).
+ *
+ * Wave 2.4: it is also raised above the hover-preview overlay (`.panel__card-preview`, z-index 6)
+ * so the enlarged image peeks out *behind* the hovered card and can never cover the card itself or
+ * its interaction capsule. The context menu (9/10) stays above both.
+ */
 .glass-card-slot[data-hovered="true"] {
-  z-index: 5;
+  z-index: 7;
 }
 
 /*

@@ -85,5 +85,10 @@
   "Source": "来源",
   "Added": "添加时间",
   "No note": "无备注",
-  "No tags": "无标签"
+  "No tags": "无标签",
+  "Contains image text": "含图片文字",
+  "Image text": "图片文字",
+  "Building text index…": "正在建立文字索引…",
+  "Text index ready": "文字索引就绪",
+  "Text index unavailable": "本机不支持文字索引"
 }

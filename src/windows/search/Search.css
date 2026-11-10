@@ -167,6 +167,24 @@ html[data-window="search"][data-theme="light"] {
   padding: 12px 16px 6px;
 }
 
+/*
+ * Wave 2.5 OCR index status: one quiet line above the results. It is informational only —
+ * searching/typing never blocks on it, and unavailable/building states degrade silently.
+ */
+.search__index-status {
+  margin: 0;
+  padding: 10px 16px 0;
+  overflow: hidden;
+  color: var(--search-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search__index-status[data-phase="ready"] {
+  color: var(--search-chip-text);
+}
+
 .search__pane-title {
   margin: 0;
   color: var(--search-muted);
@@ -272,6 +290,23 @@ html[data-window="search"][data-theme="light"] {
   gap: 4px;
 }
 
+/*
+ * Wave 2.5 "Contains image text" marker for OCR-only rows. Neutral chip so it reads as provenance,
+ * not as an error; the same words also label the excerpt in the detail pane.
+ */
+.search__badge {
+  align-self: flex-start;
+  padding: 1px 7px;
+  border: 1px solid var(--search-line);
+  border-radius: 999px;
+  color: var(--search-muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
 .search__tag,
 .search__chip {
   display: inline-flex;
@@ -373,6 +408,26 @@ html[data-window="search"][data-theme="light"] {
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+/*
+ * Wave 2.5 OCR excerpt: the recognized context window around the match. Plain pre-wrapped text
+ * (untrusted image content) — never rendered as HTML; selectable so the user can copy it.
+ */
+.search__ocr-excerpt {
+  max-height: 108px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--search-line);
+  border-radius: 8px;
+  background: var(--search-field);
+  color: var(--search-chip-text);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-y: auto;
+  user-select: text;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .search__chip-remove {

@@ -25,6 +25,9 @@ mod hotkeys;
 mod i18n;
 mod ipc;
 mod item;
+// Wave 2.5: public so the binary crate can run the offline `--ocr-probe <dir>` evaluation probe
+// without starting Tauri (see `main.rs` and `ocr::run_probe`).
+pub mod ocr;
 mod panel;
 mod retention;
 mod reveal;
@@ -961,6 +964,9 @@ pub fn run() {
             ipc::set_setting,
             ipc::set_item_note,
             ipc::set_item_tags,
+            ipc::ocr_status,
+            ipc::build_ocr_index,
+            ipc::search_ocr,
             set_hit_rects,
             get_scale_factor,
             request_capture,

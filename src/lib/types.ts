@@ -494,3 +494,41 @@ export interface UpdateCheckFailedEvent {
   /** Diagnostic detail; the panel shows a translated generic message. */
   message: string;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Wave 2.5: local OCR index (Windows.Media.Ocr; offline, optional enhancement)
+// ---------------------------------------------------------------------------------------------
+
+/** Availability of the Windows OCR engine (`ocr_status`, Wave 2.5). */
+export interface OcrAvailability {
+  /** Whether an OCR engine could be created (a Windows OCR language pack is installed). */
+  available: boolean;
+  /** Language tag of the created engine (`"zh-Hans"`, ...), when available. */
+  language: string | null;
+  /** Installed OCR recognizer languages, for diagnostics. */
+  languages: string[];
+  /** Why the engine is unavailable; `null` when it could be created. */
+  error: string | null;
+}
+
+/** Reply of `build_ocr_index` (Wave 2.5). */
+export interface OcrBuildReport {
+  /** Items actually sent to the engine (skips and failures excluded). */
+  attempted: number;
+  /** Items newly written into the index. */
+  indexed: number;
+  /** Items already indexed with the same content hash (no OCR work). */
+  skipped: number;
+  /** Items whose OCR failed (logged backend-side, never fatal). */
+  failed: number;
+  /** Wall-clock duration of the whole build. */
+  elapsedMs: number;
+  /** Whether an OCR engine was available at all. */
+  available: boolean;
+}
+
+/** One OCR search hit (`search_ocr`): the item id plus the context window around the match. */
+export interface OcrHit {
+  id: string;
+  excerpt: string;
+}

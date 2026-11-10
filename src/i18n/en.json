@@ -85,5 +85,10 @@
   "Source": "Source",
   "Added": "Added",
   "No note": "No note",
-  "No tags": "No tags"
+  "No tags": "No tags",
+  "Contains image text": "Contains image text",
+  "Image text": "Image text",
+  "Building text index…": "Building text index…",
+  "Text index ready": "Text index ready",
+  "Text index unavailable": "Text index unavailable"
 }
