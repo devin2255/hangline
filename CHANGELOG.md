@@ -23,6 +23,7 @@
   `%LOCALAPPDATA%\Hangline\ocr-index.json` (0-byte install increment, offline, deletable/rebuildable).
   Evaluated on 30 synthetic Chinese screenshots: **81.67% keyword recall** (98/120, 94.6 ms/image);
   the search window merges in-image matches with an "image text" badge and an excerpt.
+
 ## 1.2.0 — 2026-11-10
 
 > Wave 1 (card action surface). Still **unsigned**: see the [Code signing policy](CODE_SIGNING_POLICY.md).

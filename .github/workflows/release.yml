@@ -61,18 +61,32 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
-          # Do not claim a signature: Authenticode signing via SignPath Foundation is not enabled yet.
-          # Once it is, the signing request must run before this step and the notes should say "signed".
-          $notes = "Hangline $version. See CHANGELOG.md for details.`n`n" +
-            "Authenticode status: this build may still be unsigned. Hangline is applying for free code " +
+          # Release body: use the reviewed per-release notes file when present, otherwise the
+          # generic footer-only note. The footer must never claim Authenticode signing: SignPath
+          # Foundation code signing is not enabled yet.
+          $footer = "`n`n---`n`n**Authenticode status:** this build is **unsigned**. Hangline is applying for free code " +
             "signing from SignPath Foundation; until the signing policy is enabled, Windows SmartScreen " +
-            "may show an unknown publisher - verify SHA256SUMS.txt.`n" +
+            "may show an unknown publisher - verify SHA256SUMS.txt.`n`n" +
             "Code signing policy: https://github.com/devin2255/hangline/blob/main/CODE_SIGNING_POLICY.md"
+          $notesFile = "docs/release/notes-v$version.md"
+          $title = "Hangline $version"
+          if (Test-Path $notesFile) {
+            $body = Get-Content $notesFile -Raw
+            # Pull the subtitle from the notes heading: "# Hangline 1.3.0 — subtitle".
+            if ($body -match '(?m)^# Hangline [^\r\n]*?—\s*(.+)$') { $title = "Hangline $version — $($Matches[1].Trim())" }
+            $notesPath = Join-Path $env:RUNNER_TEMP "release-notes-$version.md"
+            Set-Content -Path $notesPath -Value ($body + $footer) -Encoding utf8
+            Write-Host "release notes: $notesFile -> $title"
+          } else {
+            Write-Host "notes file not found ($notesFile); using the generic note"
+            $notesPath = Join-Path $env:RUNNER_TEMP "release-notes-$version.md"
+            Set-Content -Path $notesPath -Value ("Hangline $version. See CHANGELOG.md for details." + $footer) -Encoding utf8
+          }
           gh release create $env:GITHUB_REF_NAME `
             (Get-ChildItem release/Hangline_*_x64-setup.exe).FullName `
             (Get-ChildItem release/Hangline_*_x64-portable.zip).FullName `
             release/latest.json `
             release/SHA256SUMS.txt `
-            --title "Hangline $version" `
-            --notes $notes `
+            --title $title `
+            --notes-file $notesPath `
             --verify-tag
