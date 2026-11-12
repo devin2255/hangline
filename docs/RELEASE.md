@@ -30,7 +30,7 @@ gate (a missing optional input is reported as `skipped`, never invented):
 | Report item | What it measures | Notes |
 |---|---|---|
 | `application exe` | Uncompressed `src-tauri/target/release/hangline.exe` — the raw Rust + WebView2 app | Not gated; the first thing to compare when the setup grows |
-| `NSIS setup` | The compressed installer and the **gated** artifact; it **includes** the embedded WebView2 bootstrapper | Gate 8,500,000 B; 1.1.0 baseline 7,315,272 B (~86%), **1.2.0 baseline 7,404,534 B (87.11% used, ~1.10 MB headroom)**, **1.3.0 baseline 7,466,233 B (87.84% used, ~1.03 MB headroom; published CI build 7,326,593 B / 86.19%, toolchain difference)**, **1.3.1 baseline 7,475,103 B (87.94% used; published CI build 7,327,500 B / 86.21%)** |
+| `NSIS setup` | The compressed installer and the **gated** artifact; it **includes** the embedded WebView2 bootstrapper | Gate 8,500,000 B; 1.1.0 baseline 7,315,272 B (~86%), **1.2.0 baseline 7,404,534 B (87.11% used, ~1.10 MB headroom)**, **1.3.0 baseline 7,466,233 B (87.84% used, ~1.03 MB headroom; published CI build 7,326,593 B / 86.19%, toolchain difference)**, **1.3.1 baseline 7,475,103 B (87.94% used; published CI build 7,327,500 B / 86.21%)**, **1.4.0 baseline 7,452,381 B (87.68% used)** |
 | `WebView2 bootstrapper` | The ~1.9 MB Microsoft Evergreen bootstrapper that NSIS embeds. It is not a separate release file, so it is measured from the cached download and labelled `embedded in setup, not separately measurable` | Already part of the setup number — do not subtract it twice |
 | `portable ZIP` | The same exe deflated with icon, `portable` marker and bilingual README | Guarded at 25 MB only; ~8.4 MB is normal and may exceed 8.5 MB |
 

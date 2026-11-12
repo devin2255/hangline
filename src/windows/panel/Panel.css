@@ -201,13 +201,13 @@
 /* Shared depth + top-light layers: every material sits on the same single light source. */
 .rope--shadow {
   stroke: var(--rope-shadow);
-  stroke-width: 1.6;
+  stroke-width: 2;
   transform: translateY(0.55px);
 }
 
 .rope--highlight {
   stroke: var(--rope-sheen);
-  stroke-width: 0.5;
+  stroke-width: 0.7;
   opacity: 0.85;
   transform: translateY(-0.35px);
 }
@@ -223,33 +223,33 @@
 }
 
 .rope--silk {
-  stroke-width: 1.6;
+  stroke-width: 2.2;
 }
 
 .rope--linen {
   stroke: var(--rope-base);
-  stroke-width: 2.2;
+  stroke-width: 2.8;
   stroke-dasharray: 7 1.6;
 }
 
 .rope--linen-texture {
   stroke: var(--rope-sheen);
-  stroke-width: 2.2;
+  stroke-width: 2.8;
   stroke-dasharray: 1.6 7;
   stroke-dashoffset: 1.6;
 }
 
 .rope--brass {
-  stroke-width: 2;
+  stroke-width: 2.6;
   stroke-dasharray: 9 2.5;
 }
 
 .rope--aurora-glow {
-  stroke-width: 4;
+  stroke-width: 5;
 }
 
 .rope--aurora-core {
-  stroke-width: 0.9;
+  stroke-width: 1.2;
 }
 
 /* silk (default): 1.6 core gradient, 0.5 sheen at 85%, 1.6 shadow. */
@@ -267,7 +267,7 @@
 }
 
 .panel__rope[data-rope-style="linen"] .rope--highlight {
-  stroke-width: 0.3;
+  stroke-width: 0.4;
   opacity: 0.55;
 }
 
@@ -277,12 +277,12 @@
 }
 
 .panel__rope[data-rope-style="brass"] .rope--highlight {
-  stroke-width: 0.9;
+  stroke-width: 1.1;
   opacity: 0.75;
 }
 
 .panel__rope[data-rope-style="brass"] .rope--shadow {
-  stroke-width: 1.8;
+  stroke-width: 2.2;
 }
 
 /* aurora: 4 dp blurred glow under a 0.9 dp bright core, softer sheen. */
@@ -295,7 +295,7 @@
 }
 
 .panel__rope[data-rope-style="aurora"] .rope--highlight {
-  stroke-width: 0.4;
+  stroke-width: 0.5;
   opacity: 0.5;
 }
 
