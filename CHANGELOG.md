@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.4.0 — 2026-11-12
+
+> Rope appearance system.
+
+- **Rope materials** (`ropeStyle`): four hand-tuned materials — **silk** (satin gradient, one
+  top-light), **linen** (twisted-fibre dashes), **brass** (warm segmented chain) and **aurora**
+  (soft blurred glow with a bright core). All four share the same shadow and fade into the panel
+  edges; switching cross-fades in 180 ms and costs no new window.
+- **Rope colours** (`ropeColor`): eight low-saturation colours — ink, ivory, champagne, fog,
+  sage, haze, terracotta, violet — adapted per theme with `color-mix` (light theme mixes toward a
+  darker tint, dark theme toward warm white), keeping the rope at >= 3:1 contrast. Card pins and
+  rings pick up the same palette.
+- **Tray → Appearance**: two checked submenus (rope style, rope colour); picking one applies
+  immediately, rebuilds the tray check marks, and persists to `settings.json`.
+- **Dynamic sag**: the rope is nearly straight on an empty line and bends with every visible
+  card (`sag = clamp(12 + 3.2 x visibleCards, 12, 52) x width factor`); 12 cards reach 50.4 dp.
+  New cards ease the sag over 220 ms (`cubic-bezier(0.22, 1, 0.36, 1)`) while cards, pins and the
+  empty-line hint follow the curve; `prefers-reduced-motion` jumps instantly.
+- **Compatibility**: old `settings.json` files load unchanged (missing keys default to
+  `silk`/`ink`); the settings JSON key count is now 24.
+- Tests: 307 frontend tests, 416 Rust library tests; release build + size gate verified locally.
+
 ## 1.3.1 — 2026-11-10
 
 > Drag-out hotfix.

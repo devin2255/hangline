@@ -11,7 +11,7 @@ Tauri 2 (Rust) + React 19 + TypeScript + Vite. Windows x64.
 
 Repository: <https://github.com/devin2255/hangline>
 
-> **Status: Hangline 1.3.1 release (Wave 2: memory & search — screenshot notes/tags, an on-demand search window (`Ctrl+Alt+F`), an in-panel hover preview, and a local OCR text index with 81.67% Chinese keyword recall; plus the 1.3.1 drag-out fix).**
+> **Status: Hangline 1.4.0 release (Wave 2 memory & search plus the 1.4.0 rope appearance system — four rope materials, eight low-saturation colours and a rope that bends with every hanging screenshot).**
 > The public source repository is <https://github.com/devin2255/hangline>; a GitHub Release is produced by the
 > `v*` tag workflow when signing secrets are configured, and the installer/portable ZIP can always be built locally.
 > The installer is currently unsigned (SmartScreen may warn); free code signing is being applied for
@@ -46,19 +46,19 @@ P4 multi-monitor placement under 100%/150% scaling (app UI only, neutral synthet
 More P4 evidence: [`docs/experiments/P4-multimon-settings.md`](docs/experiments/P4-multimon-settings.md),
 [`docs/acceptance/P4-core.md`](docs/acceptance/P4-core.md).
 
-## Install (1.3.1 release)
+## Install (1.4.0 release)
 
 Windows 10 22H2 or Windows 11, x64. Download the GitHub Release artifacts for the latest tag when available,
 or build the installer locally (see [Building](#building-from-source)) with
 `node scripts/release/build-release.mjs --sign`.
 
-- `Hangline_1.3.1_x64-setup.exe` — per-user install to `%LOCALAPPDATA%\Programs\Hangline` (no admin),
+- `Hangline_1.4.0_x64-setup.exe` — per-user install to `%LOCALAPPDATA%\Programs\Hangline` (no admin),
   Start-menu shortcut (desktop shortcut optional), HKCU uninstall entry, embedded WebView2
   bootstrapper (network needed only on a machine without WebView2). Uninstall asks whether to keep or delete your Hangline data
   (default: keep).
-- `Hangline_1.3.1_x64-portable.zip` — unpack anywhere and run `Hangline.exe`; data still lives in
+- `Hangline_1.4.0_x64-portable.zip` — unpack anywhere and run `Hangline.exe`; data still lives in
   `%LOCALAPPDATA%\Hangline` (a true portable mode is post-V1).
-- **Authenticode status:** releases up to v1.3.1 are **unsigned** — Windows SmartScreen shows an
+- **Authenticode status:** releases up to v1.4.0 are **unsigned** — Windows SmartScreen shows an
   unknown publisher. Hangline is applying for free code signing from SignPath Foundation; once the
   signing policy is enabled, releases will be Authenticode-signed. Until then, verify the SHA-256 in
   `SHA256SUMS.txt`. See the [Code signing policy](CODE_SIGNING_POLICY.md).
@@ -113,6 +113,10 @@ artifact metadata, privacy policy, and how third-party components are handled) i
 - **Peek at a card.** Rest the pointer on a card for 300 ms and the original screenshot floats up
   inside the panel (panel height caps the size; recordings do not preview). Move away and it is
   gone — no extra window, no focus steal.
+- **Make the line yours.** Tray → Appearance offers four rope materials (silk, linen, brass,
+  aurora) and eight low-saturation colours (ink, ivory, champagne, fog, sage, haze, terracotta,
+  violet), applied instantly and remembered. The rope starts almost straight and bends further
+  with every hanging screenshot — the busier the line, the deeper the curve.
 - **Markup on long press.** Press and hold a screenshot for 0.45 s: a borderless
   editor opens with pen (3 widths / 6 colours), rectangle, arrow, multiline text,
   highlight, mosaic, blur, auto-numbering, crop, and ≥20-step undo/redo. Esc or
@@ -257,7 +261,7 @@ Data lives under `%LOCALAPPDATA%\Hangline\` (`settings.json`,
 - **The hover preview is capped by the panel height** (the panel window never grows), so it is a
   large thumbnail rather than a full-screen viewer; the editor remains the way to inspect details.
 
-Hangline 1.3.1 is a release build; the functional milestones P1–P5 are implemented and the
+Hangline 1.4.0 is a release build; the functional milestones P1–P5 are implemented and the
 remaining items are manual/deferred checks (the acceptance documents track them in detail):
 
 - **Manual acceptance is pending.** The following still need a real person on an
@@ -266,7 +270,7 @@ remaining items are manual/deferred checks (the acceptance documents track them 
   (WeChat/QQ/browser), real wheel/touchpad scrolling, real pointer cross-screen
   following, and the folder picker. They are marked `MANUAL-PENDING` — not
   "passed" — in [`docs/acceptance/P1-core.md`](docs/acceptance/P1-core.md).
-- **Unsigned (for now).** The 1.3.1 installer/portable ZIP are built by the tag workflow and published
+- **Unsigned (for now).** The 1.4.0 installer/portable ZIP are built by the tag workflow and published
   on GitHub Releases; there is no Authenticode signature yet (SmartScreen warns). From v1.1.x on, code
   signing is planned through SignPath Foundation — the current latest release may still be unsigned
   until the signing policy is enabled; see [Code signing policy](CODE_SIGNING_POLICY.md). Auto-update is
