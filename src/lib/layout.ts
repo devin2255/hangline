@@ -8,7 +8,7 @@
  */
 
 import { EDGE_FADE, TILT } from "./motion";
-import type { CardSize, Item, KeepOnLine } from "./types";
+import type { CardSize, Item, KeepOnLine, RopeColor, RopeStyle } from "./types";
 
 export type { CardSize } from "./types";
 
@@ -30,9 +30,75 @@ export const PIN_ABOVE = 9.5;
 export const CARD_PIN_OVERLAP = 12;
 /** Rope baseline from the top of the panel (spec §3.3: `ropeTop = 10`). */
 export const ROPE_TOP = 10;
-/** Maximum rope sag (spec §3.3: `sag = min(30, panelWidth * 0.018)`). */
-export const ROPE_MAX_SAG = 30;
-export const ROPE_SAG_RATIO = 0.018;
+/**
+ * v1.4.0 sag model: the rope starts almost straight on an empty line and bends further with every
+ * visible card, up to a hard cap (the visible line never exceeds 12 cards).
+ *
+ * `sag = clamp(ROPE_SAG_BASE + ROPE_SAG_PER_CARD × visibleCards, ROPE_SAG_BASE, ROPE_SAG_MAX)`,
+ * scaled down on narrow panels against {@link ROPE_WIDTH_REF}.
+ */
+export const ROPE_SAG_BASE = 12;
+export const ROPE_SAG_PER_CARD = 3.2;
+export const ROPE_SAG_MAX = 52;
+export const ROPE_WIDTH_REF = 1600;
+/** Narrowest width factor for the sag (a very narrow panel still shows a slight bend). */
+export const ROPE_SAG_MIN_WIDTH_FACTOR = 0.45;
+/** Sag transition duration when the visible card count changes (ms, v1.4.0). */
+export const ROPE_SAG_ANIM_MS = 220;
+
+/** v1.4.0 "quiet luxury" palette: low-saturation rope colours (wire key → base hex). */
+export const ROPE_PALETTE: Record<RopeColor, string> = {
+  ink: "#1C1C1E",
+  ivory: "#EFE9DD",
+  champagne: "#C8A96A",
+  fog: "#8E9196",
+  sage: "#8A9A7B",
+  haze: "#7A8FA6",
+  terracotta: "#B46A55",
+  violet: "#8B7B9B",
+};
+
+/** Palette keys whose highlight is warm white instead of pure white (v1.4.0). */
+export const ROPE_WARM_COLORS: ReadonlySet<RopeColor> = new Set([
+  "ivory",
+  "champagne",
+  "terracotta",
+]);
+
+/** Highlight colours for the rope sheen (spec: `#FFFFFF`, warm variants `#FFF6E8`). */
+export const ROPE_HIGHLIGHT_COOL = "#FFFFFF";
+export const ROPE_HIGHLIGHT_WARM = "#FFF6E8";
+/** Shadow colour shared by every material. */
+export const ROPE_SHADOW = "rgba(0, 0, 0, 0.5)";
+
+/** All rope materials, in picker order. */
+export const ROPE_STYLES: readonly RopeStyle[] = ["silk", "linen", "brass", "aurora"];
+/** All rope palette keys, in picker order. */
+export const ROPE_COLORS: readonly RopeColor[] = [
+  "ink",
+  "ivory",
+  "champagne",
+  "fog",
+  "sage",
+  "haze",
+  "terracotta",
+  "violet",
+];
+
+/** Narrowing guard for an untrusted `ropeStyle` value (old settings / hand-edited JSON). */
+export function isRopeStyle(value: unknown): value is RopeStyle {
+  return typeof value === "string" && (ROPE_STYLES as readonly string[]).includes(value);
+}
+
+/** Narrowing guard for an untrusted `ropeColor` value (old settings / hand-edited JSON). */
+export function isRopeColor(value: unknown): value is RopeColor {
+  return typeof value === "string" && (ROPE_COLORS as readonly string[]).includes(value);
+}
+
+/** Highlight hex for one palette key (warm palettes use the warm white). */
+export function ropeHighlightFor(color: RopeColor): string {
+  return ROPE_WARM_COLORS.has(color) ? ROPE_HIGHLIGHT_WARM : ROPE_HIGHLIGHT_COOL;
+}
 /** Horizontal margin budget behind the capacity formula (spec §3.3: 200 dp total). */
 export const PANEL_SIDE_MARGIN = 100;
 export const MIN_CAPACITY = 3;
@@ -295,28 +361,86 @@ export function tiltFor(id: string): number {
   return Math.round((unit * 2 - 1) * TILT.maxDeg * 100) / 100;
 }
 
-/** Rope sag in dp: `min(30, panelWidth * 0.018)` (spec §3.3). */
-export function ropeSag(panelWidth: number): number {
-  return Math.min(ROPE_MAX_SAG, Math.max(0, panelWidth * ROPE_SAG_RATIO));
+/**
+ * Rope sag in dp for the current line (v1.4.0 dynamic model).
+ *
+ * `clamp(ROPE_SAG_BASE + ROPE_SAG_PER_CARD × visibleCards, ROPE_SAG_BASE, ROPE_SAG_MAX)` scaled by
+ * `min(1, max(ROPE_SAG_MIN_WIDTH_FACTOR, panelWidth / ROPE_WIDTH_REF))` so a narrow monitor keeps a
+ * shallower (but still visible) bend. Rounded to 2 decimals so the rendered SVG strings and the
+ * animated state are stable.
+ */
+export function ropeSag(panelWidth: number, visibleCards: number): number {
+  const cards = Number.isFinite(visibleCards) ? Math.max(0, visibleCards) : 0;
+  const width = Number.isFinite(panelWidth) ? Math.max(0, panelWidth) : 0;
+  const raw = Math.min(
+    ROPE_SAG_MAX,
+    Math.max(ROPE_SAG_BASE, ROPE_SAG_BASE + ROPE_SAG_PER_CARD * cards),
+  );
+  const widthFactor = Math.min(1, Math.max(ROPE_SAG_MIN_WIDTH_FACTOR, width / ROPE_WIDTH_REF));
+  return round2(raw * widthFactor);
 }
 
 /**
  * Rope height at `x` for a quadratic Bezier from `(0, ropeTop)` to `(panelWidth, ropeTop)`.
  *
  * With the control point at `ropeTop + 2*sag` the curve is `ropeY(t) = ropeTop + 4*sag*t*(1-t)`,
- * matching spec §3.3 exactly (midpoint dips by the full `sag`).
+ * matching spec §3.3 exactly (midpoint dips by the full `sag`). v1.4.0 takes the sag as an
+ * argument so the panel can animate it; callers compute it with {@link ropeSag}.
  */
-export function ropeY(panelWidth: number, x: number): number {
+export function ropeY(panelWidth: number, x: number, sag: number): number {
   if (panelWidth <= 0) return ROPE_TOP;
+  const safeSag = Number.isFinite(sag) ? Math.max(0, sag) : 0;
   const t = Math.min(1, Math.max(0, x / panelWidth));
-  return ROPE_TOP + 4 * ropeSag(panelWidth) * t * (1 - t);
+  return ROPE_TOP + 4 * safeSag * t * (1 - t);
 }
 
-/** SVG path for the rope, with the control point that yields the spec sag curve. */
-export function ropePath(panelWidth: number): string {
+/** SVG path for the rope, with the control point that yields the spec sag curve (sag in dp). */
+export function ropePath(panelWidth: number, sag: number): string {
+  const safeSag = Number.isFinite(sag) ? Math.max(0, sag) : 0;
   const half = round2(panelWidth / 2);
-  const controlY = round2(ROPE_TOP + 2 * ropeSag(panelWidth));
+  const controlY = round2(ROPE_TOP + 2 * safeSag);
   return `M0,${ROPE_TOP} Q${half},${controlY} ${round2(panelWidth)},${ROPE_TOP}`;
+}
+
+/**
+ * Progress curve for the sag animation: CSS `cubic-bezier(0.22, 1, 0.36, 1)`.
+ *
+ * A fast, softly-settling ease-out (matching the "quiet luxury" motion): the rope reaches most of
+ * its new sag early and settles without overshoot. Pure + DOM-free so the panel's rAF loop and the
+ * tests share one implementation.
+ */
+export function ropeSagEase(progress: number): number {
+  const p = Number.isFinite(progress) ? Math.min(1, Math.max(0, progress)) : 0;
+  if (p <= 0) return 0;
+  if (p >= 1) return 1;
+  const x1 = 0.22;
+  const y1 = 1;
+  const x2 = 0.36;
+  const y2 = 1;
+  const sampleX = (t: number): number =>
+    3 * (1 - t) * (1 - t) * t * x1 + 3 * (1 - t) * t * t * x2 + t * t * t;
+  const sampleY = (t: number): number =>
+    3 * (1 - t) * (1 - t) * t * y1 + 3 * (1 - t) * t * t * y2 + t * t * t;
+  const slopeX = (t: number): number =>
+    3 * (1 - t) * (1 - t) * x1 + 6 * (1 - t) * t * (x2 - x1) + 3 * t * t * (1 - x2);
+  // Newton-Raphson on x(t) = p, falling back to bisection when the derivative is flat.
+  let t = p;
+  for (let iteration = 0; iteration < 8; iteration += 1) {
+    const x = sampleX(t) - p;
+    if (Math.abs(x) < 1e-6) return sampleY(t);
+    const slope = slopeX(t);
+    if (Math.abs(slope) < 1e-6) break;
+    t = Math.min(1, Math.max(0, t - x / slope));
+  }
+  let low = 0;
+  let high = 1;
+  for (let iteration = 0; iteration < 32; iteration += 1) {
+    t = (low + high) / 2;
+    if (Math.abs(sampleX(t) - p) < 1e-6) break;
+    if (sampleX(t) < p) low = t;
+    else high = t;
+  }
+  return sampleY(t);
 }
 
 /** File name shown on the fallback tile (handles both Windows and POSIX separators). */

@@ -267,6 +267,36 @@ pub struct TrayStrings {
     pub size_medium: &'static str,
     /// Large cards.
     pub size_large: &'static str,
+    /// v1.4 "Appearance" submenu title (rope style/colour).
+    pub appearance_menu: &'static str,
+    /// "Rope style" submenu title.
+    pub rope_style_menu: &'static str,
+    /// "Rope color" submenu title.
+    pub rope_color_menu: &'static str,
+    /// Rope style: smooth silk ribbon (default).
+    pub rope_style_silk: &'static str,
+    /// Rope style: woven linen cord.
+    pub rope_style_linen: &'static str,
+    /// Rope style: brass chain.
+    pub rope_style_brass: &'static str,
+    /// Rope style: aurora gradient ribbon.
+    pub rope_style_aurora: &'static str,
+    /// Rope colour: ink black (default).
+    pub rope_color_ink: &'static str,
+    /// Rope colour: ivory white.
+    pub rope_color_ivory: &'static str,
+    /// Rope colour: champagne gold.
+    pub rope_color_champagne: &'static str,
+    /// Rope colour: fog grey.
+    pub rope_color_fog: &'static str,
+    /// Rope colour: sage green.
+    pub rope_color_sage: &'static str,
+    /// Rope colour: haze blue.
+    pub rope_color_haze: &'static str,
+    /// Rope colour: terracotta.
+    pub rope_color_terracotta: &'static str,
+    /// Rope colour: violet.
+    pub rope_color_violet: &'static str,
     /// Shortcut submenu title.
     pub shortcut_menu: &'static str,
     /// Capture shortcut row (followed by the accelerator).
@@ -353,6 +383,21 @@ pub const EN: TrayStrings = TrayStrings {
     size_small: "Small",
     size_medium: "Medium",
     size_large: "Large",
+    appearance_menu: "Appearance",
+    rope_style_menu: "Rope style",
+    rope_color_menu: "Rope color",
+    rope_style_silk: "Silk",
+    rope_style_linen: "Linen",
+    rope_style_brass: "Brass",
+    rope_style_aurora: "Aurora",
+    rope_color_ink: "Ink",
+    rope_color_ivory: "Ivory",
+    rope_color_champagne: "Champagne",
+    rope_color_fog: "Fog",
+    rope_color_sage: "Sage",
+    rope_color_haze: "Haze",
+    rope_color_terracotta: "Terracotta",
+    rope_color_violet: "Violet",
     shortcut_menu: "Shortcut",
     shortcut_capture: "Capture",
     shortcut_toggle: "Show/hide line",
@@ -415,6 +460,21 @@ pub const ZH_HANS: TrayStrings = TrayStrings {
     size_small: "小",
     size_medium: "中",
     size_large: "大",
+    appearance_menu: "外观",
+    rope_style_menu: "绳子样式",
+    rope_color_menu: "绳子颜色",
+    rope_style_silk: "真丝",
+    rope_style_linen: "亚麻",
+    rope_style_brass: "黄铜链",
+    rope_style_aurora: "暮光线",
+    rope_color_ink: "墨",
+    rope_color_ivory: "象牙",
+    rope_color_champagne: "香槟金",
+    rope_color_fog: "雾灰",
+    rope_color_sage: "鼠尾草",
+    rope_color_haze: "雾霾蓝",
+    rope_color_terracotta: "赤陶",
+    rope_color_violet: "烟紫",
     shortcut_menu: "快捷键",
     shortcut_capture: "截图",
     shortcut_toggle: "显示/隐藏线",
@@ -492,6 +552,21 @@ impl TrayStrings {
             ("size_small", self.size_small),
             ("size_medium", self.size_medium),
             ("size_large", self.size_large),
+            ("appearance_menu", self.appearance_menu),
+            ("rope_style_menu", self.rope_style_menu),
+            ("rope_color_menu", self.rope_color_menu),
+            ("rope_style_silk", self.rope_style_silk),
+            ("rope_style_linen", self.rope_style_linen),
+            ("rope_style_brass", self.rope_style_brass),
+            ("rope_style_aurora", self.rope_style_aurora),
+            ("rope_color_ink", self.rope_color_ink),
+            ("rope_color_ivory", self.rope_color_ivory),
+            ("rope_color_champagne", self.rope_color_champagne),
+            ("rope_color_fog", self.rope_color_fog),
+            ("rope_color_sage", self.rope_color_sage),
+            ("rope_color_haze", self.rope_color_haze),
+            ("rope_color_terracotta", self.rope_color_terracotta),
+            ("rope_color_violet", self.rope_color_violet),
             ("shortcut_menu", self.shortcut_menu),
             ("shortcut_capture", self.shortcut_capture),
             ("shortcut_toggle", self.shortcut_toggle),
@@ -698,5 +773,72 @@ mod tests {
         assert_eq!(ZH_HANS.shortcut_search, "搜索");
         assert_eq!(EN.search_window_title, "Hangline — Search");
         assert_eq!(ZH_HANS.search_window_title, "Hangline — 搜索");
+    }
+
+    /// v1.4: the appearance submenu is fully translated in both frozen tables — every rope style
+    /// and rope colour has a non-empty label, and the three menu titles match the contract.
+    #[test]
+    fn v1_4_appearance_strings_are_translated() {
+        assert_eq!(EN.appearance_menu, "Appearance");
+        assert_eq!(ZH_HANS.appearance_menu, "外观");
+        assert_eq!(EN.rope_style_menu, "Rope style");
+        assert_eq!(ZH_HANS.rope_style_menu, "绳子样式");
+        assert_eq!(EN.rope_color_menu, "Rope color");
+        assert_eq!(ZH_HANS.rope_color_menu, "绳子颜色");
+        assert_eq!(EN.rope_style_silk, "Silk");
+        assert_eq!(ZH_HANS.rope_style_silk, "真丝");
+        assert_eq!(EN.rope_style_linen, "Linen");
+        assert_eq!(ZH_HANS.rope_style_linen, "亚麻");
+        assert_eq!(EN.rope_style_brass, "Brass");
+        assert_eq!(ZH_HANS.rope_style_brass, "黄铜链");
+        assert_eq!(EN.rope_style_aurora, "Aurora");
+        assert_eq!(ZH_HANS.rope_style_aurora, "暮光线");
+        assert_eq!(EN.rope_color_champagne, "Champagne");
+        assert_eq!(ZH_HANS.rope_color_champagne, "香槟金");
+        assert_eq!(EN.rope_color_terracotta, "Terracotta");
+        assert_eq!(ZH_HANS.rope_color_terracotta, "赤陶");
+        assert_eq!(EN.rope_color_haze, "Haze");
+        assert_eq!(ZH_HANS.rope_color_haze, "雾霾蓝");
+        // The eight colour labels and four style labels are all present/non-empty in both tables
+        // (the parity/all() test above guarantees the key set; this locks the exact 4 + 8 rows).
+        let en = EN.all();
+        let zh = ZH_HANS.all();
+        let style_keys = [
+            "rope_style_silk",
+            "rope_style_linen",
+            "rope_style_brass",
+            "rope_style_aurora",
+        ];
+        let color_keys = [
+            "rope_color_ink",
+            "rope_color_ivory",
+            "rope_color_champagne",
+            "rope_color_fog",
+            "rope_color_sage",
+            "rope_color_haze",
+            "rope_color_terracotta",
+            "rope_color_violet",
+        ];
+        for rows in [&en, &zh] {
+            for key in style_keys.iter().chain(color_keys.iter()) {
+                assert!(
+                    rows.iter()
+                        .any(|(candidate, value)| candidate == key && !value.is_empty()),
+                    "missing appearance label {key}"
+                );
+            }
+            assert_eq!(
+                rows.iter()
+                    .filter(|(candidate, _)| style_keys.contains(candidate))
+                    .count(),
+                4
+            );
+            assert_eq!(
+                rows.iter()
+                    .filter(|(candidate, _)| color_keys.contains(candidate))
+                    .count(),
+                8
+            );
+        }
     }
 }

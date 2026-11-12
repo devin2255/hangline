@@ -32,6 +32,18 @@
   --rope-core: rgba(234, 240, 246, 0.9);
   --rope-shadow: rgba(0, 0, 0, 0.5);
   --rope-highlight: rgba(255, 255, 255, 0.95);
+  /*
+   * v1.4.0 rope appearance system. The panel sets `--rope-palette` inline from the settings; the
+   * derived tokens resolve with `color-mix`, so one palette value drives the rope, the gradient
+   * sheen and the pin tint. The dark theme mixes the palette toward a warm white: the dark `ink`
+   * rope lifts to a visible warm grey instead of vanishing into a dark desktop.
+   */
+  --rope-palette: #1c1c1e;
+  --rope-adaptive-tint: #f4efe6;
+  --rope-sheen: #ffffff;
+  --rope-base: color-mix(in srgb, var(--rope-palette) 62%, var(--rope-adaptive-tint));
+  --rope-bright: color-mix(in srgb, var(--rope-base) 82%, var(--rope-sheen));
+  --rope-glow: color-mix(in srgb, var(--rope-base) 75%, var(--rope-sheen));
   --pill-bg: rgba(38, 44, 52, 0.72);
   --pill-border: rgba(255, 255, 255, 0.28);
   --pill-text: #f3f7fa;
@@ -89,6 +101,12 @@
   --rope-core: rgba(54, 64, 74, 0.66);
   --rope-shadow: rgba(0, 0, 0, 0.2);
   --rope-highlight: rgba(255, 255, 255, 0.85);
+  /*
+   * v1.4.0: the light theme mixes the palette toward a darker tint, keeping the cord legible on a
+   * bright desktop (the dark `ink` value becomes a deep charcoal instead of disappearing).
+   */
+  --rope-adaptive-tint: #3f434a;
+  --rope-sheen: #ffffff;
   --pill-bg: rgba(255, 255, 255, 0.86);
   --pill-border: rgba(255, 255, 255, 0.95);
   --pill-text: rgba(24, 32, 40, 0.88);
@@ -97,6 +115,19 @@
   --hint-text: #182028;
 
   color-scheme: light;
+}
+
+/*
+ * v1.4.0 fallback for a WebView2 older than Chromium 111 (no `color-mix`): the derived rope tokens
+ * would be invalid at computed-value time, which would drop the stroke and make the rope vanish.
+ * Falling back to the legacy core/highlight tokens keeps a visible rope in both themes.
+ */
+@supports not (color: color-mix(in srgb, #000 50%, #fff)) {
+  .panel {
+    --rope-base: var(--rope-core);
+    --rope-bright: var(--rope-highlight);
+    --rope-glow: var(--rope-highlight);
+  }
 }
 
 /*
@@ -130,25 +161,208 @@
 .rope {
   fill: none;
   stroke-linecap: round;
+  /* v1.4.0: the four materials cross-fade (180 ms) instead of hard-cutting on a style change. */
+  transition:
+    opacity 180ms ease,
+    stroke-width 180ms ease,
+    stroke 180ms ease,
+    stroke-dasharray 180ms ease;
 }
 
-/* Three strokes: shadow 1.4 dp, core 1.2 dp, highlight 0.4 dp (design spec §3.3). */
+/* Gradient stops resolve the palette tokens; `stop-color` participates in the 180 ms switch. */
+.rope-stop {
+  transition: stop-color 180ms ease;
+}
+
+.rope-stop--a {
+  stop-color: var(--rope-base);
+}
+
+.rope-stop--b {
+  stop-color: var(--rope-bright);
+}
+
+.rope-stop--brass-a {
+  stop-color: color-mix(in srgb, var(--rope-base) 90%, var(--rope-sheen));
+}
+
+.rope-stop--brass-b {
+  stop-color: color-mix(in srgb, var(--rope-base) 72%, #c8a96a);
+}
+
+.rope-stop--aurora-a {
+  stop-color: var(--rope-base);
+}
+
+.rope-stop--aurora-b {
+  stop-color: var(--rope-glow);
+}
+
+/* Shared depth + top-light layers: every material sits on the same single light source. */
 .rope--shadow {
   stroke: var(--rope-shadow);
-  stroke-width: 1.4;
+  stroke-width: 1.6;
   transform: translateY(0.55px);
 }
 
-.rope--core {
-  stroke: var(--rope-core);
-  stroke-width: 1.2;
+.rope--highlight {
+  stroke: var(--rope-sheen);
+  stroke-width: 0.5;
+  opacity: 0.85;
+  transform: translateY(-0.35px);
 }
 
-.rope--highlight {
-  stroke: var(--rope-highlight);
+/* Material layers are always mounted and hidden by opacity, so a switch can cross-fade. */
+.rope--silk,
+.rope--linen,
+.rope--linen-texture,
+.rope--brass,
+.rope--aurora-glow,
+.rope--aurora-core {
+  opacity: 0;
+}
+
+.rope--silk {
+  stroke-width: 1.6;
+}
+
+.rope--linen {
+  stroke: var(--rope-base);
+  stroke-width: 2.2;
+  stroke-dasharray: 7 1.6;
+}
+
+.rope--linen-texture {
+  stroke: var(--rope-sheen);
+  stroke-width: 2.2;
+  stroke-dasharray: 1.6 7;
+  stroke-dashoffset: 1.6;
+}
+
+.rope--brass {
+  stroke-width: 2;
+  stroke-dasharray: 9 2.5;
+}
+
+.rope--aurora-glow {
+  stroke-width: 4;
+}
+
+.rope--aurora-core {
+  stroke-width: 0.9;
+}
+
+/* silk (default): 1.6 core gradient, 0.5 sheen at 85%, 1.6 shadow. */
+.panel__rope[data-rope-style="silk"] .rope--silk {
+  opacity: 1;
+}
+
+/* linen: 2.2 dashed core plus a 1.6-offset texture thread, 0.3 sheen. */
+.panel__rope[data-rope-style="linen"] .rope--linen {
+  opacity: 1;
+}
+
+.panel__rope[data-rope-style="linen"] .rope--linen-texture {
+  opacity: 0.28;
+}
+
+.panel__rope[data-rope-style="linen"] .rope--highlight {
+  stroke-width: 0.3;
+  opacity: 0.55;
+}
+
+/* brass: 2 dp rounded dashed links over a warm gold gradient, 0.9 sheen. */
+.panel__rope[data-rope-style="brass"] .rope--brass {
+  opacity: 1;
+}
+
+.panel__rope[data-rope-style="brass"] .rope--highlight {
+  stroke-width: 0.9;
+  opacity: 0.75;
+}
+
+.panel__rope[data-rope-style="brass"] .rope--shadow {
+  stroke-width: 1.8;
+}
+
+/* aurora: 4 dp blurred glow under a 0.9 dp bright core, softer sheen. */
+.panel__rope[data-rope-style="aurora"] .rope--aurora-glow {
+  opacity: 0.38;
+}
+
+.panel__rope[data-rope-style="aurora"] .rope--aurora-core {
+  opacity: 1;
+}
+
+.panel__rope[data-rope-style="aurora"] .rope--highlight {
   stroke-width: 0.4;
-  opacity: 0.72;
-  transform: translateY(-0.35px);
+  opacity: 0.5;
+}
+
+.panel__rope[data-rope-style="aurora"] .rope--shadow {
+  stroke-width: 2;
+}
+
+/* Champagne makes the brass chain read most clearly; every other palette keeps a subtle warm
+   metal (the base is already lifted 10% toward the sheen in the default brass stops). */
+.panel[data-rope-color="champagne"] .rope-stop--brass-a {
+  stop-color: color-mix(in srgb, #c8a96a 58%, var(--rope-sheen));
+}
+
+.panel[data-rope-color="champagne"] .rope-stop--brass-b {
+  stop-color: color-mix(in srgb, #c8a96a 78%, var(--rope-sheen));
+}
+
+/*
+ * Warm palettes get the warm white sheen (`#FFF6E8`); cool palettes keep pure white. The rule sits
+ * after the light-theme block on purpose: it must win in both themes.
+ */
+.panel[data-rope-color="ivory"],
+.panel[data-rope-color="champagne"],
+.panel[data-rope-color="terracotta"] {
+  --rope-sheen: #fff6e8;
+}
+
+/*
+ * The `ink` palette is the one dark value that would sink into a dark desktop at the flat 62 % mix
+ * (empirically ~3.0:1 there). The brief requires the ink rope to stay visible at >= 3:1, so ink
+ * takes a slightly larger share of the warm adaptive tint; every other palette keeps the 62 %
+ * contract value.
+ */
+.panel[data-rope-color="ink"] {
+  --rope-base: color-mix(in srgb, var(--rope-palette) 55%, var(--rope-adaptive-tint));
+}
+
+/*
+ * v1.4.0: the clothes pin picks up the rope palette as a subtle tint. The source brushed-metal
+ * gradient stays — only its stops shift a small amount toward the palette, and the rope slot goes
+ * to the same colour family, so the pin belongs to the cord without stealing attention.
+ */
+.panel .clothes-pin linearGradient:first-of-type stop:nth-of-type(1) {
+  stop-color: color-mix(in srgb, var(--rope-palette) 24%, #b3b3b3);
+}
+
+.panel .clothes-pin linearGradient:first-of-type stop:nth-of-type(2) {
+  stop-color: color-mix(in srgb, var(--rope-palette) 14%, #ededed);
+}
+
+.panel .clothes-pin linearGradient:first-of-type stop:nth-of-type(3) {
+  stop-color: color-mix(in srgb, var(--rope-palette) 16%, #d1d1d1);
+}
+
+.panel .clothes-pin linearGradient:first-of-type stop:nth-of-type(4) {
+  stop-color: color-mix(in srgb, var(--rope-palette) 28%, #9e9e9e);
+}
+
+.panel .clothes-pin rect:last-of-type {
+  fill: color-mix(in srgb, var(--rope-palette) 62%, #000000);
+}
+
+/* A whisper of the same hue around the pin, so it belongs to the rope and not to the glass. */
+.panel .clothes-pin {
+  filter:
+    drop-shadow(0 1.5px 2px rgba(0, 0, 0, 0.3))
+    drop-shadow(0 0 1px color-mix(in srgb, var(--rope-palette) 40%, transparent));
 }
 
 /* Empty-line hint: a glass capsule centred under the rope's lowest point (LineView.swift:65-69). */
@@ -724,7 +938,10 @@
   .glass-card__take-down-glyph,
   .glass-card__action,
   .copied-pill,
-  .panel__update {
+  .panel__update,
+  /* v1.4.0: material/style changes switch instantly, and the panel's sag jumps without rAF. */
+  .rope,
+  .rope-stop {
     transition: none;
     animation: none;
   }

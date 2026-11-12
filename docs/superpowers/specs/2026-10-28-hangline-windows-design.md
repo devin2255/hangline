@@ -146,6 +146,18 @@ Tendedero 的 LICENSE 为 MIT + 「Name and icon」附加条款：修改/再分�
 - P2 交互：悬停缩放 1.035（阴影 0.26/r14/y8，常态 0.18/r10/y5），按下 0.95（450 ms ease-in-out）；复制轻摆 3°；空线时绳中央显示胶囊提示（i18n）。
 - 展开位移 `-(panelHeight + 12)`，展开 `spring(response 0.42s, damping 0.82)`，收起 `easeIn 0.22s`；动画结束后窗口 `hide()`（不留隐形窗口）。
 
+> **Amendment 2026-11-12 — 绳子外观与动态弧度**
+>
+> 适用：v1.4.0「静奢」绳子外观（设计与验收口径见 [v1.4.0 绳子外观与动态弧度](../../product/2026-11-12-v1.4.0-rope-appearance.md)）。**只改绳的材质/颜色与垂度模型，不改面板几何、卡片尺寸与窗口数量。**
+>
+> 1. **固定 sag 被取代**：本节原文 `sag = min(30, panelWidth*0.018)` 自 2026-11-12 起不再使用（原文保留，不删）。新模型：
+>    `sag = clamp(12 + 3.2 × 可见卡片数, 12, 52) × min(1, max(0.45, panelWidth / 1600))`
+>    ——常量 `ROPE_SAG_BASE=12`、`ROPE_SAG_PER_CARD=3.2`、`ROPE_SAG_MAX=52`、`ROPE_WIDTH_REF=1600`；空绳 12 dp、12 张 50.4 dp（面板 ≥1600 dp 时），上限 52 仅作防御性 clamp。曲线仍为二次贝塞尔 `ropeY(t) = ropeTop + 4*sag*t*(1-t)`，控制点 `ropeTop + 2*sag`；**卡片底边不得超出面板高度**（small/medium/large 三档 × 12 张验证）。
+> 2. **颜色与材质来自 settings**：新增 `ropeStyle`（`"silk" | "linen" | "brass" | "aurora"`，默认 `"silk"`）与 `ropeColor`（`"ink" | "ivory" | "champagne" | "fog" | "sage" | "haze" | "terracotta" | "violet"`，默认 `"ink"`）；JSON 小写，非法值拒绝（与 `CardSize` 同口径）。调色板 hex、四材质核心/高光/纹理规格与主题自适应规则以该设计文档为准（对比度 ≥3:1）。
+> 3. **旧配置回退**：旧 `settings.json` 缺这两个字段时取默认 silk/ink（`serde(default)`），不做破坏性迁移；用户选择持久化并在重启后保留。
+> 4. **其余视觉常量不变**：`ROPE_TOP=10`、夹子顶端在绳上方 9.5 dp、卡片与夹子重叠 12 dp、卡片圆角 16 dp、内衬 4 dp、随机倾斜 ±2.5°、展开/收起位移与弹簧参数均不变。原「三层描边 1.4/1.2/0.4 dp」由四材质各自的核心/高光/阴影规格细化（原文保留，silk 保留等价的缎面三层语义）。
+> 5. **动画与无关约束**：sag 变化 220 ms `cubic-bezier(0.22,1,0.36,1)`、材质/颜色切换 180 ms；`prefers-reduced-motion` 时瞬时；不新增窗口、不抢焦点、不改变「唯一网络请求 = 更新检查」。
+
 ### 3.4 展开/收起状态机
 
 状态：`wanted`（应出现）、`revealed`（已滑下）、`pinned`（手动召唤未收起）、`peekUntil`（新截图自动亮到何时）、`dismissedUntilLeave`（点击线外后抑制回弹，直到指针离开触发区）。

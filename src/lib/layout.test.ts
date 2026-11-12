@@ -3,6 +3,15 @@ import {
   CARD_PIN_OVERLAP,
   CARD_VISUAL_INSET,
   PIN_ABOVE,
+  ROPE_COLORS,
+  ROPE_HIGHLIGHT_COOL,
+  ROPE_HIGHLIGHT_WARM,
+  ROPE_PALETTE,
+  ROPE_SAG_ANIM_MS,
+  ROPE_SAG_BASE,
+  ROPE_SAG_MAX,
+  ROPE_STYLES,
+  ROPE_TOP,
   capacity,
   cardTopFromRope,
   cardVisualSize,
@@ -10,6 +19,8 @@ import {
   cardX,
   edgeFadeOpacity,
   fileNameOf,
+  isRopeColor,
+  isRopeStyle,
   lineShift,
   lineWidth,
   maxItems,
@@ -19,8 +30,10 @@ import {
   photoMaxHeight,
   photoSize,
   pinTop,
+  ropeHighlightFor,
   ropePath,
   ropeSag,
+  ropeSagEase,
   ropeY,
   showCardImage,
   tiltFor,
@@ -143,22 +156,97 @@ describe("layout", () => {
     expect(new Set(angles).size).toBeGreaterThan(4);
   });
 
-  it("computes the rope sag and curve from the panel width", () => {
-    expect(ropeSag(1920)).toBe(30); // capped at 30 dp
-    expect(ropeSag(1024)).toBeCloseTo(18.432, 3);
-    expect(ropeSag(500)).toBeCloseTo(9, 6);
-    // Quadratic Bezier: P0=(0,10), P1=(w/2,10+2*sag), P2=(w,10).
-    expect(ropeY(1920, 0)).toBe(10);
-    expect(ropeY(1920, 960)).toBe(40);
-    expect(ropeY(1920, 1920)).toBe(10);
+  it("computes the dynamic rope sag from the visible card count and the panel width", () => {
+    // Empty line is almost straight; more cards bend further; the cap is a hard stop.
+    expect(ROPE_SAG_BASE).toBe(12);
+    expect(ROPE_SAG_MAX).toBe(52);
+    expect(ropeSag(1600, 0)).toBe(12);
+    expect(ropeSag(1600, 3)).toBe(21.6);
+    expect(ropeSag(1600, 12)).toBe(50.4);
+    expect(ropeSag(1600, 12)).toBeGreaterThan(ropeSag(1600, 3));
+    expect(ropeSag(1600, 3)).toBeGreaterThan(ropeSag(1600, 0));
+    expect(ropeSag(1600, 20)).toBe(52);
+    expect(ropeSag(1600, Number.NaN)).toBe(12);
+    // Width factor: >=1600 is 1, 1200/1600 = 0.75, a narrow panel floors at 0.45.
+    expect(ropeSag(1920, 12)).toBe(50.4);
+    expect(ropeSag(1200, 12)).toBe(37.8);
+    expect(ropeSag(500, 12)).toBe(22.68);
+    expect(ropeSag(-100, 0)).toBe(5.4);
+    expect(ropeSag(0, 12)).toBe(22.68);
+  });
+
+  it("keeps the quadratic curve and the SVG path exact for an animated sag", () => {
+    // P0=(0,10), P1=(w/2, 10+2*sag), P2=(w,10); the midpoint dips by the full sag.
+    expect(ropeY(1920, 0, 52)).toBe(10);
+    expect(ropeY(1920, 960, 52)).toBe(62);
+    expect(ropeY(1920, 1920, 52)).toBe(10);
+    expect(ropeY(1920, 960, 12)).toBe(22);
     // Off-panel coordinates clamp to the rope ends.
-    expect(ropeY(1920, -10)).toBe(10);
-    expect(ropeY(1920, 5000)).toBe(10);
-    expect(ropePath(1920)).toBe("M0,10 Q960,70 1920,10");
+    expect(ropeY(1920, -10, 52)).toBe(10);
+    expect(ropeY(1920, 5000, 52)).toBe(10);
+    expect(ropeY(1920, 960, Number.NaN)).toBe(10);
+    expect(ropePath(1920, 52)).toBe("M0,10 Q960,114 1920,10");
+    expect(ropePath(1000, 12)).toBe("M0,10 Q500,34 1000,10");
+    expect(ropePath(1920, Number.NaN)).toBe("M0,10 Q960,10 1920,10");
+  });
+
+  it("eases the sag transition with the CSS cubic-bezier(0.22, 1, 0.36, 1) curve", () => {
+    expect(ROPE_SAG_ANIM_MS).toBe(220);
+    expect(ropeSagEase(0)).toBe(0);
+    expect(ropeSagEase(1)).toBe(1);
+    expect(ropeSagEase(-1)).toBe(0);
+    expect(ropeSagEase(2)).toBe(1);
+    expect(ropeSagEase(Number.NaN)).toBe(0);
+    // Monotonic and front-loaded (ease-out): most of the travel happens early.
+    let previous = 0;
+    for (let step = 1; step <= 20; step += 1) {
+      const value = ropeSagEase(step / 20);
+      expect(value).toBeGreaterThanOrEqual(previous);
+      previous = value;
+    }
+    expect(ropeSagEase(0.5)).toBeGreaterThan(0.8);
+  });
+
+  it("keeps 12 cards at the deepest sag inside every panel size", () => {
+    // The worst case is the full 52 dp cap at the line's midpoint (arrow of the curve).
+    for (const size of ["small", "medium", "large"] as const) {
+      const ropeMid = ropeY(2288, 1144, ROPE_SAG_MAX);
+      expect(ropeMid).toBe(ROPE_TOP + ROPE_SAG_MAX);
+      const visual = cardVisualSize({ width: 0, height: 0 }, size);
+      const cardBottom = cardTopFromRope(ropeMid) + visual.height;
+      // The card (and its pin) still leaves headroom inside the fixed panel height.
+      expect(cardBottom).toBeLessThanOrEqual(panelHeight(size));
+      expect(panelHeight(size) - cardBottom).toBeGreaterThanOrEqual(30);
+    }
+  });
+
+  it("exposes the four materials and the eight low-saturation palettes", () => {
+    expect(ROPE_STYLES).toEqual(["silk", "linen", "brass", "aurora"]);
+    expect(ROPE_COLORS).toHaveLength(8);
+    expect(new Set(ROPE_COLORS).size).toBe(8);
+    expect(ROPE_PALETTE.ink).toBe("#1C1C1E");
+    expect(ROPE_PALETTE.ivory).toBe("#EFE9DD");
+    expect(ROPE_PALETTE.champagne).toBe("#C8A96A");
+    expect(ROPE_PALETTE.fog).toBe("#8E9196");
+    expect(ROPE_PALETTE.sage).toBe("#8A9A7B");
+    expect(ROPE_PALETTE.haze).toBe("#7A8FA6");
+    expect(ROPE_PALETTE.terracotta).toBe("#B46A55");
+    expect(ROPE_PALETTE.violet).toBe("#8B7B9B");
+    // Warm palettes get the warm white sheen; cool palettes pure white.
+    expect(ropeHighlightFor("champagne")).toBe(ROPE_HIGHLIGHT_WARM);
+    expect(ropeHighlightFor("ivory")).toBe(ROPE_HIGHLIGHT_WARM);
+    expect(ropeHighlightFor("terracotta")).toBe(ROPE_HIGHLIGHT_WARM);
+    expect(ropeHighlightFor("ink")).toBe(ROPE_HIGHLIGHT_COOL);
+    // Untrusted setting values narrow to the wire enums (old settings / hand-edited JSON).
+    expect(isRopeStyle("silk")).toBe(true);
+    expect(isRopeStyle("velvet")).toBe(false);
+    expect(isRopeStyle(undefined)).toBe(false);
+    expect(isRopeColor("haze")).toBe(true);
+    expect(isRopeColor("black")).toBe(false);
   });
 
   it("hangs the pin and the card from the rope exactly like Tendedero", () => {
-    const rope = ropeY(1920, 960);
+    const rope = ropeY(1920, 960, ropeSag(1920, 12));
     expect(PIN_ABOVE).toBe(9.5);
     expect(CARD_PIN_OVERLAP).toBe(12);
     // pinTop = ropeY - 9.5; cardTop = pinTop + (26 - 12) = ropeY + 4.5.

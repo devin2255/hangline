@@ -6,7 +6,8 @@
 //! The 18 design-spec keys are serialized in camelCase (`captureHotkey`, `keepOnLine`, ...) so the
 //! JSON file and the IPC payloads share the same names as the TypeScript `Settings` interface; the
 //! `keepForDays` age-retention extension follows the same rule, as do the Wave 1 additions
-//! `captureCopyOnFinish`/`editLatestHotkey` and the Wave 2 `searchHotkey`. Unknown keys
+//! `captureCopyOnFinish`/`editLatestHotkey`, the Wave 2 `searchHotkey` and the v1.4 appearance
+//! settings `ropeStyle`/`ropeColor`. Unknown keys
 //! in an existing file are ignored and missing keys fall back to [`Settings::default`]
 //! (`#[serde(default)]`), which is the migration path for files written by older builds.
 //!
@@ -57,6 +58,50 @@ pub enum CardSize {
     Medium,
     /// Large cards.
     Large,
+}
+
+/// Rope material/pattern (v1.4 appearance setting `ropeStyle`).
+///
+/// Serialized as the lowercase wire names `silk`/`linen`/`brass`/`aurora`; the frontend renders the
+/// rope from the same enum, so an unknown value must be rejected rather than silently degraded.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RopeStyle {
+    /// Smooth silk ribbon (default).
+    #[default]
+    Silk,
+    /// Woven linen cord.
+    Linen,
+    /// Brass chain.
+    Brass,
+    /// Aurora gradient ribbon.
+    Aurora,
+}
+
+/// Rope colour (v1.4 appearance setting `ropeColor`).
+///
+/// Serialized as the lowercase wire names `ink`/`ivory`/`champagne`/`fog`/`sage`/`haze`/
+/// `terracotta`/`violet`; the frontend maps each name to its palette, so the enum is the contract.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RopeColor {
+    /// Ink black (default).
+    #[default]
+    Ink,
+    /// Ivory white.
+    Ivory,
+    /// Champagne gold.
+    Champagne,
+    /// Fog grey.
+    Fog,
+    /// Sage green.
+    Sage,
+    /// Haze blue.
+    Haze,
+    /// Terracotta.
+    Terracotta,
+    /// Violet.
+    Violet,
 }
 
 /// Colour theme (design spec 3.6 `theme`).
@@ -195,8 +240,9 @@ impl<'de> Deserialize<'de> for KeepForDays {
     }
 }
 
-/// The 18 design-spec user settings plus the `keepForDays` age-retention extension and the Wave 1/2
-/// additions (`captureCopyOnFinish`, `editLatestHotkey`, `searchHotkey`).
+/// The 18 design-spec user settings plus the `keepForDays` age-retention extension, the Wave 1/2
+/// additions (`captureCopyOnFinish`, `editLatestHotkey`, `searchHotkey`) and the v1.4 appearance
+/// settings (`ropeStyle`, `ropeColor`).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Settings {
@@ -232,6 +278,10 @@ pub struct Settings {
     pub keep_for_days: KeepForDays,
     /// Card scale.
     pub card_size: CardSize,
+    /// Rope material/style (v1.4 appearance; default silk).
+    pub rope_style: RopeStyle,
+    /// Rope colour (v1.4 appearance; default ink).
+    pub rope_color: RopeColor,
     /// Play copy/discard sounds.
     pub sound: bool,
     /// Start Hangline at login.
@@ -265,6 +315,8 @@ impl Default for Settings {
             keep_on_line: KeepOnLine::Fit,
             keep_for_days: KeepForDays::Forever,
             card_size: CardSize::Medium,
+            rope_style: RopeStyle::Silk,
+            rope_color: RopeColor::Ink,
             sound: true,
             start_at_login: false,
             language: "system".to_string(),
@@ -327,6 +379,8 @@ impl Settings {
             "keepOnLine" => self.keep_on_line = expected_enum(key, &value)?,
             "keepForDays" => self.keep_for_days = expected_enum(key, &value)?,
             "cardSize" => self.card_size = expected_enum(key, &value)?,
+            "ropeStyle" => self.rope_style = expected_enum(key, &value)?,
+            "ropeColor" => self.rope_color = expected_enum(key, &value)?,
             "sound" => self.sound = expected_bool(key, &value)?,
             "startAtLogin" => self.start_at_login = expected_bool(key, &value)?,
             "language" => self.language = validated_language(key, &value)?,
@@ -897,6 +951,8 @@ mod tests {
         assert_eq!(s.keep_on_line, KeepOnLine::Fit);
         assert_eq!(s.keep_for_days, KeepForDays::Forever);
         assert_eq!(s.card_size, CardSize::Medium);
+        assert_eq!(s.rope_style, RopeStyle::Silk, "v1.4 default rope style");
+        assert_eq!(s.rope_color, RopeColor::Ink, "v1.4 default rope colour");
         assert!(s.sound);
         assert!(!s.start_at_login);
         assert_eq!(s.language, "system");
@@ -906,14 +962,14 @@ mod tests {
     }
 
     #[test]
-    fn default_json_has_exactly_the_twenty_two_camel_case_keys() {
+    fn default_json_has_exactly_the_twenty_four_camel_case_keys() {
         let value = serde_json::to_value(Settings::default()).expect("serialize defaults");
         let object = value.as_object().expect("settings must be a JSON object");
         assert_eq!(
             object.len(),
-            22,
+            24,
             "18 design-spec keys + keepForDays + captureCopyOnFinish + editLatestHotkey + \
-             searchHotkey"
+             searchHotkey + ropeStyle + ropeColor"
         );
         for key in [
             "captureHotkey",
@@ -932,6 +988,8 @@ mod tests {
             "keepOnLine",
             "keepForDays",
             "cardSize",
+            "ropeStyle",
+            "ropeColor",
             "sound",
             "startAtLogin",
             "language",
@@ -948,6 +1006,8 @@ mod tests {
         assert_eq!(object["keepOnLine"], json!("fit"));
         assert_eq!(object["keepForDays"], json!("forever"));
         assert_eq!(object["cardSize"], json!("medium"));
+        assert_eq!(object["ropeStyle"], json!("silk"));
+        assert_eq!(object["ropeColor"], json!("ink"));
         assert_eq!(object["theme"], json!("system"));
         assert_eq!(object["revealPeekMs"], json!(2500));
         assert_eq!(object["extraFolders"], json!([]));
@@ -1012,6 +1072,10 @@ mod tests {
             ("revealOnNew", json!(null)),
             ("cardSize", json!("huge")),
             ("cardSize", json!(2)),
+            ("ropeStyle", json!("gold")),
+            ("ropeStyle", json!(1)),
+            ("ropeColor", json!("red")),
+            ("ropeColor", json!(null)),
             ("theme", json!("sepia")),
             ("keepOnLine", json!(7)),
             ("keepOnLine", json!("25")),
@@ -1031,6 +1095,10 @@ mod tests {
 
         s.set_json("cardSize", json!("large")).unwrap();
         assert_eq!(s.card_size, CardSize::Large);
+        s.set_json("ropeStyle", json!("aurora")).unwrap();
+        assert_eq!(s.rope_style, RopeStyle::Aurora);
+        s.set_json("ropeColor", json!("violet")).unwrap();
+        assert_eq!(s.rope_color, RopeColor::Violet);
         s.set_json("theme", json!("dark")).unwrap();
         assert_eq!(s.theme, Theme::Dark);
         s.set_json("keepOnLine", json!(50)).unwrap();
@@ -1141,6 +1209,8 @@ mod tests {
         settings.capture_copy_on_finish = true;
         settings.edit_latest_hotkey = "Ctrl+Shift+E".to_string();
         settings.search_hotkey = "Ctrl+Shift+F".to_string();
+        settings.rope_style = RopeStyle::Aurora;
+        settings.rope_color = RopeColor::Terracotta;
         save_atomic(&dir, &settings).expect("save settings");
 
         let path = dir.join("settings.json");
@@ -1156,6 +1226,8 @@ mod tests {
         assert_eq!(json["captureCopyOnFinish"], json!(true));
         assert_eq!(json["editLatestHotkey"], json!("Ctrl+Shift+E"));
         assert_eq!(json["searchHotkey"], json!("Ctrl+Shift+F"));
+        assert_eq!(json["ropeStyle"], json!("aurora"));
+        assert_eq!(json["ropeColor"], json!("terracotta"));
 
         assert_eq!(load(&dir), settings);
 
@@ -1376,6 +1448,16 @@ mod tests {
             "a settings file written before Wave 2 must migrate to the search default"
         );
         assert!(!loaded.capture_copy_on_finish);
+        assert_eq!(
+            loaded.rope_style,
+            RopeStyle::Silk,
+            "a settings file written before v1.4 must migrate to the default rope style"
+        );
+        assert_eq!(
+            loaded.rope_color,
+            RopeColor::Ink,
+            "a settings file written before v1.4 must migrate to the default rope colour"
+        );
         assert_eq!(loaded.reveal_peek_ms, 2500);
         assert!(loaded.reveal_on_new);
         assert_eq!(
@@ -1436,6 +1518,80 @@ mod tests {
         }
     }
 
+    /// v1.4 appearance: both rope enums serialize as the documented lowercase wire names,
+    /// round-trip through `set_json`/`Settings`, and unknown values are rejected without mutation.
+    #[test]
+    fn rope_appearance_serializes_lowercase_and_rejects_unknown_values() {
+        for (style, wire) in [
+            (RopeStyle::Silk, "silk"),
+            (RopeStyle::Linen, "linen"),
+            (RopeStyle::Brass, "brass"),
+            (RopeStyle::Aurora, "aurora"),
+        ] {
+            assert_eq!(serde_json::to_value(style).expect("serialize style"), json!(wire));
+            assert_eq!(
+                serde_json::from_value::<RopeStyle>(json!(wire)).expect("parse style"),
+                style
+            );
+        }
+        for (color, wire) in [
+            (RopeColor::Ink, "ink"),
+            (RopeColor::Ivory, "ivory"),
+            (RopeColor::Champagne, "champagne"),
+            (RopeColor::Fog, "fog"),
+            (RopeColor::Sage, "sage"),
+            (RopeColor::Haze, "haze"),
+            (RopeColor::Terracotta, "terracotta"),
+            (RopeColor::Violet, "violet"),
+        ] {
+            assert_eq!(serde_json::to_value(color).expect("serialize color"), json!(wire));
+            assert_eq!(
+                serde_json::from_value::<RopeColor>(json!(wire)).expect("parse color"),
+                color
+            );
+        }
+
+        // `set_json` accepts every wire name and keeps the rest of the settings untouched.
+        let mut settings = Settings::default();
+        settings.set_json("ropeStyle", json!("brass")).expect("valid style");
+        settings.set_json("ropeColor", json!("haze")).expect("valid color");
+        assert_eq!(settings.rope_style, RopeStyle::Brass);
+        assert_eq!(settings.rope_color, RopeColor::Haze);
+        settings.set_json("ropeStyle", json!("silk")).expect("default style");
+        settings.set_json("ropeColor", json!("ink")).expect("default color");
+        assert_eq!(settings.rope_style, RopeStyle::Silk);
+        assert_eq!(settings.rope_color, RopeColor::Ink);
+
+        // A JSON round-trip through the whole settings document keeps both values.
+        settings.set_json("ropeStyle", json!("linen")).expect("valid style");
+        settings.set_json("ropeColor", json!("champagne")).expect("valid color");
+        let value = serde_json::to_value(&settings).expect("serialize settings");
+        assert_eq!(value["ropeStyle"], json!("linen"));
+        assert_eq!(value["ropeColor"], json!("champagne"));
+        let parsed: Settings = serde_json::from_value(value).expect("deserialize settings");
+        assert_eq!(parsed, settings);
+
+        // Unknown styles/colours are rejected with a diagnostic error and leave memory untouched.
+        let before = settings.clone();
+        for (key, value) in [
+            ("ropeStyle", json!("gold")),
+            ("ropeStyle", json!("Silk")),
+            ("ropeStyle", json!(1)),
+            ("ropeColor", json!("red")),
+            ("ropeColor", json!("black")),
+            ("ropeColor", json!(null)),
+        ] {
+            let error = settings
+                .set_json(key, value.clone())
+                .expect_err("must be rejected");
+            assert!(
+                matches!(error, SettingsError::InvalidValue { .. }),
+                "expected InvalidValue for {key}={value}: {error}"
+            );
+            assert_eq!(settings, before, "{key} rejection must not mutate settings");
+        }
+    }
+
     /// Task 14: `set_setting` must re-apply the panel window geometry for the two keys that can
     /// change the card layout/size, and only for those (the check is a pure helper so the command
     /// path is unit-testable without a Tauri runtime).
@@ -1448,6 +1604,8 @@ mod tests {
             "editLatestHotkey",
             "searchHotkey",
             "captureCopyOnFinish",
+            "ropeStyle",
+            "ropeColor",
             "theme",
             "watchClipboard",
             "language",

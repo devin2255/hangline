@@ -147,6 +147,16 @@ pub fn actions_for_change(key: &str, old: &Settings, new: &Settings) -> Vec<Sett
         "language" if old.language != new.language => {
             actions.push(SettingAction::RebuildTray);
         }
+        // v1.4 appearance: the tray is the only surface for the rope style/colour, so the change
+        // must refresh the native check marks immediately. `apply_menu_action` returns through this
+        // path and `tray::sync_state` would already rewrite the checks during the state broadcast;
+        // the explicit RebuildTray keeps the "immediate" contract testable and is idempotent.
+        "ropeStyle" if old.rope_style != new.rope_style => {
+            actions.push(SettingAction::RebuildTray);
+        }
+        "ropeColor" if old.rope_color != new.rope_color => {
+            actions.push(SettingAction::RebuildTray);
+        }
         // A shorter (or newly enabled) age window must take effect now, not at the next hourly tick.
         // The sweep itself is soft: it reports failures through logs and never rolls the setting back.
         "keepForDays" if old.keep_for_days != new.keep_for_days => {
@@ -874,11 +884,36 @@ mod tests {
             "extraFolders",
             "language",
             "keepForDays",
+            "ropeStyle",
+            "ropeColor",
         ] {
             assert!(
                 actions_for_change(key, &old, &new).is_empty(),
                 "{key} with the same value must not schedule a side effect"
             );
+        }
+    }
+
+    /// v1.4: changing the rope style/colour must refresh the tray immediately (the appearance
+    /// submenu's check marks are the only UI for these keys).
+    #[test]
+    fn appearance_settings_rebuild_the_tray() {
+        for (key, value) in [
+            ("ropeStyle", json!("aurora")),
+            ("ropeColor", json!("terracotta")),
+        ] {
+            let (old, new) = changed(key, value);
+            assert_eq!(
+                actions_for_change(key, &old, &new),
+                vec![SettingAction::RebuildTray],
+                "{key} must refresh the tray check marks immediately"
+            );
+        }
+        // Re-selecting the current value is a no-op (no pointless rebuild).
+        let old = Settings::default();
+        let new = Settings::default();
+        for key in ["ropeStyle", "ropeColor"] {
+            assert!(actions_for_change(key, &old, &new).is_empty());
         }
     }
 

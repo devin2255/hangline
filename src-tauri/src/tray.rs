@@ -35,7 +35,9 @@ use crate::hotkeys::{self, HotkeyFailure, Target};
 use crate::i18n::{self, Lang, TrayStrings};
 use crate::panel;
 use crate::reveal::{self, RevealReason};
-use crate::settings::{CardSize, KeepForDays, KeepOnLine, Settings, MAX_EXTRA_FOLDERS};
+use crate::settings::{
+    CardSize, KeepForDays, KeepOnLine, RopeColor, RopeStyle, Settings, MAX_EXTRA_FOLDERS,
+};
 
 /// Stable tray icon id (looked up by tests/`tray_by_id`).
 pub const TRAY_ID: &str = "hangline-tray";
@@ -90,6 +92,32 @@ pub const ID_SIZE_SMALL: &str = "tray.size.small";
 pub const ID_SIZE_MEDIUM: &str = "tray.size.medium";
 /// "Size ▸ Large".
 pub const ID_SIZE_LARGE: &str = "tray.size.large";
+/// v1.4 "Appearance" submenu (rope style/colour).
+pub const ID_APPEARANCE: &str = "tray.appearance";
+/// "Appearance ▸ Rope style ▸ Silk" (the default style).
+pub const ID_ROPE_STYLE_SILK: &str = "tray.appearance.style.silk";
+/// "Appearance ▸ Rope style ▸ Linen".
+pub const ID_ROPE_STYLE_LINEN: &str = "tray.appearance.style.linen";
+/// "Appearance ▸ Rope style ▸ Brass".
+pub const ID_ROPE_STYLE_BRASS: &str = "tray.appearance.style.brass";
+/// "Appearance ▸ Rope style ▸ Aurora".
+pub const ID_ROPE_STYLE_AURORA: &str = "tray.appearance.style.aurora";
+/// "Appearance ▸ Rope color ▸ Ink" (the default colour).
+pub const ID_ROPE_COLOR_INK: &str = "tray.appearance.color.ink";
+/// "Appearance ▸ Rope color ▸ Ivory".
+pub const ID_ROPE_COLOR_IVORY: &str = "tray.appearance.color.ivory";
+/// "Appearance ▸ Rope color ▸ Champagne".
+pub const ID_ROPE_COLOR_CHAMPAGNE: &str = "tray.appearance.color.champagne";
+/// "Appearance ▸ Rope color ▸ Fog".
+pub const ID_ROPE_COLOR_FOG: &str = "tray.appearance.color.fog";
+/// "Appearance ▸ Rope color ▸ Sage".
+pub const ID_ROPE_COLOR_SAGE: &str = "tray.appearance.color.sage";
+/// "Appearance ▸ Rope color ▸ Haze".
+pub const ID_ROPE_COLOR_HAZE: &str = "tray.appearance.color.haze";
+/// "Appearance ▸ Rope color ▸ Terracotta".
+pub const ID_ROPE_COLOR_TERRACOTTA: &str = "tray.appearance.color.terracotta";
+/// "Appearance ▸ Rope color ▸ Violet".
+pub const ID_ROPE_COLOR_VIOLET: &str = "tray.appearance.color.violet";
 /// "Shortcut ▸ Capture: <accel>" row (opens the change window for capture).
 pub const ID_HOTKEY_CAPTURE: &str = "tray.hotkey.capture";
 /// "Shortcut ▸ Show/hide: <accel>" row (opens the change window for toggle).
@@ -159,6 +187,10 @@ pub enum TrayAction {
     SetKeepForDays(KeepForDays),
     /// Set `cardSize`.
     SetCardSize(CardSize),
+    /// Set `ropeStyle` (v1.4 appearance).
+    SetRopeStyle(RopeStyle),
+    /// Set `ropeColor` (v1.4 appearance).
+    SetRopeColor(RopeColor),
     /// Show the change-shortcut window for a target.
     ChangeShortcut(Target),
     /// Open Hangline's own screenshot directory.
@@ -196,6 +228,8 @@ impl TrayAction {
             Self::SetKeepOnLine(_) => "set keep on line",
             Self::SetKeepForDays(_) => "set keep for days",
             Self::SetCardSize(_) => "set card size",
+            Self::SetRopeStyle(_) => "set rope style",
+            Self::SetRopeColor(_) => "set rope color",
             Self::ChangeShortcut(_) => "change shortcut",
             Self::OpenScreenshotsFolder => "open screenshots folder",
             Self::ToggleSound => "toggle sound",
@@ -246,6 +280,21 @@ pub fn action_for(id: &str) -> Option<TrayAction> {
         ID_SIZE_SMALL => TrayAction::SetCardSize(CardSize::Small),
         ID_SIZE_MEDIUM => TrayAction::SetCardSize(CardSize::Medium),
         ID_SIZE_LARGE => TrayAction::SetCardSize(CardSize::Large),
+        ID_ROPE_STYLE_SILK => TrayAction::SetRopeStyle(RopeStyle::Silk),
+        ID_ROPE_STYLE_LINEN => TrayAction::SetRopeStyle(RopeStyle::Linen),
+        ID_ROPE_STYLE_BRASS => TrayAction::SetRopeStyle(RopeStyle::Brass),
+        ID_ROPE_STYLE_AURORA => TrayAction::SetRopeStyle(RopeStyle::Aurora),
+        ID_ROPE_COLOR_INK => TrayAction::SetRopeColor(RopeColor::Ink),
+        ID_ROPE_COLOR_IVORY => TrayAction::SetRopeColor(RopeColor::Ivory),
+        ID_ROPE_COLOR_CHAMPAGNE => TrayAction::SetRopeColor(RopeColor::Champagne),
+        ID_ROPE_COLOR_FOG => TrayAction::SetRopeColor(RopeColor::Fog),
+        ID_ROPE_COLOR_SAGE => TrayAction::SetRopeColor(RopeColor::Sage),
+        ID_ROPE_COLOR_HAZE => TrayAction::SetRopeColor(RopeColor::Haze),
+        ID_ROPE_COLOR_TERRACOTTA => TrayAction::SetRopeColor(RopeColor::Terracotta),
+        ID_ROPE_COLOR_VIOLET => TrayAction::SetRopeColor(RopeColor::Violet),
+        // The Appearance submenu is a title row only: it has an id (stable menu identity) but no
+        // click action; its 12 child rows carry the actions above.
+        ID_APPEARANCE => return None,
         ID_HOTKEY_CAPTURE => TrayAction::ChangeShortcut(Target::Capture),
         ID_HOTKEY_TOGGLE => TrayAction::ChangeShortcut(Target::Toggle),
         ID_HOTKEY_EDIT_LATEST => TrayAction::ChangeShortcut(Target::EditLatest),
@@ -318,6 +367,10 @@ pub struct MenuState {
     pub keep_for_days: KeepForDays,
     /// Card size.
     pub card_size: CardSize,
+    /// Rope material/style (v1.4 appearance).
+    pub rope_style: RopeStyle,
+    /// Rope colour (v1.4 appearance).
+    pub rope_color: RopeColor,
     /// First hotkey registration failure, shown as a disabled hint row + tooltip suffix.
     pub hotkey_error: Option<HotkeyFailure>,
     /// Copy/discard sounds.
@@ -364,6 +417,8 @@ pub fn menu_state(
         keep_on_line: settings.keep_on_line,
         keep_for_days: settings.keep_for_days,
         card_size: settings.card_size,
+        rope_style: settings.rope_style,
+        rope_color: settings.rope_color,
         hotkey_error,
         sound: settings.sound,
         start_at_login,
@@ -435,6 +490,18 @@ struct Items {
     size_small: CheckMenuItem<Wry>,
     size_medium: CheckMenuItem<Wry>,
     size_large: CheckMenuItem<Wry>,
+    style_silk: CheckMenuItem<Wry>,
+    style_linen: CheckMenuItem<Wry>,
+    style_brass: CheckMenuItem<Wry>,
+    style_aurora: CheckMenuItem<Wry>,
+    color_ink: CheckMenuItem<Wry>,
+    color_ivory: CheckMenuItem<Wry>,
+    color_champagne: CheckMenuItem<Wry>,
+    color_fog: CheckMenuItem<Wry>,
+    color_sage: CheckMenuItem<Wry>,
+    color_haze: CheckMenuItem<Wry>,
+    color_terracotta: CheckMenuItem<Wry>,
+    color_violet: CheckMenuItem<Wry>,
     hotkey_capture: MenuItem<Wry>,
     hotkey_toggle: MenuItem<Wry>,
     hotkey_edit_latest: MenuItem<Wry>,
@@ -820,6 +887,129 @@ fn build_menu(
         &[&size_small, &size_medium, &size_large],
     )?;
 
+    // v1.4 appearance: rope style (4 check items) and rope colour (8 check items). The Appearance
+    // submenu carries its contract id for a stable menu identity; only the child rows are clickable.
+    let style_silk = CheckMenuItem::with_id(
+        app,
+        ID_ROPE_STYLE_SILK,
+        strings.rope_style_silk,
+        true,
+        state.rope_style == RopeStyle::Silk,
+        None::<&str>,
+    )?;
+    let style_linen = CheckMenuItem::with_id(
+        app,
+        ID_ROPE_STYLE_LINEN,
+        strings.rope_style_linen,
+        true,
+        state.rope_style == RopeStyle::Linen,
+        None::<&str>,
+    )?;
+    let style_brass = CheckMenuItem::with_id(
+        app,
+        ID_ROPE_STYLE_BRASS,
+        strings.rope_style_brass,
+        true,
+        state.rope_style == RopeStyle::Brass,
+        None::<&str>,
+    )?;
+    let style_aurora = CheckMenuItem::with_id(
+        app,
+        ID_ROPE_STYLE_AURORA,
+        strings.rope_style_aurora,
+        true,
+        state.rope_style == RopeStyle::Aurora,
+        None::<&str>,
+    )?;
+    let rope_style_menu = Submenu::with_items(
+        app,
+        strings.rope_style_menu,
+        true,
+        &[&style_silk, &style_linen, &style_brass, &style_aurora],
+    )?;
+    let color_ink = CheckMenuItem::with_id(
+        app,
+        ID_ROPE_COLOR_INK,
+        strings.rope_color_ink,
+        true,
+        state.rope_color == RopeColor::Ink,
+        None::<&str>,
+    )?;
+    let color_ivory = CheckMenuItem::with_id(
+        app,
+        ID_ROPE_COLOR_IVORY,
+        strings.rope_color_ivory,
+        true,
+        state.rope_color == RopeColor::Ivory,
+        None::<&str>,
+    )?;
+    let color_champagne = CheckMenuItem::with_id(
+        app,
+        ID_ROPE_COLOR_CHAMPAGNE,
+        strings.rope_color_champagne,
+        true,
+        state.rope_color == RopeColor::Champagne,
+        None::<&str>,
+    )?;
+    let color_fog = CheckMenuItem::with_id(
+        app,
+        ID_ROPE_COLOR_FOG,
+        strings.rope_color_fog,
+        true,
+        state.rope_color == RopeColor::Fog,
+        None::<&str>,
+    )?;
+    let color_sage = CheckMenuItem::with_id(
+        app,
+        ID_ROPE_COLOR_SAGE,
+        strings.rope_color_sage,
+        true,
+        state.rope_color == RopeColor::Sage,
+        None::<&str>,
+    )?;
+    let color_haze = CheckMenuItem::with_id(
+        app,
+        ID_ROPE_COLOR_HAZE,
+        strings.rope_color_haze,
+        true,
+        state.rope_color == RopeColor::Haze,
+        None::<&str>,
+    )?;
+    let color_terracotta = CheckMenuItem::with_id(
+        app,
+        ID_ROPE_COLOR_TERRACOTTA,
+        strings.rope_color_terracotta,
+        true,
+        state.rope_color == RopeColor::Terracotta,
+        None::<&str>,
+    )?;
+    let color_violet = CheckMenuItem::with_id(
+        app,
+        ID_ROPE_COLOR_VIOLET,
+        strings.rope_color_violet,
+        true,
+        state.rope_color == RopeColor::Violet,
+        None::<&str>,
+    )?;
+    let rope_color_menu = Submenu::with_items(
+        app,
+        strings.rope_color_menu,
+        true,
+        &[
+            &color_ink,
+            &color_ivory,
+            &color_champagne,
+            &color_fog,
+            &color_sage,
+            &color_haze,
+            &color_terracotta,
+            &color_violet,
+        ],
+    )?;
+    let appearance_menu = Submenu::with_id(app, ID_APPEARANCE, strings.appearance_menu, true)?;
+    appearance_menu.append(&rope_style_menu)?;
+    appearance_menu.append(&rope_color_menu)?;
+
     let failed_capture = state
         .hotkey_error
         .as_ref()
@@ -979,6 +1169,18 @@ fn build_menu(
         size_small,
         size_medium,
         size_large,
+        style_silk,
+        style_linen,
+        style_brass,
+        style_aurora,
+        color_ink,
+        color_ivory,
+        color_champagne,
+        color_fog,
+        color_sage,
+        color_haze,
+        color_terracotta,
+        color_violet,
         hotkey_capture,
         hotkey_toggle,
         hotkey_edit_latest,
@@ -1012,6 +1214,7 @@ fn build_menu(
             &keep_menu,
             &keep_for_menu,
             &size_menu,
+            &appearance_menu,
             &shortcut_menu,
             &items.open_screenshots,
             &PredefinedMenuItem::separator(app)?,
@@ -1169,6 +1372,57 @@ fn apply_state(
         .size_medium
         .set_checked(state.card_size == CardSize::Medium)?;
     items.size_large.set_checked(state.card_size == CardSize::Large)?;
+
+    // v1.4 appearance: the 12 rope check items follow the persisted settings; the language rebuild
+    // recreates the submenu titles, while these text/check updates keep the check marks immediate.
+    items.style_silk.set_text(strings.rope_style_silk)?;
+    items.style_linen.set_text(strings.rope_style_linen)?;
+    items.style_brass.set_text(strings.rope_style_brass)?;
+    items.style_aurora.set_text(strings.rope_style_aurora)?;
+    items
+        .style_silk
+        .set_checked(state.rope_style == RopeStyle::Silk)?;
+    items
+        .style_linen
+        .set_checked(state.rope_style == RopeStyle::Linen)?;
+    items
+        .style_brass
+        .set_checked(state.rope_style == RopeStyle::Brass)?;
+    items
+        .style_aurora
+        .set_checked(state.rope_style == RopeStyle::Aurora)?;
+    items.color_ink.set_text(strings.rope_color_ink)?;
+    items.color_ivory.set_text(strings.rope_color_ivory)?;
+    items.color_champagne.set_text(strings.rope_color_champagne)?;
+    items.color_fog.set_text(strings.rope_color_fog)?;
+    items.color_sage.set_text(strings.rope_color_sage)?;
+    items.color_haze.set_text(strings.rope_color_haze)?;
+    items.color_terracotta.set_text(strings.rope_color_terracotta)?;
+    items.color_violet.set_text(strings.rope_color_violet)?;
+    items
+        .color_ink
+        .set_checked(state.rope_color == RopeColor::Ink)?;
+    items
+        .color_ivory
+        .set_checked(state.rope_color == RopeColor::Ivory)?;
+    items
+        .color_champagne
+        .set_checked(state.rope_color == RopeColor::Champagne)?;
+    items
+        .color_fog
+        .set_checked(state.rope_color == RopeColor::Fog)?;
+    items
+        .color_sage
+        .set_checked(state.rope_color == RopeColor::Sage)?;
+    items
+        .color_haze
+        .set_checked(state.rope_color == RopeColor::Haze)?;
+    items
+        .color_terracotta
+        .set_checked(state.rope_color == RopeColor::Terracotta)?;
+    items
+        .color_violet
+        .set_checked(state.rope_color == RopeColor::Violet)?;
 
     let failed_capture = state
         .hotkey_error
@@ -1384,6 +1638,8 @@ fn apply_menu_action(app: &AppHandle, action: TrayAction) {
         TrayAction::SetKeepOnLine(keep) => Some(("keepOnLine", serde_json::json!(keep))),
         TrayAction::SetKeepForDays(policy) => Some(("keepForDays", serde_json::json!(policy))),
         TrayAction::SetCardSize(size) => Some(("cardSize", serde_json::json!(size))),
+        TrayAction::SetRopeStyle(style) => Some(("ropeStyle", serde_json::json!(style))),
+        TrayAction::SetRopeColor(color) => Some(("ropeColor", serde_json::json!(color))),
         TrayAction::SetLanguage(None) => Some(("language", serde_json::json!("system"))),
         TrayAction::SetLanguage(Some(lang)) => Some(("language", serde_json::json!(lang.tag()))),
         other => {
@@ -1442,6 +1698,9 @@ mod tests {
         assert!(visible.handle_screenshots);
         assert_eq!(visible.keep_on_line, KeepOnLine::Fit);
         assert_eq!(visible.keep_for_days, KeepForDays::Forever);
+        // v1.4: the appearance check marks follow the settings defaults.
+        assert_eq!(visible.rope_style, RopeStyle::Silk);
+        assert_eq!(visible.rope_color, RopeColor::Ink);
 
         let hidden = menu_state(&settings, false, 0, None, false, Lang::En);
         assert_eq!(hidden.toggle_label, "Show line");
@@ -1476,6 +1735,8 @@ mod tests {
         settings.capture_copy_on_finish = true;
         settings.edit_latest_hotkey = "Ctrl+Shift+E".to_string();
         settings.search_hotkey = "Ctrl+Shift+F".to_string();
+        settings.rope_style = RopeStyle::Brass;
+        settings.rope_color = RopeColor::Haze;
         settings.extra_folders = vec![r"C:\Shots".to_string()];
         let state = menu_state(&settings, false, 1, None, true, Lang::En);
         assert!(!state.handle_screenshots);
@@ -1492,6 +1753,8 @@ mod tests {
         assert_eq!(state.keep_on_line, KeepOnLine::Limit(50));
         assert_eq!(state.keep_for_days, KeepForDays::Days(30));
         assert_eq!(state.card_size, CardSize::Large);
+        assert_eq!(state.rope_style, RopeStyle::Brass);
+        assert_eq!(state.rope_color, RopeColor::Haze);
         assert_eq!(state.extra_folders, vec![r"C:\Shots".to_string()]);
         assert!(state.add_folder_enabled);
         assert_eq!(state.item_count, 1);
@@ -1619,6 +1882,56 @@ mod tests {
         assert_eq!(
             action_for(ID_SIZE_LARGE),
             Some(TrayAction::SetCardSize(CardSize::Large))
+        );
+        // v1.4: the appearance submenu title has no action; all 12 child ids map to their setter.
+        assert_eq!(action_for(ID_APPEARANCE), None);
+        assert_eq!(
+            action_for(ID_ROPE_STYLE_SILK),
+            Some(TrayAction::SetRopeStyle(RopeStyle::Silk))
+        );
+        assert_eq!(
+            action_for(ID_ROPE_STYLE_LINEN),
+            Some(TrayAction::SetRopeStyle(RopeStyle::Linen))
+        );
+        assert_eq!(
+            action_for(ID_ROPE_STYLE_BRASS),
+            Some(TrayAction::SetRopeStyle(RopeStyle::Brass))
+        );
+        assert_eq!(
+            action_for(ID_ROPE_STYLE_AURORA),
+            Some(TrayAction::SetRopeStyle(RopeStyle::Aurora))
+        );
+        assert_eq!(
+            action_for(ID_ROPE_COLOR_INK),
+            Some(TrayAction::SetRopeColor(RopeColor::Ink))
+        );
+        assert_eq!(
+            action_for(ID_ROPE_COLOR_IVORY),
+            Some(TrayAction::SetRopeColor(RopeColor::Ivory))
+        );
+        assert_eq!(
+            action_for(ID_ROPE_COLOR_CHAMPAGNE),
+            Some(TrayAction::SetRopeColor(RopeColor::Champagne))
+        );
+        assert_eq!(
+            action_for(ID_ROPE_COLOR_FOG),
+            Some(TrayAction::SetRopeColor(RopeColor::Fog))
+        );
+        assert_eq!(
+            action_for(ID_ROPE_COLOR_SAGE),
+            Some(TrayAction::SetRopeColor(RopeColor::Sage))
+        );
+        assert_eq!(
+            action_for(ID_ROPE_COLOR_HAZE),
+            Some(TrayAction::SetRopeColor(RopeColor::Haze))
+        );
+        assert_eq!(
+            action_for(ID_ROPE_COLOR_TERRACOTTA),
+            Some(TrayAction::SetRopeColor(RopeColor::Terracotta))
+        );
+        assert_eq!(
+            action_for(ID_ROPE_COLOR_VIOLET),
+            Some(TrayAction::SetRopeColor(RopeColor::Violet))
         );
         assert_eq!(
             action_for(ID_HOTKEY_CAPTURE),

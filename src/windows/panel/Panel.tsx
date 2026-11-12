@@ -79,17 +79,23 @@ import { installTrace, pushTrace, traceEnabled } from "../../lib/trace";
 import { planFallSequence } from "../../lib/fallPlan";
 import type { FallFrameInfo } from "../../lib/fallPlan";
 import {
+  ROPE_PALETTE,
+  ROPE_SAG_ANIM_MS,
   capacity,
   cardTopFromRope,
   cardVisualSize,
   cardWidth,
   cardX,
+  isRopeColor,
+  isRopeStyle,
   lineShift,
   lineWidth,
   maxItems,
   maxScrollOffset,
   nextScrollOffset,
   pinTop,
+  ropeSag,
+  ropeSagEase,
   ropeY,
   tiltFor,
   visibleSlice,
@@ -107,6 +113,8 @@ import type {
   PanelGeometryEvent,
   PhysicalRect,
   RevealEvent,
+  RopeColor,
+  RopeStyle,
   TrimStateEvent,
   TuckEvent,
   UpdateCheckFailedEvent,
@@ -390,6 +398,35 @@ export function Panel() {
   // Oldest → newest, newest on the right (Rust keeps `items` sorted ascending).
   const visible = items.slice(range.start, range.end);
   const newestId = items.length > 0 ? items[items.length - 1].id : "";
+
+  // --- v1.4.0 rope appearance + dynamic sag ----------------------------------------------------
+  /**
+   * Rope material and palette from the settings. The wire values are validated here so an old
+   * settings JSON (or a hand-edited one) degrades to the defaults instead of an invisible rope.
+   */
+  const ropeStyleSetting = state?.settings.ropeStyle;
+  const ropeStyle: RopeStyle = isRopeStyle(ropeStyleSetting) ? ropeStyleSetting : "silk";
+  const ropeColorSetting = state?.settings.ropeColor;
+  const ropeColor: RopeColor = isRopeColor(ropeColorSetting) ? ropeColorSetting : "ink";
+  /** Sag target for the visible-card count; the rAF effect below eases the rendered value to it. */
+  const sagTarget = ropeSag(lineWidth(panelWidth, visible.length, size), visible.length);
+  /**
+   * Latest sag target for the async fly-start path: the flight overlay should land where the card
+   * will be *after* the 220 ms settle (the panel card is hidden during the flight, so the handoff
+   * must match the settled rope, not the mid-animation sample).
+   */
+  const sagTargetRef = useRef(sagTarget);
+  sagTargetRef.current = sagTarget;
+  /**
+   * Rendered sag (dp). Starts at the empty-line target so the first paint does not jump; when the
+   * first cards load the sag plays the 220 ms settle instead of snapping.
+   */
+  const [sag, setSag] = useState(() =>
+    ropeSag(lineWidth(Math.max(1, window.innerWidth), 0, "medium"), 0),
+  );
+  const sagRef = useRef(sag);
+  sagRef.current = sag;
+  const sagFrameRef = useRef<number | null>(null);
 
   /** Latest layout inputs for the async fly-start path (it runs after a reveal/await). */
   const layoutRef = useRef({ items, size, panelWidth, fits, lineLimit, offset });
@@ -682,6 +719,54 @@ export function Panel() {
   const [reducedMotion, setReducedMotion] = useState(() =>
     window.matchMedia(REDUCED_MOTION_QUERY).matches,
   );
+
+  // v1.4.0: ease the rendered rope sag toward the visible-card target (220 ms, ease-out). rAF runs
+  // only while a transition is in flight; reduced-motion jumps immediately and refreshes the hit
+  // rects so the click-through islands match the settled cards.
+  useEffect(() => {
+    if (sagFrameRef.current !== null) {
+      window.cancelAnimationFrame(sagFrameRef.current);
+      sagFrameRef.current = null;
+    }
+    if (reducedMotion) {
+      sagRef.current = sagTarget;
+      setSag(sagTarget);
+      scheduleReportRef.current();
+      return;
+    }
+    const from = sagRef.current;
+    if (Math.abs(sagTarget - from) < 0.01) {
+      if (from !== sagTarget) {
+        sagRef.current = sagTarget;
+        setSag(sagTarget);
+      }
+      return;
+    }
+    const startedAt = performance.now();
+    const step = (now: number) => {
+      const progress = Math.min(1, Math.max(0, (now - startedAt) / ROPE_SAG_ANIM_MS));
+      const value = from + (sagTarget - from) * ropeSagEase(progress);
+      sagRef.current = value;
+      setSag(value);
+      if (progress < 1) {
+        sagFrameRef.current = window.requestAnimationFrame(step);
+      } else {
+        sagFrameRef.current = null;
+        sagRef.current = sagTarget;
+        setSag(sagTarget);
+        // The cards moved with the sag: refresh the click-through islands at their final spots.
+        scheduleReportRef.current();
+      }
+    };
+    sagFrameRef.current = window.requestAnimationFrame(step);
+    return () => {
+      if (sagFrameRef.current !== null) {
+        window.cancelAnimationFrame(sagFrameRef.current);
+        sagFrameRef.current = null;
+      }
+    };
+  }, [reducedMotion, sagTarget]);
+
   /** Breeze counter (P2-4): increments on the 7–16 s gust timer; cards sway from it. */
   const [gust, setGust] = useState(0);
   /** `document.hidden` mirrored as state so background windows stop the gust chain. */
@@ -872,12 +957,14 @@ export function Panel() {
       // A panel narrower than the 3-card minimum right-aligns the overflowing line (`lineShift`).
       // `left` is viewport-space and therefore includes the shift; the rope/top stay in **line**
       // coordinates because the whole `.panel__line` is translated by the same shift via CSS, and
-      // the rendered card's top uses `ropeY(line, x + cardWidth/2)` (unshifted) too.
+      // the rendered card's top uses `ropeY(line, x + cardWidth/2, sag)` (unshifted) too. The fly
+      // overlay targets the *settled* sag (`sagTargetRef`): by handoff (~500 ms) the 220 ms settle
+      // has finished, so the overlay must land where the panel card will be drawn then.
       const shift = lineShift(width, line);
       const ropeX = x + cardWidth(cardSize) / 2;
       const visual = cardVisualSize(item, cardSize);
       const left = x + shift + (cardWidth(cardSize) - visual.width) / 2;
-      const top = cardTopFromRope(ropeY(line, ropeX));
+      const top = cardTopFromRope(ropeY(line, ropeX, sagTargetRef.current));
       const to: PhysicalRect = {
         x: Math.round(originX + left * scale),
         y: Math.round(originY + top * scale),
@@ -2440,6 +2527,11 @@ export function Panel() {
       data-falling-count={fallingIds.size}
       data-card-menu-open={menu !== null}
       data-preview-open={preview !== null}
+      data-rope-style={ropeStyle}
+      data-rope-color={ropeColor}
+      // v1.4.0: the palette reaches CSS/SVG as one custom property; Panel.css derives the base
+      // rope/shadow/sheen/brass tokens from it with `color-mix` (theme-adaptive).
+      style={{ "--rope-palette": ROPE_PALETTE[ropeColor] } as CSSProperties}
       // The panel is a custom chrome: the WebView2 default context menu must never appear, not
       // even on the transparent studio area around the line (Wave 1.1).
       onContextMenu={(event) => event.preventDefault()}
@@ -2455,18 +2547,18 @@ export function Panel() {
         onDragStart={(event) => event.preventDefault()}
       >
         <div className="panel__line" style={lineStyle}>
-          <Rope width={line} />
+          <Rope width={line} sag={sag} style={ropeStyle} color={ropeColor} />
           {count === 0 ? (
             <p
               className="panel__hint"
-              style={{ top: `${ropeY(panelWidth, panelWidth / 2) + 34}px` }}
+              style={{ top: `${ropeY(panelWidth, panelWidth / 2, sag) + 34}px` }}
             >
               {t("Take a screenshot and it will hang here")}
             </p>
           ) : null}
           {visible.map((item, index) => {
             const x = cardX(index, count, size, panelWidth);
-            const top = pinTop(ropeY(line, x + cardWidth(size) / 2));
+            const top = pinTop(ropeY(line, x + cardWidth(size) / 2, sag));
             return (
               <GlassCard
                 key={item.id}

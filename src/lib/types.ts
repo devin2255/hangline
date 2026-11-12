@@ -90,6 +90,27 @@ export type CardSize = "small" | "medium" | "large";
 export type Theme = "system" | "light" | "dark";
 
 /**
+ * Rope material (v1.4.0 "quiet luxury" appearance system).
+ *
+ * - `silk` — default: a single-source silk cord with a soft sheen;
+ * - `linen` — a woven, slightly dashed cord with a fine texture thread;
+ * - `brass` — a warm metal chain (most pronounced on the champagne palette);
+ * - `aurora` — a soft glowing cord with a bright core.
+ */
+export type RopeStyle = "silk" | "linen" | "brass" | "aurora";
+
+/** Low-saturation rope palette key (v1.4.0). */
+export type RopeColor =
+  | "ink"
+  | "ivory"
+  | "champagne"
+  | "fog"
+  | "sage"
+  | "haze"
+  | "terracotta"
+  | "violet";
+
+/**
  * One item hung on the line (design spec 4.5; Rust `Item`).
  *
  * `hash` is a 64-bit BLAKE3 truncation: it is a backend dedupe key, so the frontend must treat it
@@ -164,6 +185,10 @@ export interface Settings {
   /** Age retention: `"forever"` (default) or keep the last 7/30/90 days. */
   keepForDays: KeepForDays;
   cardSize: CardSize;
+  /** v1.4.0 rope material (Rust `ropeStyle`; default `"silk"`). */
+  ropeStyle: RopeStyle;
+  /** v1.4.0 rope palette key (Rust `ropeColor`; default `"ink"`). */
+  ropeColor: RopeColor;
   sound: boolean;
   startAtLogin: boolean;
   /** UI language tag; `"system"` follows the OS. */
