@@ -1406,11 +1406,13 @@ fn build_probe_data(path: &std::path::Path) -> Result<IDataObject, String> {
 #[cfg(debug_assertions)]
 pub fn drag_probe_cli(x: i32, y: i32, path: &std::path::Path) -> Result<(), String> {
     let data = build_probe_data(path)?;
-    let start_x = x - 80;
-    let _ = unsafe { SetCursorPos(start_x, y) };
+    // Start the simulated drag from outside the panel (like a drag coming from Explorer/WeChat), so
+    // the injected button-down cannot land on one of the panel's own cards and start a card drag-out.
+    let start_y = y + 400;
+    let _ = unsafe { SetCursorPos(x, start_y) };
     unsafe { mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0) };
     for _ in 0..20 {
-        unsafe { mouse_event(MOUSEEVENTF_MOVE, 4, 0, 0, 0) };
+        unsafe { mouse_event(MOUSEEVENTF_MOVE, 0, -20, 0, 0) };
         std::thread::sleep(Duration::from_millis(20));
     }
     // Give the target app's 36 ms drag watcher time to arm, reveal the line and open the gate.
