@@ -231,7 +231,7 @@ export interface AppState {
 export type SettingsKey = keyof Settings;
 
 /** Why the line was revealed (Rust `reveal` event, design spec §3.4). */
-export type RevealReason = "newItem" | "toggle" | "topEdge" | "secondInstance";
+export type RevealReason = "newItem" | "toggle" | "topEdge" | "secondInstance" | "drop";
 
 /** Why the line was tucked (Rust `tuck` event, design spec §3.4). */
 export type TuckReason = "pointerLeave" | "toggle" | "empty" | "dismiss" | "fullscreen";

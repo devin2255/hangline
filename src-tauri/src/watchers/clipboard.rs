@@ -190,7 +190,7 @@ pub fn should_accept(formats: &[&str]) -> bool {
 }
 
 /// Enforces the payload-size cap before anything is copied or decoded.
-fn check_payload_len(len: usize) -> anyhow::Result<()> {
+pub(crate) fn check_payload_len(len: usize) -> anyhow::Result<()> {
     if len == 0 {
         bail!("clipboard payload is empty");
     }
@@ -202,7 +202,7 @@ fn check_payload_len(len: usize) -> anyhow::Result<()> {
 
 /// Enforces the pixel cap from image dimensions alone, using division so `width * height` can
 /// never overflow (a hostile DIB header can claim `u32::MAX` for both fields).
-fn check_pixel_cap(width: u32, height: u32) -> anyhow::Result<()> {
+pub(crate) fn check_pixel_cap(width: u32, height: u32) -> anyhow::Result<()> {
     if width == 0 || height == 0 {
         bail!("image dimensions must be non-zero, got {width}x{height}");
     }
@@ -218,7 +218,7 @@ fn check_pixel_cap(width: u32, height: u32) -> anyhow::Result<()> {
 /// which can be rounded past the bytes the owner actually wrote. The PNG decoder would see those
 /// trailing bytes; walking the chunk headers and cutting after `IEND` removes them. A payload that
 /// is not a well-formed PNG is returned unchanged so the decoder reports the real error.
-fn trim_png(bytes: &[u8]) -> &[u8] {
+pub(crate) fn trim_png(bytes: &[u8]) -> &[u8] {
     const SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
     if bytes.len() < SIGNATURE.len() || bytes[..SIGNATURE.len()] != SIGNATURE {
         return bytes;
@@ -251,7 +251,7 @@ fn trim_png(bytes: &[u8]) -> &[u8] {
 }
 
 /// Decodes a clipboard `PNG` payload (a self-describing PNG stream) into RGBA pixels.
-fn decode_png(bytes: &[u8]) -> anyhow::Result<RgbaImage> {
+pub(crate) fn decode_png(bytes: &[u8]) -> anyhow::Result<RgbaImage> {
     check_payload_len(bytes.len())?;
     let trimmed = trim_png(bytes);
     let reader = image::ImageReader::new(std::io::Cursor::new(trimmed))
@@ -432,7 +432,7 @@ fn channel(value: u32, mask: u32) -> u8 {
 /// carries alpha (a non-zero alpha byte, or a V4/V5 alpha mask): GDI screenshots and most `CF_DIB`
 /// producers leave the fourth byte at zero, and honouring it blindly would make every screenshot
 /// fully transparent.
-fn decode_dib(bytes: &[u8]) -> anyhow::Result<RgbaImage> {
+pub(crate) fn decode_dib(bytes: &[u8]) -> anyhow::Result<RgbaImage> {
     let header = parse_dib(bytes)?;
     let width = header.width as usize;
     let height = header.height as usize;
@@ -551,12 +551,12 @@ fn clipboard_stem(local: SYSTEMTIME) -> String {
 /// same second) are likely and silently losing the first image is worse than a suffix. The rule is
 /// shared with the interactive capture saver (`capture::unique_png_path`, Task 16), so both own
 /// save paths behave identically; all 99 numbered names taken falls back to a millisecond suffix.
-fn unique_path(dir: &Path, stem: &str) -> PathBuf {
+pub(crate) fn unique_path(dir: &Path, stem: &str) -> PathBuf {
     crate::capture::unique_png_path(dir, stem)
 }
 
 /// Encodes an image as PNG bytes; the same bytes are hashed and then written unchanged.
-fn encode_png(image: &RgbaImage) -> anyhow::Result<Vec<u8>> {
+pub(crate) fn encode_png(image: &RgbaImage) -> anyhow::Result<Vec<u8>> {
     let mut png = Vec::new();
     image::codecs::png::PngEncoder::new(&mut png)
         .write_image(
@@ -570,7 +570,7 @@ fn encode_png(image: &RgbaImage) -> anyhow::Result<Vec<u8>> {
 }
 
 /// Writes `png` to `<name>.png.tmp`, syncs it, then renames it into place atomically.
-fn write_png_atomic(path: &Path, png: &[u8]) -> anyhow::Result<()> {
+pub(crate) fn write_png_atomic(path: &Path, png: &[u8]) -> anyhow::Result<()> {
     let dir = path
         .parent()
         .ok_or_else(|| anyhow::anyhow!("clipboard save path has no parent: {}", path.display()))?;
@@ -601,7 +601,7 @@ fn write_png_atomic(path: &Path, png: &[u8]) -> anyhow::Result<()> {
 /// Administrators) and nothing else. Rewriting that ACL would need privileges beyond P0, so on
 /// Windows this is a documented no-op instead of a pretend `0600`. On non-Windows targets (unit
 /// tests only; the app is Windows-only) the POSIX owner-only mode is applied.
-fn apply_restrictive_permissions(path: &Path) {
+pub(crate) fn apply_restrictive_permissions(path: &Path) {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;

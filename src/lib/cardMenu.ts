@@ -90,9 +90,12 @@ export const CARD_MENU_BORDER_HEIGHT = 1;
 /** Space kept between the menu and the panel edges when clamping. */
 export const CARD_MENU_EDGE_MARGIN = 4;
 
-/** A card the recycle-bin take-down may delete: only Hangline's own screenshots. */
+/**
+ * A card the recycle-bin take-down may delete: Hangline's own screenshots and images copied into
+ * the screenshot directory by the v1.5.0 drag-in path.
+ */
 export function canRecycleOnTakeDown(item: Item): boolean {
-  return item.kind === "capture";
+  return item.kind === "capture" || item.kind === "dropped";
 }
 
 /** Recordings have no still image: their copy row is `Copy as file` and they trim instead of mark up. */

@@ -631,17 +631,14 @@ pub fn create(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         );
     }
 
-    // Clicks pass through until the frontend reports a card rect under the cursor.
-    // Stage 1 drop-in probe: when the env flag is set the panel stays hit-testable and installs the
-    // native drop target, so a real OLE drag can be observed against the transparent window. The
-    // production gate (drag polling + reveal + click-through toggling) replaces this branch.
-    if std::env::var_os(crate::dropin::SPIKE_ENV).is_some() {
-        if let Err(error) = crate::dropin::install(&win) {
-            log::warn!("dropin: probe install failed: {error}");
-        }
-    } else {
-        win.set_ignore_cursor_events(true).ok();
+    // The native drop target exists from the first frame; the drag gate clears the panel's
+    // click-through state while an external drag hovers the strip (v1.5.0 drag-in).
+    if let Err(error) = crate::dropin::install(&win, app) {
+        log::warn!("dropin: cannot install the drop target: {error}");
     }
+    // Clicks pass through until the frontend reports a card rect under the cursor (or a drag is
+    // hovering the strip, which the hit-test thread learns through `hittest::set_drag_hold`).
+    win.set_ignore_cursor_events(true).ok();
     VISIBLE.store(false, Ordering::Relaxed);
     Ok(win)
 }

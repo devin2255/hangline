@@ -131,6 +131,9 @@ describe("menuItemsFor", () => {
       expect(actions).toContain("markup");
     }
     expect(canRecycleOnTakeDown(makeItem("capture"))).toBe(true);
+    // v1.5.0: dropped images are copies in Hangline's own screenshot directory, so the recycle
+    // take-down must be offered for them too.
+    expect(canRecycleOnTakeDown(makeItem("dropped"))).toBe(true);
     expect(isRecordingItem(makeItem("recording"))).toBe(true);
     expect(isRecordingItem(makeItem("capture"))).toBe(false);
   });

@@ -103,7 +103,8 @@ pub fn formats_for(kind: ItemKind) -> Vec<ClipFormat> {
         ItemKind::Capture
         | ItemKind::SystemScreenshot
         | ItemKind::Clipboard
-        | ItemKind::WatchedFolder => {
+        | ItemKind::WatchedFolder
+        | ItemKind::Dropped => {
             vec![ClipFormat::Png, ClipFormat::DibV5, ClipFormat::FileDrop]
         }
     }

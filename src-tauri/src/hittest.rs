@@ -11,6 +11,7 @@
 //! the click-through state untouched: the OS drag loop owns the mouse and must not be
 //! interrupted.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
 use std::time::Duration;
@@ -36,6 +37,18 @@ pub const HIT_PADDING_DP: f64 = 4.0;
 /// Converts [`HIT_PADDING_DP`] to physical pixels for a panel scale factor.
 fn hit_padding(scale: f64) -> i32 {
     dp_to_px(HIT_PADDING_DP, scale)
+}
+
+/// Set by the drag-in watcher while an external drag needs the panel to accept OLE drops.
+///
+/// While it is set the loop keeps the panel hit-testable even when the cursor is over transparent
+/// space; the loop remains the only caller of `set_ignore_cursor_events`.
+static DRAG_HOLD: AtomicBool = AtomicBool::new(false);
+
+/// Enables/disables the temporary "accept drops" state (called by the drop-in drag watcher and by
+/// the debug drop probe).
+pub fn set_drag_hold(held: bool) {
+    DRAG_HOLD.store(held, Ordering::Relaxed);
 }
 
 /// Card hit rects shared between the `set_hit_rects` command and the poll loop.
@@ -100,7 +113,8 @@ fn run(app: AppHandle, rects: HitRects) {
             let guard = rects.lock();
             any_hit(local, &guard, hit_padding(scale))
         };
-        let should_ignore = !hit;
+        let hold = DRAG_HOLD.load(Ordering::Relaxed);
+        let should_ignore = !hit && !hold;
 
         if should_ignore != ignoring && panel.set_ignore_cursor_events(should_ignore).is_ok() {
             ignoring = should_ignore;

@@ -115,6 +115,12 @@ static BUSY: AtomicBool = AtomicBool::new(false);
 /// top of every loop iteration, so the poller sees a change within one poll interval.
 static PINNED: AtomicBool = AtomicBool::new(false);
 
+/// Shared "an external drag needs the line visible / not tucked" flag (v1.5.0 drag-in).
+///
+/// Set by the drop-in drag watcher for the duration of an external drag. It pauses the tuck paths
+/// (empty-line timeout, pointer leave) without touching the frontend press/menu busy flag.
+static DROP_HOLD: AtomicBool = AtomicBool::new(false);
+
 /// Why the line was revealed (frontend `reveal { reason }`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RevealReason {
@@ -126,6 +132,8 @@ pub enum RevealReason {
     TopEdge,
     /// A second application launch toggled the existing line.
     SecondInstance,
+    /// An external image drag reached the screen edge (v1.5.0 drag-in).
+    Drop,
 }
 
 impl RevealReason {
@@ -136,6 +144,7 @@ impl RevealReason {
             Self::Toggle => "toggle",
             Self::TopEdge => "topEdge",
             Self::SecondInstance => "secondInstance",
+            Self::Drop => "drop",
         }
     }
 }
@@ -812,6 +821,10 @@ enum Command {
     ResumeAfterCapture { request_new_item: bool },
     /// The full-screen poller observed a gate change (design spec §3.2, M4).
     FullscreenSuppressed { suppressed: bool },
+    /// An external image drag reached the screen's top edge: show the line for the drop (v1.5.0).
+    DropReveal,
+    /// The external drag ended: the drop hold flag is cleared by the watcher (v1.5.0).
+    DropEnd,
 }
 
 /// Handle to the single reveal controller; managed by Tauri so every input path can post to it.
@@ -867,6 +880,36 @@ fn post_toggle(app: &AppHandle, reason: RevealReason, from_pointer: bool) {
         log::warn!("reveal: controller not managed yet; falling back to the raw panel toggle");
         panel::toggle(app);
     }
+}
+
+/// Asks the controller to show the line for an in-flight external drag (v1.5.0 drag-in).
+///
+/// Unlike a toggle this never hides anything: it only reveals a hidden line, without pinning it.
+pub fn request_drop_reveal(app: &AppHandle) {
+    if let Some(controller) = app.try_state::<RevealController>() {
+        if let Err(err) = controller.tx.send(Command::DropReveal) {
+            log::warn!("reveal: controller channel is closed; cannot reveal for a drop ({err})");
+        }
+    }
+}
+
+/// Ends a drop reveal: the watcher clears this on mouse-up. The next tick re-evaluates the tuck.
+pub fn end_drop_reveal(app: &AppHandle) {
+    if let Some(controller) = app.try_state::<RevealController>() {
+        if let Err(err) = controller.tx.send(Command::DropEnd) {
+            log::warn!("reveal: controller channel is closed; cannot end a drop reveal ({err})");
+        }
+    }
+}
+
+/// Sets the "external drag in progress" hold that pauses tuck decisions (v1.5.0 drag-in).
+pub fn set_drop_hold(held: bool) {
+    DROP_HOLD.store(held, Ordering::Relaxed);
+}
+
+/// Returns whether an external drag currently holds the line open.
+pub fn drop_is_held() -> bool {
+    DROP_HOLD.load(Ordering::Relaxed)
 }
 
 /// Called by `report_panel_ready` after the first frame has been painted.
@@ -1597,6 +1640,40 @@ fn run(app: &AppHandle, rx: Receiver<Command>) {
                     );
                 }
             }
+            Ok(Command::DropReveal) => {
+                let now = millis(origin);
+                if capture.active() {
+                    log::info!(
+                        "reveal: drop reveal ignored while the capture overlay is open (+{now} ms)"
+                    );
+                } else if crate::fullscreen::is_suppressed() {
+                    log::debug!(
+                        "reveal: drop reveal ignored while a full-screen app is active (+{now} ms)"
+                    );
+                } else if !panel::is_visible() {
+                    // The hidden line can sit on another monitor: place it on the pointer's
+                    // monitor before showing it, like the top-edge reveal does.
+                    let _ = panel::sync_panel_geometry(app, panel::GeometryTarget::Cursor);
+                    bounds = None;
+                    let item_count = snapshot(app)
+                        .map(|snapshot| snapshot.items.len())
+                        .unwrap_or(0);
+                    state.wanted = true;
+                    state.revealed = true;
+                    state.pinned = false;
+                    state.peek_until = None;
+                    state.outside_since = None;
+                    state.revealed_at = now;
+                    show_and_emit(app, RevealReason::Drop, false, now, item_count);
+                    log::info!(
+                        "reveal: external drag reached the screen edge; showing the line (+{now} ms)"
+                    );
+                }
+            }
+            Ok(Command::DropEnd) => {
+                let now = millis(origin);
+                log::debug!("reveal: external drag ended (+{now} ms)");
+            }
             Ok(Command::Ready) => {
                 let now = millis(origin);
                 let flush = ready.on_ready();
@@ -1742,7 +1819,7 @@ fn run(app: &AppHandle, rx: Receiver<Command>) {
             // yank the source panel under the shell drag. While busy the poll cadence is kept but
             // no monitor is enumerated; a pending candidate is dropped so a full dwell window is
             // required after the gesture, and the next poll re-evaluates.
-            let busy = is_busy() || dragout::is_dragging();
+            let busy = is_busy() || drop_is_held() || dragout::is_dragging();
             let first_poll = last_monitor_poll.is_none();
             let poll_due = last_monitor_poll
                 .is_none_or(|last| now.saturating_sub(last) >= panel::FOLLOW_POLL_MS);

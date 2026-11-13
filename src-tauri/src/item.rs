@@ -29,6 +29,9 @@ pub enum ItemKind {
     SystemScreenshot,
     /// Image data copied to the clipboard.
     Clipboard,
+    /// Image data dropped onto the line from another app (v1.5.0 drag-in; stored in Hangline's
+    /// own screenshot directory so the card keeps working after the source file goes away).
+    Dropped,
     /// A screen recording (`Videos\Captures`).
     Recording,
     /// An image found in a user-watched folder.
@@ -222,6 +225,7 @@ mod tests {
             (ItemKind::Capture, "capture"),
             (ItemKind::SystemScreenshot, "systemScreenshot"),
             (ItemKind::Clipboard, "clipboard"),
+        (ItemKind::Dropped, "dropped"),
             (ItemKind::Recording, "recording"),
             (ItemKind::WatchedFolder, "watchedFolder"),
         ] {

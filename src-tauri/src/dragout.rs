@@ -1352,11 +1352,17 @@ pub fn maybe_start_probe(app: &AppHandle) {
                 log::warn!("dropin: probe skipped (panel geometry unavailable)");
                 return;
             };
+            // The probe drives the same OLE path an external drag uses; open the click-through
+            // gate the same way the drag watcher will, then restore it.
+            crate::hittest::set_drag_hold(true);
+            let _ = window.set_ignore_cursor_events(false);
             panel::show(&app_for_ui);
             let x = position.x + size.width as i32 / 2;
             let y = position.y + 40;
             log::info!("dropin: probe drop at ({x}, {y}) with {}", path.display());
-            match probe_drop_at(x, y, &path) {
+            let outcome = probe_drop_at(x, y, &path);
+            crate::hittest::set_drag_hold(false);
+            match outcome {
                 Ok(()) => log::info!("dropin: probe finished"),
                 Err(error) => log::warn!("dropin: probe failed: {error}"),
             }
