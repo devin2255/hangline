@@ -710,3 +710,46 @@ struct PublicState {          // IPC 快照（Rust 内部 AppState 还持有 Mut
 **Rust crates**：`serde`, `serde_json`, `image`, `notify`, `blake3`, `windows`, `thiserror`, `anyhow`, `time`, `base64`, `parking_lot`（可选）、`rayon`（可选，缩略图并行）。
 **前端**：`react`, `react-dom`, `zustand`, `clsx`；开发依赖 `typescript`, `vite`, `@vitejs/plugin-react`, `vitest`, `eslint`, `prettier`。
 **构建/发布**：`@tauri-apps/cli`, `scripts/check-i18n.mjs`, `scripts/version.mjs`, `scripts/release.mjs`，GitHub Actions（windows-latest）。
+
+---
+
+## 附录 C：Amendment 2026-11-13 — 拖入投放（v1.5.0）
+
+### C.1 目标
+
+支持把**文件夹/Explorer、微信/QQ 聊天窗、浏览器、截图工具**的图片直接拖到屏幕上沿：绳子自动唤出并接受投放，图片复制进 Hangline 自有目录后挂成卡片（BLAKE3 去重、缩略图、落绳动画）。**不新增窗口、不抢焦点、不新增网络行为。**
+
+### C.2 OLE 投放目标
+
+- 面板窗口构建时调用 `disable_drag_drop_handler()`，关闭 wry 只转发文件路径的内置拖放处理器；随后在面板顶层 HWND 与全部 WebView2 子 HWND 上 `RevokeDragDrop` + `RegisterDragDrop` 一个手写 `IDropTarget`（与 wry 相同的注册策略，但自行读取 `IDataObject`）。
+- 格式优先级（取第一条可用表示）：`CF_HDROP`（图片文件列表）→ `"PNG"` 字节 → `CF_DIBV5` → `CF_DIB`。
+- OLE 回调只做**有界提取**（单次 ≤64 MB），解码/去重/落盘在 worker 线程完成，绝不阻塞 UI/OLE 线程；单次最多 20 张、单图 ≤80 MP。
+
+### C.3 入库与来源
+
+- 图片统一解码为 RGBA → PNG，写入 `%LOCALAPPDATA%\Hangline\Screenshots\Dropped yyyy-MM-dd HH.mm.ss.png`（原子写），对最终字节做 BLAKE3-64，与去重 LRU **以及线上已有卡片的 hash** 比较（跨重启去重）。
+- 新来源类型 `ItemKind::Dropped`（wire `"dropped"`）：自有文件，可标注、可"移入回收站"下线；右键菜单/剪贴板格式表同步。
+- 重复图片不重复挂卡（`duplicates` 计数）；不支持/超限/解码失败计 `rejected` 并轻提示。
+
+### C.4 拖拽门控与唤出
+
+- 36 ms 轮询 `GetAsyncKeyState(VK_LBUTTON)` + `GetCursorPos`：**按下 + 位移 ≥4 px** 才进入"外部拖拽"状态（普通点击永不进入）。
+- 外部拖拽进入任一显示器工作区顶部 14 dp 唤出带 → reveal 控制器新增 `RevealReason::Drop` / `Command::DropReveal`：不 pin、不抢焦点，在指针所在显示器唤出；拖拽期间 `reveal::set_drop_hold(true)` 暂停空绳/指针离开收起，松手后恢复。
+- 拖拽位于面板窗口（外扩 12 px）内时，通过 `hittest::set_drag_hold(true)` 让点击穿透临时让位，使 OLE 投放可以命中透明面板；离开/松手立即恢复。点击穿透仍由 hit-test 线程单写者负责。
+- 卡片拖出（`dragout::is_dragging`）期间门控完全让位，拖出行为不变。
+
+### C.5 事件与 UI
+
+- Rust → panel：`dropin-hover {images}`、`dropin-leave`、`dropin-result {added, duplicates, rejected}`；前端绳子高亮 + "松手挂上绳子"提示 + 2 s 结果轻提示（i18n 中英）。提示不参与 hit rect、不抢焦点。
+- 新卡片走既有 `state` 广播 + 220 ms 落绳弧度动画。
+
+### C.6 边界与隐私
+
+- 全程本地；不读取来源路径除文件名/扩展名以外的信息用于日志；不访问网络。
+- 限制：`MAX_DROP_IMAGES=20`、`MAX_PAYLOAD_BYTES=64 MB`、单图像素上限复用剪贴板口径（80 MP）。
+- 不改变：唯一网络请求=更新检查；不新增窗口；不修改拖出/截图/标注/搜索行为。
+
+### C.7 验证
+
+- Rust 单测：拖拽臂距、唤出带（100%/150% DPI、顶部任务栏）、扩展名过滤、文件名格式、跨重启去重；前端 15 项投放反馈测试；真机探针验证 CF_HDROP 投放入库与重复去重；外部拖拽唤出日志验证。
+- 真机人工验收：微信聊天图片、Explorer 文件夹图片、浏览器图片各拖入一次（记录在 v1.5.0 验收文档）。

@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.5.0 — 2026-11-13
+
+> Drag-in drop.
+
+- **Drag images onto the line.** Drag images from Explorer/folders, WeChat/QQ chats, a browser
+  or a screenshot tool to the screen's top edge: the line slides in automatically (no focus
+  steal), accepts the drop and hangs the image as a card at the right end.
+- **Native OLE drop target.** The panel disables wry's path-only drag-drop handler and
+  registers its own `IDropTarget` on the panel window and every WebView2 child HWND; it reads
+  `CF_HDROP` file lists, `"PNG"` bytes and `CF_DIB`/`CF_DIBV5` bitmaps, so chat-app image drags
+  work even when the source offers no file path.
+- **Copy, dedupe, thumbnail.** Every accepted image is decoded, re-encoded as PNG, saved as
+  `Screenshots\Dropped yyyy-MM-dd HH.mm.ss.png`, hashed with BLAKE3-64, deduplicated against
+  the items already on the line (including across restarts), thumbnail-cached, and appended as
+  the new `dropped` item kind (markup/recycle take-down supported). Limits: 20 images per drop,
+  64 MB payload, 80 MP per image.
+- **Click-through gate.** A 36 ms watcher arms on "left button down + ≥4 px movement", reveals
+  the line when the drag reaches the monitor's top edge, and only while the drag is over the
+  panel does it make the transparent strip hit-testable for the OLE drop. Normal clicks never
+  arm, so desktop click-through behaviour is unchanged; card drag-out is ignored.
+- **Polish.** The rope highlights and a "Drop to hang" hint appears while hovering; duplicate
+  and unsupported drops show a 2 s notice; the line stays open for the duration of the drag.
+- **No new network behaviour / no new window.** The feature is fully local and the panel is
+  still the only window.
+- Tests: 322 frontend tests (15 new drop-feedback tests), 402 Rust library tests + 32 binary
+  tests; real-machine evidence with the built-in debug probe (CF_HDROP ingestion, cross-restart
+  dedupe) recorded in `docs/product/2026-11-13-v1.5.0-drag-in.md`.
+
 ## 1.4.1 — 2026-11-13
 
 > Mainland-China update channel.
