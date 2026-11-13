@@ -599,7 +599,10 @@ pub fn create(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     .resizable(false)
     .focused(false)
     .focusable(false)
-    .visible(false);
+    .visible(false)
+    // The drop-in target (v1.5.0) needs to own the OLE drop handler; without this wry registers its
+    // own, which only forwards file paths and would be revoked by our registration anyway.
+    .disable_drag_drop_handler();
     // Debug-only runtime-evidence hook; no-op in release builds (see `devtools`).
     if let Some(args) = crate::devtools::cdp_browser_args() {
         builder = builder.additional_browser_args(&args);
@@ -629,7 +632,16 @@ pub fn create(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     }
 
     // Clicks pass through until the frontend reports a card rect under the cursor.
-    win.set_ignore_cursor_events(true).ok();
+    // Stage 1 drop-in probe: when the env flag is set the panel stays hit-testable and installs the
+    // native drop target, so a real OLE drag can be observed against the transparent window. The
+    // production gate (drag polling + reveal + click-through toggling) replaces this branch.
+    if std::env::var_os(crate::dropin::SPIKE_ENV).is_some() {
+        if let Err(error) = crate::dropin::install(&win) {
+            log::warn!("dropin: probe install failed: {error}");
+        }
+    } else {
+        win.set_ignore_cursor_events(true).ok();
+    }
     VISIBLE.store(false, Ordering::Relaxed);
     Ok(win)
 }

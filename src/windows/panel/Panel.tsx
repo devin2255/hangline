@@ -58,6 +58,14 @@ import {
   type CssBox,
   type MenuActionId,
 } from "../../lib/cardMenu";
+import {
+  dropinPillFor,
+  dropToastExpiresAt,
+  dropToastFor,
+  isDropToastExpired,
+  mergeDropHover,
+  type DropToastKey,
+} from "../../lib/dropin";
 import { nextGustDelay } from "../../lib/gust";
 import {
   panelLocalBox,
@@ -106,6 +114,8 @@ import { initAppState, useAppStore } from "../../lib/state";
 import { useResolvedTheme } from "../../lib/theme";
 import type {
   DragEndedEvent,
+  DropinHoverEvent,
+  DropinResultEvent,
   EditorStateEvent,
   FlyLandedEvent,
   Item,
@@ -672,6 +682,46 @@ export function Panel() {
       showUpdateFailure("install-failed", detail);
     });
   }, [clearUpdateNoticeTimer, showUpdateFailure]);
+
+  // --- v1.5.0 drag-in drop feedback (design spec §8) -----------------------------------------
+  /**
+   * External drag currently over the panel; `null` when no drop is in progress.
+   *
+   * Rust's OLE drop target emits `dropin-hover`/`dropin-leave` (spec §8). This state adds paint
+   * only: the panel root flips `data-drop-active`, Panel.css lifts the rope sheen, and the drop
+   * hint replaces the empty-line hint. The hit rects, the panel geometry and the focus model are
+   * untouched, and `pointer-events: none` keeps the pill out of every gesture.
+   */
+  const [dropActive, setDropActive] = useState<{ images: number } | null>(null);
+  /** Transient `dropin-result` toast (an i18n key; `null` = hidden). Auto-hides after 2 s. */
+  const [dropToast, setDropToast] = useState<DropToastKey | null>(null);
+  /** The single toast auto-hide timer: a newer result restarts it, unmount clears it. */
+  const dropToastTimer = useRef<number | null>(null);
+  const clearDropToastTimer = useCallback(() => {
+    if (dropToastTimer.current !== null) {
+      window.clearTimeout(dropToastTimer.current);
+      dropToastTimer.current = null;
+    }
+  }, []);
+  /**
+   * Shows a result toast for one lifetime.
+   *
+   * The 2 s contract lives in `lib/dropin.ts` as pure timestamp math (`dropToastExpiresAt` /
+   * `isDropToastExpired`), so the single timer here cannot drift from the unit-tested lifetime and
+   * a stale timer can never hide a newer toast.
+   */
+  const showDropToast = useCallback(
+    (toast: DropToastKey) => {
+      clearDropToastTimer();
+      const shownAt = performance.now();
+      setDropToast(toast);
+      dropToastTimer.current = window.setTimeout(() => {
+        dropToastTimer.current = null;
+        if (isDropToastExpired(shownAt, performance.now())) setDropToast(null);
+      }, Math.max(0, dropToastExpiresAt(shownAt) - performance.now()));
+    },
+    [clearDropToastTimer],
+  );
 
   // A new newest card always comes down showing the newest end (spec: "always shows the newest"),
   // and a keepOnLine change restarts the view at the newest card instead of a stale offset. Other
@@ -1817,6 +1867,48 @@ export function Panel() {
     };
   }, [clearDragWatchdog, reportBusy, resetDragState, settleDragSession]);
 
+  // v1.5.0 drag-in drop feedback (spec §8): hover → rope highlight + "release to hang" pill,
+  // leave → clear, result → 2 s toast when nothing was hung. Registered once for the panel's
+  // lifetime and released on unmount; a failed registration only loses the visual feedback — the
+  // ingestion path broadcasts `state` independently, so cards still arrive.
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: Array<() => void> = [];
+    void Promise.all([
+      listen<DropinHoverEvent>("dropin-hover", ({ payload }) => {
+        if (disposed) return;
+        // `DragOver` may fire many times per second: the merge keeps the same state object for an
+        // unchanged image count, so the repeated events cost no render.
+        setDropActive((current) => mergeDropHover(current, payload));
+        // A new drag starts: a stale result toast must not float over the live drop hint.
+        clearDropToastTimer();
+        setDropToast(null);
+      }),
+      listen("dropin-leave", () => {
+        if (!disposed) setDropActive(null);
+      }),
+      listen<DropinResultEvent>("dropin-result", ({ payload }) => {
+        if (disposed) return;
+        // The drop session is over either way (a `leave` is not guaranteed after a drop).
+        setDropActive(null);
+        const toast = dropToastFor(payload);
+        if (toast) showDropToast(toast);
+      }),
+    ])
+      .then((registered) => {
+        if (disposed) registered.forEach((stop) => stop());
+        else unlisten = registered;
+      })
+      .catch((error: unknown) => {
+        console.warn("Hangline panel: dropin listeners unavailable", error);
+      });
+    return () => {
+      disposed = true;
+      unlisten.forEach((stop) => stop());
+      clearDropToastTimer();
+    };
+  }, [clearDropToastTimer, showDropToast]);
+
   /**
    * Rust reports both modal editor windows opening/closing (P3-4 markup, P3-6 trim).
    *
@@ -2452,6 +2544,23 @@ export function Panel() {
   }, []);
 
   const count = visible.length;
+  // v1.5.0 drag-in drop feedback: one capsule at the rope's centre (spec §8). The drop hint wins
+  // over the idle empty-line hint, and a result toast that added nothing uses the same slot — the
+  // single `dropPill` render below makes the two states mutually exclusive by construction.
+  const dropPill = dropinPillFor({ dropActive, dropToast }, count);
+  let dropPillLabel: string | null = null;
+  let dropPillClass = "";
+  if (dropPill?.kind === "dropHint") {
+    dropPillLabel = t("Drop to hang");
+    dropPillClass = "panel__hint panel__drop-hint";
+  } else if (dropPill?.kind === "toast") {
+    dropPillLabel = t(dropPill.toast);
+    dropPillClass = "panel__hint panel__drop-toast";
+  } else if (dropPill?.kind === "emptyHint") {
+    dropPillLabel = t("Take a screenshot and it will hang here");
+    dropPillClass = "panel__hint";
+  }
+
   // The visible slice normally fits the panel (the capacity formula leaves 200 dp of margin).
   // Only a panel narrower than the minimum 3 card group overflows; it is right-aligned so the
   // newest card stays fully visible (the oldest edge is clipped, with no native scrollbar).
@@ -2527,6 +2636,11 @@ export function Panel() {
       data-falling-count={fallingIds.size}
       data-card-menu-open={menu !== null}
       data-preview-open={preview !== null}
+      // v1.5.0 drag-in drop evidence: `data-drop-active` drives the rope highlight in Panel.css,
+      // the other two are runtime diagnostics for the acceptance harness (never used for layout).
+      data-drop-active={dropActive !== null}
+      data-drop-images={dropActive?.images ?? 0}
+      data-drop-toast={dropToast ?? undefined}
       data-rope-style={ropeStyle}
       data-rope-color={ropeColor}
       // v1.4.0: the palette reaches CSS/SVG as one custom property; Panel.css derives the base
@@ -2548,12 +2662,21 @@ export function Panel() {
       >
         <div className="panel__line" style={lineStyle}>
           <Rope width={line} sag={sag} style={ropeStyle} color={ropeColor} />
-          {count === 0 ? (
+          {/*
+            v1.5.0 drag-in drop feedback + the empty-line hint share this capsule slot (spec §8):
+            the drop hint/toast replaces the idle hint instead of stacking. `pointer-events: none`
+            keeps the pill out of card gestures and the Rust hit rects, and it never takes focus.
+          */}
+          {dropPill && dropPillLabel ? (
             <p
-              className="panel__hint"
+              className={dropPillClass}
+              data-kind={dropPill.kind}
+              data-images={dropPill.kind === "dropHint" ? dropPill.images : undefined}
               style={{ top: `${ropeY(panelWidth, panelWidth / 2, sag) + 34}px` }}
+              role={dropPill.kind === "toast" ? "status" : undefined}
+              aria-live={dropPill.kind === "toast" ? "polite" : undefined}
             >
-              {t("Take a screenshot and it will hang here")}
+              {dropPillLabel}
             </p>
           ) : null}
           {visible.map((item, index) => {

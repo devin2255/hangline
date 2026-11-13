@@ -82,8 +82,8 @@ use windows::Win32::UI::Shell::{
     IShellItem, SHCreateItemFromParsingName, BHID_DataObject, DROPFILES,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetGUIThreadInfo, PostMessageW, PostThreadMessageW, GUITHREADINFO, WM_CANCELMODE, WM_KEYDOWN,
-    WM_MOUSEMOVE,
+    GetGUIThreadInfo, PostMessageW, PostThreadMessageW, SetCursorPos, GUITHREADINFO, WM_CANCELMODE,
+    WM_KEYDOWN, WM_MOUSEMOVE,
 };
 
 use crate::panel;
@@ -455,6 +455,9 @@ enum DropBehavior {
     /// Evidence harness: answer every query with this fixed HRESULT.
     #[allow(dead_code)] // only the #[ignore]d OLE evidence tests build this variant
     Fixed(HRESULT),
+    /// Drop-in spike: keep dragging briefly, then force the drop (no real mouse input needed).
+    #[allow(dead_code)]
+    ProbeDrop(std::time::Instant),
 }
 
 /// Callback counters, logged after each drag and used by the OLE evidence tests.
@@ -534,6 +537,13 @@ unsafe extern "system" fn drop_source_query_continue_drag(
             }
         }
         DropBehavior::Fixed(hr) => hr,
+        DropBehavior::ProbeDrop(started) => {
+            if started.elapsed() >= std::time::Duration::from_millis(400) {
+                DRAGDROP_S_DROP
+            } else {
+                S_OK
+            }
+        }
     }
 }
 
@@ -556,6 +566,12 @@ struct DropSource {
 impl DropSource {
     fn interactive(watchdog: &Arc<DragWatchdog>) -> Result<Self, String> {
         Self::new(DropBehavior::Interactive, Some(watchdog.clone()))
+    }
+
+    /// Drop-in spike: forces a drop after ~400 ms so the target callbacks run without mouse input.
+    #[cfg(debug_assertions)]
+    fn probe() -> Result<Self, String> {
+        Self::new(DropBehavior::ProbeDrop(std::time::Instant::now()), None)
     }
 
     fn new(behavior: DropBehavior, watchdog: Option<Arc<DragWatchdog>>) -> Result<Self, String> {
@@ -1265,6 +1281,89 @@ pub fn start_drag(window: WebviewWindow, path: String) -> Result<(), String> {
         // The closure (and with it the session guard) is dropped on failure, clearing the flag.
         Err(err) => Err(format!("failed to start the OLE drag on the UI thread: {err}")),
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Debug-only in-app drop probe (v1.5.0 drag-in spike)
+// ---------------------------------------------------------------------------------------------
+
+/// Drags `path` out of the panel window with the pointer parked at `(x, y)` and forces a drop.
+///
+/// Debug-only: because source and target are the same process and the cursor already sits over the
+/// panel, the target's `DragEnter`/`Drop` callbacks run without any real mouse input. Used by
+/// `.acceptance/harness/drop-spike.ps1` to prove the native drop target works before the full
+/// ingestion path is implemented.
+#[cfg(debug_assertions)]
+pub fn probe_drop_at(x: i32, y: i32, path: &std::path::Path) -> Result<(), String> {
+    let _apartment = OleApartment::init()?;
+    // The generated binding reports a success status as an error on some SDK versions; the
+    // cursor move itself is best-effort, so ignore the return value.
+    let _ = unsafe { SetCursorPos(x, y) };
+    let data = create_data_object(path)?;
+    let source = DropSource::probe()?;
+    // OLE only calls IDropSource::QueryContinueDrag when input reaches its modal loop. Post a few
+    // synthetic left-button mouse moves to this thread so the probe source can force the drop at
+    // the parked cursor position (same trick as the drag watchdog).
+    let thread_id = unsafe { GetCurrentThreadId() };
+    let waker = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(200));
+        for _ in 0..12 {
+            unsafe {
+                let _ = PostThreadMessageW(
+                    thread_id,
+                    WM_MOUSEMOVE,
+                    WPARAM(MK_LBUTTON.0 as usize),
+                    LPARAM(0),
+                );
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    });
+    let ended = run_drag(&data, &source.interface)?;
+    let _ = waker.join();
+    log::info!(
+        "dropin: probe drag finished (dropped={}, effect={})",
+        ended.dropped,
+        ended.effect
+    );
+    Ok(())
+}
+
+/// Starts the debug drop probe when `HANG_DROP_PROBE_FILE` is set (debug builds only).
+///
+/// Waits for the panel ready handshake, shows the line, parks the pointer over the panel and runs
+/// one forced in-app drop. Release builds compile this out; the env var is ignored there.
+#[cfg(debug_assertions)]
+pub fn maybe_start_probe(app: &AppHandle) {
+    let Some(path) = std::env::var_os("HANG_DROP_PROBE_FILE") else {
+        return;
+    };
+    let path = std::path::PathBuf::from(path);
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(1500));
+        let app_for_ui = app.clone();
+        if let Err(error) = app.run_on_main_thread(move || {
+            let Some(window) = app_for_ui.get_webview_window(panel::LABEL) else {
+                log::warn!("dropin: probe skipped (panel window is not open)");
+                return;
+            };
+            let (Ok(position), Ok(size)) = (window.outer_position(), window.outer_size()) else {
+                log::warn!("dropin: probe skipped (panel geometry unavailable)");
+                return;
+            };
+            panel::show(&app_for_ui);
+            let x = position.x + size.width as i32 / 2;
+            let y = position.y + 40;
+            log::info!("dropin: probe drop at ({x}, {y}) with {}", path.display());
+            match probe_drop_at(x, y, &path) {
+                Ok(()) => log::info!("dropin: probe finished"),
+                Err(error) => log::warn!("dropin: probe failed: {error}"),
+            }
+        }) {
+            log::warn!("dropin: cannot schedule the probe on the UI thread: {error}");
+        }
+    });
 }
 
 #[cfg(test)]

@@ -61,13 +61,15 @@ export interface PanelGeometry {
   moved: boolean;
 }
 
-/** Provenance of a hung item (design spec 4.5). */
+/** Provenance of a hung item (design spec 4.5; v1.5.0 adds external drag-in drops). */
 export type ItemKind =
   | "capture"
   | "systemScreenshot"
   | "clipboard"
   | "recording"
-  | "watchedFolder";
+  | "watchedFolder"
+  /** v1.5.0 drag-in drop: an image copied into `Screenshots\Dropped …` from an external drag. */
+  | "dropped";
 
 /**
  * Side of a card for the batch take-down (`take_down_side`, Wave 1.1).
@@ -313,6 +315,32 @@ export interface DragEndedEvent {
   dropped?: boolean;
   /** Present when the drag could not run or the watchdog broke a stuck OLE loop. */
   error?: string;
+}
+
+/**
+ * Payload of the Rust → panel `dropin-hover` event (v1.5.0 drag-in drop, design spec §8).
+ *
+ * Emitted while an external drag carrying images is over the panel (or over the top-edge reveal
+ * band). `images` is the number of images the drag carries (`0` when the count is unknown); the
+ * panel only uses it for diagnostics — the hint text is the same for one or many.
+ */
+export interface DropinHoverEvent {
+  images: number;
+}
+
+/**
+ * Payload of the Rust → panel `dropin-result` event (v1.5.0 drag-in drop, design spec §8).
+ *
+ * `added > 0` needs no extra panel UI (the new cards arrive through the regular `state` broadcast);
+ * `added === 0` shows a ~2 s toast when `duplicates`/`rejected` explain why nothing was hung.
+ */
+export interface DropinResultEvent {
+  /** Cards actually hung by this drop. */
+  added: number;
+  /** Images skipped because their content was already on the line. */
+  duplicates: number;
+  /** Items refused: non-image files, video, decode failure, pixel/data caps. */
+  rejected: number;
 }
 
 /** Which overlay animation to play (`fly` = new card in, `fall` = taken-down card out). */

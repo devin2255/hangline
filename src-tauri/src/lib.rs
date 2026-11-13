@@ -15,6 +15,7 @@ mod clipboard_io;
 mod dedupe;
 mod devtools;
 mod dragout;
+mod dropin;
 mod editor_window;
 mod fly;
 mod folder_picker;
@@ -175,6 +176,8 @@ fn report_panel_ready(app: tauri::AppHandle, label: String) -> Result<(), String
     }
     reveal::on_ready_request(&app);
     tray::sync_state(&app);
+    #[cfg(debug_assertions)]
+    dragout::maybe_start_probe(&app);
     Ok(())
 }
 
@@ -1063,7 +1066,13 @@ pub fn run() {
             // The hit-test thread and the IPC command share this rect list.
             let rects = hittest::HitRects::default();
             app.manage(rects.clone());
-            hittest::spawn(handle.clone(), rects);
+            // Stage-1 drop-in probe keeps the whole panel hit-testable; the hit-test loop would
+            // immediately restore click-through outside the cards and hide the drop target again.
+            if std::env::var_os(dropin::SPIKE_ENV).is_some() {
+                log::warn!("dropin: spike mode; the hit-test click-through loop is disabled");
+            } else {
+                hittest::spawn(handle.clone(), rects);
+            }
 
             // One thread owns every reveal/tuck transition (spec §3.4). It is started before the
             // tray/hotkeys/watchers so the first new-item request and the first hotkey toggle

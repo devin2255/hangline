@@ -153,6 +153,8 @@
   left: 0;
   overflow: visible;
   pointer-events: none;
+  /* v1.5.0 drag-in drop: the `data-drop-active` halo fades in/out, paint only (no geometry). */
+  transition: filter 180ms ease;
   /* Fade both ends so the cord does not stop in a hard edge at the panel border. */
   -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 4%, #000 96%, transparent 100%);
   mask-image: linear-gradient(90deg, transparent 0, #000 4%, #000 96%, transparent 100%);
@@ -387,6 +389,64 @@
   /* The plan's top is the capsule centre (`position(y:)` in the source), not its top edge. */
   transform: translate(-50%, -50%);
   backdrop-filter: blur(14px) saturate(1.1);
+}
+
+/*
+ * v1.5.0 drag-in drop (design spec §8): while an external image is over the panel the cord lifts
+ * its sheen and gains a soft halo. Paint only — stroke widths, sag and every card box stay exactly
+ * where they were, so the hit rects and the click-through model cannot change. This block sits
+ * after the material rules on purpose: at equal specificity it wins the material's own
+ * `.rope--highlight` opacity. 180 ms matches the rope material cross-fade; the reduced-motion block
+ * at the end of the file turns the transition into a jump.
+ */
+.panel[data-drop-active="true"] .panel__rope {
+  filter:
+    brightness(1.14) saturate(1.06)
+    drop-shadow(0 0 2px var(--rope-glow))
+    drop-shadow(0 0 6px var(--rope-glow));
+}
+
+.panel[data-drop-active="true"] .rope--highlight {
+  opacity: 1;
+}
+
+/* Aurora already carries a glow layer: lift it instead of stacking a second halo on top of it. */
+.panel[data-drop-active="true"] .panel__rope[data-rope-style="aurora"] .rope--aurora-glow {
+  opacity: 0.62;
+}
+
+/*
+ * v1.5.0 drag-in drop pills. They share the capsule material with `.panel__hint` (the element always
+ * has both class names) and only add the drop-specific paint: a lifted z-index above the cards and
+ * a short fade-in. `pointer-events: none` comes from `.panel__hint`, so the pill is in neither the
+ * card gestures nor the Rust hit-rect union — it can never change what is clickable.
+ */
+.panel__drop-hint,
+.panel__drop-toast {
+  z-index: 8;
+  animation: drop-pill-in 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* The hover hint brightens the capsule edge so it reads as an active target, not a placeholder. */
+.panel__drop-hint {
+  border-color: var(--glass-border-hover);
+}
+
+/* The result toast reports an outcome: a touch heavier so it reads as status, not instruction. */
+.panel__drop-toast {
+  font-weight: 600;
+}
+
+@keyframes drop-pill-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) translateY(3px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) translateY(0);
+  }
 }
 
 /* One fixed-width card slot; the unit inside carries the motion transform and the tilt. */
@@ -939,9 +999,13 @@
   .glass-card__action,
   .copied-pill,
   .panel__update,
+  /* v1.5.0: the drop hint/toast and the rope halo appear instantly. */
+  .panel__drop-hint,
+  .panel__drop-toast,
   /* v1.4.0: material/style changes switch instantly, and the panel's sag jumps without rAF. */
   .rope,
-  .rope-stop {
+  .rope-stop,
+  .panel__rope {
     transition: none;
     animation: none;
   }
