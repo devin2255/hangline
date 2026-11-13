@@ -13,6 +13,28 @@ use std::path::PathBuf;
 
 fn main() {
     let args: Vec<OsString> = std::env::args_os().skip(1).collect();
+    // Debug-only cross-process drop probe: a second process performs a real OLE drag towards the
+    // running app so the acceptance harness can verify the drop target across processes. Release
+    // builds ignore the flag (the parse and the lib entry point are compiled out together).
+    #[cfg(debug_assertions)]
+    if let Some(probe) = parse_drop_probe_args(&args) {
+        std::process::exit(match probe {
+            Ok((path, x, y)) => match hangline_lib::cli_drop_probe(x, y, &path) {
+                Ok(()) => {
+                    println!("drop-probe ok");
+                    0
+                }
+                Err(error) => {
+                    eprintln!("hangline: drop probe failed: {error}");
+                    1
+                }
+            },
+            Err(error) => {
+                eprintln!("hangline: {error}");
+                1
+            }
+        });
+    }
     // Wave 2.5 OCR evaluation probe: no Tauri build, no window, no WebView2. Every image in the
     // directory is recognized and printed as one JSON line, which is what the evaluation script
     // consumes; the exit code is the number of failed files (capped at 1).
@@ -37,6 +59,33 @@ fn main() {
         }
         selftest::Mode::Normal => hangline_lib::run(),
     }
+}
+
+/// Parses the debug-only `--drop-probe <path> <x> <y>` flag (v1.5.0 acceptance harness).
+///
+/// Returns `None` when the flag is absent so normal launches are untouched. The coordinates are
+/// physical virtual-desktop pixels; the probe process moves the pointer there itself.
+#[cfg(debug_assertions)]
+fn parse_drop_probe_args(args: &[OsString]) -> Option<Result<(PathBuf, i32, i32), &'static str>> {
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        if arg == "--drop-probe" {
+            let path = match iter.next() {
+                Some(path) if !path.is_empty() => PathBuf::from(path),
+                _ => return Some(Err("--drop-probe requires an image path, x and y")),
+            };
+            let x = match iter.next().map(|value| value.to_string_lossy().parse::<i32>()) {
+                Some(Ok(x)) => x,
+                _ => return Some(Err("--drop-probe requires an image path, x and y")),
+            };
+            let y = match iter.next().map(|value| value.to_string_lossy().parse::<i32>()) {
+                Some(Ok(y)) => y,
+                _ => return Some(Err("--drop-probe requires an image path, x and y")),
+            };
+            return Some(Ok((path, x, y)));
+        }
+    }
+    None
 }
 
 /// Parses the Wave 2.5 `--ocr-probe <dir>` flag.
@@ -67,6 +116,28 @@ mod tests {
 
     /// W2.5: `--ocr-probe <dir>` is parsed before the selftest/normal launch paths; an absent flag
     /// keeps the existing behavior and a missing directory argument is a diagnostic error.
+    #[cfg(debug_assertions)]
+    #[test]
+    fn drop_probe_arguments_are_parsed_only_when_the_flag_is_present() {
+        let parsed = parse_drop_probe_args(&args(&[
+            "--drop-probe",
+            r"C:\shots\a.png",
+            "960",
+            "30",
+        ]));
+        assert_eq!(parsed, Some(Ok((PathBuf::from(r"C:\shots\a.png"), 960, 30))));
+        assert_eq!(
+            parse_drop_probe_args(&args(&["--drop-probe", r"C:\shots\a.png"])),
+            Some(Err("--drop-probe requires an image path, x and y"))
+        );
+        assert_eq!(
+            parse_drop_probe_args(&args(&["--drop-probe", r"C:\a.png", "x", "30"])),
+            Some(Err("--drop-probe requires an image path, x and y"))
+        );
+        assert_eq!(parse_drop_probe_args(&args(&[])), None);
+        assert_eq!(parse_drop_probe_args(&args(&["--selftest"])), None);
+    }
+
     #[test]
     fn ocr_probe_arguments_are_parsed_without_touching_the_launch_paths() {
         assert_eq!(

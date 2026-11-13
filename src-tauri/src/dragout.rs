@@ -71,13 +71,18 @@ use windows::Win32::System::Com::{
     IDataObject, IDataObject_Vtbl, FORMATETC, STGMEDIUM, STGMEDIUM_0, TYMED_HGLOBAL,
 };
 use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
+use windows::Win32::System::DataExchange::RegisterClipboardFormatW;
 use windows::Win32::System::Ole::{
-    DoDragDrop, IDropSource, IDropSource_Vtbl, OleInitialize, OleUninitialize, CF_HDROP, DROPEFFECT,
+    DoDragDrop, IDropSource, IDropSource_Vtbl, OleInitialize, OleUninitialize, CF_DIB, CF_HDROP,
+    DROPEFFECT,
     DROPEFFECT_COPY, DROPEFFECT_LINK, DROPEFFECT_MOVE, DROPEFFECT_NONE,
 };
 use windows::Win32::System::SystemServices::{MK_LBUTTON, MODIFIERKEYS_FLAGS};
 use windows::Win32::System::Threading::GetCurrentThreadId;
-use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_ESCAPE};
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    mouse_event, GetAsyncKeyState, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MOVE,
+    VK_ESCAPE,
+};
 use windows::Win32::UI::Shell::{
     IShellItem, SHCreateItemFromParsingName, BHID_DataObject, DROPFILES,
 };
@@ -943,6 +948,15 @@ unsafe fn is_cf_hdrop(format: *const FORMATETC) -> Result<(), HRESULT> {
     Ok(())
 }
 
+/// Payload served by the built-in data object: one file path or one raw HGLOBAL format.
+enum BuiltinData {
+    /// `CF_HDROP` with a single path (production drag-out fallback).
+    File(PathBuf),
+    /// One raw `TYMED_HGLOBAL` format (debug drop probe: `"PNG"` / `CF_DIB`).
+    #[cfg(debug_assertions)]
+    Bytes { format: u16, bytes: Vec<u8> },
+}
+
 /// One-file `IDataObject` used when the shell refuses to provide one.
 ///
 /// It only implements `CF_HDROP`, which is what file drop targets ask for. Format enumeration is
@@ -951,7 +965,7 @@ unsafe fn is_cf_hdrop(format: *const FORMATETC) -> Result<(), HRESULT> {
 #[repr(C)]
 struct FileDataObjectObj {
     header: ComHeader,
-    path: PathBuf,
+    data: BuiltinData,
 }
 
 static DATA_OBJECT_VTBL: IDataObject_Vtbl = IDataObject_Vtbl {
@@ -973,12 +987,22 @@ static DATA_OBJECT_VTBL: IDataObject_Vtbl = IDataObject_Vtbl {
 
 /// Creates the hand-written `CF_HDROP` data object for `path`.
 fn file_data_object(path: &Path) -> Result<IDataObject, String> {
+    data_object(BuiltinData::File(path.to_path_buf()))
+}
+
+/// Debug-only raw-bytes data object (serves one format over `TYMED_HGLOBAL`).
+#[cfg(debug_assertions)]
+fn bytes_data_object(format: u16, bytes: Vec<u8>) -> Result<IDataObject, String> {
+    data_object(BuiltinData::Bytes { format, bytes })
+}
+
+fn data_object(data: BuiltinData) -> Result<IDataObject, String> {
     let object = Box::new(FileDataObjectObj {
         header: ComHeader {
             vtbl: &DATA_OBJECT_VTBL as *const IDataObject_Vtbl as *const c_void,
             refs: AtomicU32::new(1),
         },
-        path: path.to_path_buf(),
+        data,
     });
     let raw = Box::into_raw(object) as *mut c_void;
     Ok(unsafe { wrap_interface::<IDataObject>(raw) })
@@ -1013,17 +1037,43 @@ unsafe extern "system" fn data_object_get_data(
         return E_POINTER;
     }
     let object = unsafe { &*(this as *const FileDataObjectObj) };
-    if let Err(hr) = unsafe { is_cf_hdrop(format) } {
-        return hr;
-    }
-    match hdrop_medium(&object.path) {
-        Ok(medium) => {
-            unsafe { *out = medium };
-            S_OK
+    match &object.data {
+        BuiltinData::File(path) => {
+            if let Err(hr) = unsafe { is_cf_hdrop(format) } {
+                return hr;
+            }
+            match hdrop_medium(path) {
+                Ok(medium) => {
+                    unsafe { *out = medium };
+                    S_OK
+                }
+                Err(err) => {
+                    log::warn!("dragout: failed to allocate CF_HDROP medium: {err}");
+                    E_OUTOFMEMORY
+                }
+            }
         }
-        Err(err) => {
-            log::warn!("dragout: failed to allocate CF_HDROP medium: {err}");
-            E_OUTOFMEMORY
+        #[cfg(debug_assertions)]
+        BuiltinData::Bytes { format: cf, bytes } => {
+            if !unsafe { format_matches(format, *cf) } {
+                return DV_E_FORMATETC;
+            }
+            match global_copy(bytes) {
+                Ok(handle) => {
+                    unsafe {
+                        *out = STGMEDIUM {
+                            tymed: TYMED_HGLOBAL.0 as u32,
+                            u: STGMEDIUM_0 { hGlobal: handle },
+                            pUnkForRelease: ManuallyDrop::new(None),
+                        }
+                    };
+                    S_OK
+                }
+                Err(err) => {
+                    log::warn!("dragout: failed to allocate the probe payload: {err}");
+                    E_OUTOFMEMORY
+                }
+            }
         }
     }
 }
@@ -1037,13 +1087,34 @@ unsafe extern "system" fn data_object_get_data_here(
 }
 
 unsafe extern "system" fn data_object_query_get_data(
-    _this: *mut c_void,
+    this: *mut c_void,
     format: *const FORMATETC,
 ) -> HRESULT {
-    match unsafe { is_cf_hdrop(format) } {
-        Ok(()) => S_OK,
-        Err(hr) => hr,
+    let object = unsafe { &*(this as *const FileDataObjectObj) };
+    match &object.data {
+        BuiltinData::File(_) => match unsafe { is_cf_hdrop(format) } {
+            Ok(()) => S_OK,
+            Err(hr) => hr,
+        },
+        #[cfg(debug_assertions)]
+        BuiltinData::Bytes { format: cf, .. } => {
+            if unsafe { format_matches(format, *cf) } {
+                S_OK
+            } else {
+                DV_E_FORMATETC
+            }
+        }
     }
+}
+
+/// Whether a FORMATETC asks for `cf_format` over `TYMED_HGLOBAL`.
+#[cfg(debug_assertions)]
+unsafe fn format_matches(format: *const FORMATETC, cf_format: u16) -> bool {
+    if format.is_null() {
+        return false;
+    }
+    let format = unsafe { &*format };
+    format.cfFormat == cf_format && format.tymed & (TYMED_HGLOBAL.0 as u32) != 0
 }
 
 unsafe extern "system" fn data_object_get_canonical_format_etc(
@@ -1295,11 +1366,98 @@ pub fn start_drag(window: WebviewWindow, path: String) -> Result<(), String> {
 /// ingestion path is implemented.
 #[cfg(debug_assertions)]
 pub fn probe_drop_at(x: i32, y: i32, path: &std::path::Path) -> Result<(), String> {
+    let data = build_probe_data(path)?;
+    probe_drop_with_data(x, y, data)
+}
+
+/// Builds the data object selected by `HANG_DROP_PROBE_KIND` (file / png / dib).
+#[cfg(debug_assertions)]
+fn build_probe_data(path: &std::path::Path) -> Result<IDataObject, String> {
+    let kind = std::env::var("HANG_DROP_PROBE_KIND").unwrap_or_else(|_| "file".to_string());
+    match kind.as_str() {
+        "png" => {
+            let bytes = std::fs::read(path)
+                .map_err(|error| format!("cannot read the probe PNG: {error}"))?;
+            let name: Vec<u16> = "PNG\0".encode_utf16().collect();
+            let format = unsafe {
+                u16::try_from(RegisterClipboardFormatW(PCWSTR(name.as_ptr()))).unwrap_or(u16::MAX)
+            };
+            log::info!("dropin: probe kind=png ({} B, format {format})", bytes.len());
+            bytes_data_object(format, bytes)
+        }
+        "dib" => {
+            let bytes = dib_bytes_from_path(path)?;
+            log::info!("dropin: probe kind=dib ({} B)", bytes.len());
+            bytes_data_object(CF_DIB.0, bytes)
+        }
+        _ => {
+            log::info!("dropin: probe kind=file");
+            create_data_object(path)
+        }
+    }
+}
+
+/// Cross-process drag-source probe used by `.acceptance/harness` (debug builds only).
+///
+/// Runs in its own process: it parks the pointer over the panel, simulates the start of a real
+/// button-down drag (so the target app's drag watcher can reveal the line and open its click-through
+/// gate), then runs a forced-drop OLE drag. This is what proves the drop target works across process
+/// boundaries; release builds compile the CLI flag out.
+#[cfg(debug_assertions)]
+pub fn drag_probe_cli(x: i32, y: i32, path: &std::path::Path) -> Result<(), String> {
+    let data = build_probe_data(path)?;
+    let start_x = x - 80;
+    let _ = unsafe { SetCursorPos(start_x, y) };
+    unsafe { mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0) };
+    for _ in 0..20 {
+        unsafe { mouse_event(MOUSEEVENTF_MOVE, 4, 0, 0, 0) };
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    // Give the target app's 36 ms drag watcher time to arm, reveal the line and open the gate.
+    std::thread::sleep(Duration::from_millis(900));
+    let outcome = probe_drop_with_data(x, y, data);
+    unsafe { mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0) };
+    outcome
+}
+
+/// Builds a 32-bpp bottom-up `CF_DIB` payload from an image file (debug probe only).
+#[cfg(debug_assertions)]
+fn dib_bytes_from_path(path: &std::path::Path) -> Result<Vec<u8>, String> {
+    let image = image::open(path)
+        .map_err(|error| format!("cannot decode the probe image: {error}"))?
+        .to_rgba8();
+    let width = image.width();
+    let height = image.height();
+    let header_size = 40u32;
+    let pixel_bytes = width
+        .checked_mul(height)
+        .and_then(|pixels| pixels.checked_mul(4))
+        .ok_or_else(|| "probe image is too large".to_string())?;
+    let mut out = Vec::with_capacity(header_size as usize + pixel_bytes as usize);
+    out.extend_from_slice(&header_size.to_le_bytes());
+    out.extend_from_slice(&(width as i32).to_le_bytes());
+    out.extend_from_slice(&(height as i32).to_le_bytes());
+    out.extend_from_slice(&1u16.to_le_bytes());
+    out.extend_from_slice(&32u16.to_le_bytes());
+    out.extend_from_slice(&0u32.to_le_bytes());
+    out.extend_from_slice(&pixel_bytes.to_le_bytes());
+    out.extend_from_slice(&[0u8; 16]);
+    for y in (0..height).rev() {
+        for x in 0..width {
+            let pixel = image.get_pixel(x, y);
+            out.extend_from_slice(&[pixel[2], pixel[1], pixel[0], pixel[3]]);
+        }
+    }
+    Ok(out)
+}
+
+/// Runs one forced in-app drag/drop with an already-built data object (debug probe).
+#[cfg(debug_assertions)]
+fn probe_drop_with_data(x: i32, y: i32, data: IDataObject) -> Result<(), String> {
     let _apartment = OleApartment::init()?;
     // The generated binding reports a success status as an error on some SDK versions; the
     // cursor move itself is best-effort, so ignore the return value.
     let _ = unsafe { SetCursorPos(x, y) };
-    let data = create_data_object(path)?;
     let source = DropSource::probe()?;
     // OLE only calls IDropSource::QueryContinueDrag when input reaches its modal loop. Post a few
     // synthetic left-button mouse moves to this thread so the probe source can force the drop at

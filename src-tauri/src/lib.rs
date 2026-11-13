@@ -158,6 +158,15 @@ async fn cancel_capture(app: tauri::AppHandle) -> Result<(), String> {
 /// requested before this handshake are queued by the controller and flushed now (Task 15 READY
 /// gating), so an early tray/hotkey/second-instance action is never lost or replayed twice.
 /// Any other label is rejected.
+/// Debug-only cross-process drag-source probe (see [`dragout::drag_probe_cli`]).
+///
+/// Exposed at the crate root so the binary crate's `--drop-probe` diagnostic path can call it;
+/// release builds compile it out together with the flag.
+#[cfg(debug_assertions)]
+pub fn cli_drop_probe(x: i32, y: i32, path: &std::path::Path) -> Result<(), String> {
+    dragout::drag_probe_cli(x, y, path)
+}
+
 #[tauri::command]
 fn report_panel_ready(app: tauri::AppHandle, label: String) -> Result<(), String> {
     if label != panel::LABEL {
