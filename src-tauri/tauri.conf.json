@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Hangline",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "identifier": "app.hangline.Hangline",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -26,12 +26,16 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/devin2255/hangline/releases/latest/download/latest.json"
+        "https://github.com/devin2255/hangline/releases/latest/download/latest.json",
+        "https://ghfast.top/https://github.com/devin2255/hangline/releases/latest/download/latest-cn-ghfast.json",
+        "https://gh-proxy.com/https://github.com/devin2255/hangline/releases/latest/download/latest-cn-gh-proxy.json",
+        "https://ghproxy.net/https://github.com/devin2255/hangline/releases/latest/download/latest-cn-ghproxy-net.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEFFQjYwNzNEQTAxMUZDMDYKUldRRy9CR2dQUWUycm1aRk1ieWlXTW5VdDY1Lzg2Qlo4UXRGREZPdmx6MlJ3RWJqb3MxVXJXa1MK",
       "windows": {
         "installMode": "passive"
-      }
+      },
+      "requireSignedVersion": true
     }
   },
   "bundle": {

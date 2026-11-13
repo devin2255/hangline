@@ -1,6 +1,6 @@
 {
   "name": "hangline",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "license": "MIT",
   "private": true,
   "type": "module",
@@ -14,7 +14,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
-    "check": "pnpm lint && node scripts/check-release-instrumentation.mjs --self-test && pnpm typecheck && pnpm test && node scripts/check-i18n.mjs && node scripts/version.mjs"
+    "check": "pnpm lint && node scripts/check-release-instrumentation.mjs --self-test && node scripts/check-update-endpoints.mjs && pnpm typecheck && pnpm test && node scripts/check-i18n.mjs && node scripts/version.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

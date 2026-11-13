@@ -19,7 +19,9 @@
  *    bypasses the gate;
  * 5. the install button is wired and the fake **unsigned** artifact is rejected by signature
  *    verification ("Update failed"), leaving the app running on the old version — no partial
- *    install is claimed.
+ *    install is claimed;
+ * 6. a dead first endpoint falls through to the second endpoint (the same order the app relies on
+ *    for the mainland mirror fallback), and the check still announces the fixture version.
  *
  * A successfully **signed** update install/restart is deliberately **not** attempted here: that
  * needs a real signed release and is CI/manual-pending (see the P5-2 report).
@@ -53,7 +55,11 @@ import { fileURLToPath } from "node:url";
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const EVIDENCE_DIR = join(REPO_ROOT, ".superpowers", "p5-evidence", "update-check");
 const RUN_DIR = join(EVIDENCE_DIR, "run");
-const EXE = join(REPO_ROOT, "src-tauri", "target", "debug", "hangline.exe");
+// Some hardened machines refuse writes from executables launched from the dev workspace. Set
+// HANG_UPDATE_EXE to a copy of the debug build outside the workspace to run the harness there.
+const EXE = process.env.HANG_UPDATE_EXE
+  ? resolve(process.env.HANG_UPDATE_EXE)
+  : join(REPO_ROOT, "src-tauri", "target", "debug", "hangline.exe");
 const DIST_INDEX = join(REPO_ROOT, "dist", "index.html");
 const CDP_PORT = Number(process.env.HANG_UPDATE_CDP_PORT ?? 9339);
 const BUILD = process.argv.includes("--build");
@@ -634,6 +640,39 @@ async function main() {
       requests: [...fixtureServer.requests],
     };
     step("scenario F verified (signature rejection, no install)");
+  } finally {
+    await stopApp(run);
+  }
+
+  // --- Scenario G: dead first endpoint falls through to the mirror manifest --------------------
+  // This is the mainland fallback shape: the official GitHub endpoint is unreachable, the mirror
+  // endpoint (here a second localhost manifest) serves the same signed-manifest contract.
+  fixtureServer.requests.length = 0;
+  try {
+    run = await startScenario({
+      name: "g-endpoint-fallback",
+      settings: { autoCheckUpdates: true, lastUpdateCheck: "", language: "en" },
+      endpoint: `${offlineEndpoint},${fixture.manifestUrl}`,
+    });
+    const notice = await waitForNotice(run.panel, "available", 30000);
+    check(
+      "a dead first endpoint falls through to the second (fallback) endpoint",
+      notice.version === fixtureVersion,
+      notice,
+    );
+    check(
+      "the fallback check reaches the second endpoint exactly once",
+      fixtureServer.requests.length === 1,
+      [...fixtureServer.requests],
+    );
+    const settings = readSettings(run.dataDir);
+    check(
+      "the fallback check persists lastUpdateCheck",
+      isoLooksValid(settings?.lastUpdateCheck),
+      settings?.lastUpdateCheck,
+    );
+    results.scenarios.g = { notice, requests: [...fixtureServer.requests], settings };
+    step("scenario G verified (multi-endpoint fallback)");
   } finally {
     await stopApp(run);
   }

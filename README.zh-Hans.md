@@ -8,7 +8,7 @@ Hangline 是一个 Windows 桌面应用：它把一条细绳挂在屏幕顶部�
 
 仓库：<https://github.com/devin2255/hangline>
 
-> **状态：Hangline 1.4.0 发布（Wave 2 记忆与检索 + 1.4.0 绳子外观系统——四种材质、八种低饱和颜色，截图越多绳子弧度越弯）。**
+> **状态：Hangline 1.4.1 发布（Wave 2 记忆与检索 + 1.4.0 绳子外观系统 + 1.4.1 国内更新通道——GitHub 不可达时自动回退到三个公共镜像源，国内网络也能检查/下载更新）。**
 > 公开源码仓库为 <https://github.com/devin2255/hangline>；配置签名 secrets 后，`v*` tag 工作流会生成 GitHub Release，也可随时在本地构建安装包与 portable ZIP。安装包当前未签名（SmartScreen 可能提示未知发布者），正在申请 SignPath Foundation 免费代码签名——见[代码签名策略](CODE_SIGNING_POLICY.md)。人工验收记录见 [`docs/acceptance/P1-core.md`](docs/acceptance/P1-core.md) … [`P5-core.md`](docs/acceptance/P5-core.md)。
 
 ![晾在绳上的玻璃卡片](docs/experiments/P1-panel-ui-100pct-3cards.png)
@@ -34,14 +34,15 @@ P4 多屏 100%/150% 缩放放置（仅应用 UI，中性合成卡片；面板截
 
 更多 P4 证据：[`docs/experiments/P4-multimon-settings.md`](docs/experiments/P4-multimon-settings.md)、[`docs/acceptance/P4-core.md`](docs/acceptance/P4-core.md)。
 
-## 安装（1.4.0 发布）
+## 安装（1.4.1 发布）
 
 Windows 10 22H2 或 Windows 11，x64。可从 GitHub Release（配置后由 tag 工作流生成）下载，或按下方“从源码构建”用 `node scripts/release/build-release.mjs --sign` 在本地构建发布产物。
 
-- `Hangline_1.4.0_x64-setup.exe` —— 当前用户安装到 `%LOCALAPPDATA%\Programs\Hangline`（无需管理员），开始菜单快捷方式（桌面快捷方式可选）、HKCU 卸载项、内置 WebView2 引导（仅在没有 WebView2 的机器上需要联网）。卸载时会询问保留或删除 Hangline 数据（默认保留）。
-- `Hangline_1.4.0_x64-portable.zip` —— 解压即用；数据仍在 `%LOCALAPPDATA%\Hangline`（真正的便携模式尚未支持）。
-- **签名状态：** 截至 v1.4.0 的发布**未做 Authenticode 签名**，SmartScreen 会提示未知发布者。项目正在申请 SignPath Foundation 的免费代码签名；签名策略启用后，发布产物将带 Authenticode 签名。在此之前请用 `SHA256SUMS.txt` 校验下载。详见[代码签名策略](CODE_SIGNING_POLICY.md)。
-- **网络：** 应用保持本地；**唯一**网络请求是更新检查（`autoCheckUpdates` 开启时每日一次，或托盘手动检查），更新包会先验签再安装。发布端点/仓库目前是占位，需运营者创建 GitHub 仓库后替换。
+- `Hangline_1.4.1_x64-setup.exe` —— 当前用户安装到 `%LOCALAPPDATA%\Programs\Hangline`（无需管理员），开始菜单快捷方式（桌面快捷方式可选）、HKCU 卸载项、内置 WebView2 引导（仅在没有 WebView2 的机器上需要联网）。卸载时会询问保留或删除 Hangline 数据（默认保留）。
+- `Hangline_1.4.1_x64-portable.zip` —— 解压即用；数据仍在 `%LOCALAPPDATA%\Hangline`（真正的便携模式尚未支持）。
+- **签名状态：** 截至 v1.4.1 的发布**未做 Authenticode 签名**，SmartScreen 会提示未知发布者。项目正在申请 SignPath Foundation 的免费代码签名；签名策略启用后，发布产物将带 Authenticode 签名。在此之前请用 `SHA256SUMS.txt` 校验下载。详见[代码签名策略](CODE_SIGNING_POLICY.md)。
+- **网络：** 应用保持本地；**唯一**网络请求是更新检查（`autoCheckUpdates` 开启时每日一次，或托盘手动检查），更新包会先验签再安装。官方源是 GitHub；GitHub 不可达时（中国大陆多数网络）会自动回退到 `ghfast.top` / `gh-proxy.com` / `ghproxy.net` 三个公共镜像源，镜像只传输公开的更新数据，安装包签名与版本绑定始终校验。
+- **国内用户从 v1.4.0 及更早版本升级：** 旧版只认识 GitHub 端点，国内网络下查不到这个更新，需要手动安装一次 v1.4.1；三个加速下载链接见 [v1.4.1 发布说明](docs/release/notes-v1.4.1.md)，装好之后应用内更新即可正常使用。
 
 发布/更新/签名/隐私手册：[`docs/RELEASE.md`](docs/RELEASE.md)。
 
@@ -78,7 +79,7 @@ Windows 10 22H2 或 Windows 11，x64。可从 GitHub Release（配置后由 tag 
 - **托盘设置。** 监听开关、额外监听目录（最多 3 个）、保留数量、保留策略、卡片尺寸（小/中/大）、快捷键（含冲突回滚）、声音、开机启动、语言（English / 简体中文 / 跟随系统）、截图后自动复制、退出。危险操作会先确认，保留策略子菜单会说明文件去向，热键注册失败会明确提示而不是静默失败。
 - **多显示器与逐显示器 DPI。** 线跟随鼠标指针跨屏（停留 500 ms 后迁移），按 100%/125%/150% 缩放重排卡片，并在显示器变化/任务栏移动后重新贴边。
 - **设置可持久。** 三个全局热键可改键（截图 / 显示隐藏 / 编辑最新一张，冲突检测+回滚），开机启动走标准 Run 键（带引号、支持含空格路径），声音、尺寸、主题、语言均可设置。
-- **本地、安静。** 没有账号、遥测、统计或云同步；唯一的网络请求是带签名的更新检查（开启时每日一次，或托盘手动检查）。
+- **本地、安静。** 没有账号、遥测、统计或云同步；唯一的网络请求是带签名的更新检查（开启时每日一次，或托盘手动检查；国内网络会自动回退到镜像通道）。
 
 ![150% 缩放、更多卡片的绳](docs/experiments/P1-panel-ui-150pct.png)
 
@@ -147,7 +148,7 @@ cargo check --manifest-path src-tauri/Cargo.toml --all-targets # 0 warnings
 
 ## 隐私
 
-- **唯一的网络请求是更新检查。** `autoCheckUpdates` 开启时每日一次，或从托盘手动检查；更新端点是唯一访问的主机。没有统计、遥测、账号、云同步或崩溃上报。
+- **唯一的网络请求是更新检查。** `autoCheckUpdates` 开启时每日一次，或从托盘手动检查；更新端点（官方 + 国内镜像兜底）是唯一访问的主机。没有统计、遥测、账号、云同步或崩溃上报。
 - 只有在用户主动选择时才会用默认浏览器打开链接（例如文档或更新提示里的 release 页面）；「打开截图文件夹」只是本地打开资源管理器。更新端点是公开仓库 `devin2255/hangline` 的 GitHub Releases 地址。
 - 截图与录屏留在你的磁盘上。Hangline 只会把剪贴板图片、以及你显式监听目录中的新文件复制到 `%LOCALAPPDATA%\Hangline\Screenshots\`，不会上传到任何地方。
 - **按时间清理是本地的、可撤销的。** 设置「保留策略」窗口后，到期的自有截图会移入 Windows 回收站；监听目录中的文件、系统截图与录屏永远不会被删除，只会从线上取下。

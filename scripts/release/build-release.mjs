@@ -12,6 +12,8 @@
  *   7. portable ZIP -> release/Hangline_<version>_x64-portable.zip
  *   8. SHA-256, Authenticode status, hard 8.5 MB setup size gate + four-item size budget
  *   9. release/latest.json (unsigned placeholder by default; real updater signature with --sign)
+ *      + release/latest-cn-<mirror>.json mainland mirror manifests (--sign only; one per proxy,
+ *        platform urls rewritten through the proxy, signatures byte-identical)
  *
  * Usage:
  *   node scripts/release/build-release.mjs [--sign] [--ci] [--skip-check] [--skip-build] [--skip-tools]
@@ -33,6 +35,8 @@ import {
 } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { buildMirrorManifests } from "./update-mirrors.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..", "..");
@@ -691,6 +695,21 @@ function signSetup(setupPath, version) {
   writeFileSync(join(RELEASE_DIR, "latest.json"), JSON.stringify(latest, null, 2) + "\n", "utf8");
   if (SIGN) {
     if (signed) console.log(`latest.json: signed for ${Object.keys(platforms).join(", ")} -> ${downloadUrl}`);
+    // Mainland-China fallback: one manifest per public proxy, with the platform urls rewritten
+    // through that proxy. The signature stays byte-identical, and the signature's trusted comment
+    // carries the version, so the app's requireSignedVersion check rejects any mirror that pairs
+    // an older artifact with a newer announced version.
+    const mirrorManifests = buildMirrorManifests(latest);
+    for (const mirror of mirrorManifests) {
+      writeFileSync(
+        join(RELEASE_DIR, mirror.fileName),
+        JSON.stringify(mirror.manifest, null, 2) + "\n",
+        "utf8",
+      );
+    }
+    console.log(
+      `CN mirror manifests: ${mirrorManifests.map((mirror) => mirror.fileName).join(", ")}`,
+    );
   }
 
   const buildInfo = {

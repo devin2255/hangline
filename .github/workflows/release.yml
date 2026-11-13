@@ -54,6 +54,9 @@ jobs:
           }
           if ($entry.url -notmatch "Hangline_$($manifest.version)_x64-setup\.exe$") { throw "manifest URL does not point at the setup" }
           Write-Host "signed manifest: version=$($manifest.version) url=$($entry.url)"
+          # Mainland mirror manifests: one per configured proxy, same signature, rewritten URLs,
+          # and a signature trusted comment bound to the announced version (requireSignedVersion).
+          node scripts/release/verify-cn-manifests.mjs
 
       - name: Create GitHub Release
         shell: pwsh
@@ -86,6 +89,7 @@ jobs:
             (Get-ChildItem release/Hangline_*_x64-setup.exe).FullName `
             (Get-ChildItem release/Hangline_*_x64-portable.zip).FullName `
             release/latest.json `
+            (Get-ChildItem release/latest-cn-*.json).FullName `
             release/SHA256SUMS.txt `
             --title $title `
             --notes-file $notesPath `

@@ -11,7 +11,7 @@ Tauri 2 (Rust) + React 19 + TypeScript + Vite. Windows x64.
 
 Repository: <https://github.com/devin2255/hangline>
 
-> **Status: Hangline 1.4.0 release (Wave 2 memory & search plus the 1.4.0 rope appearance system — four rope materials, eight low-saturation colours and a rope that bends with every hanging screenshot).**
+> **Status: Hangline 1.4.1 release (Wave 2 memory & search, the 1.4.0 rope appearance system, and the 1.4.1 mainland-China update channel — updates now fall back to three public release mirrors when GitHub is unreachable).**
 > The public source repository is <https://github.com/devin2255/hangline>; a GitHub Release is produced by the
 > `v*` tag workflow when signing secrets are configured, and the installer/portable ZIP can always be built locally.
 > The installer is currently unsigned (SmartScreen may warn); free code signing is being applied for
@@ -46,25 +46,31 @@ P4 multi-monitor placement under 100%/150% scaling (app UI only, neutral synthet
 More P4 evidence: [`docs/experiments/P4-multimon-settings.md`](docs/experiments/P4-multimon-settings.md),
 [`docs/acceptance/P4-core.md`](docs/acceptance/P4-core.md).
 
-## Install (1.4.0 release)
+## Install (1.4.1 release)
 
 Windows 10 22H2 or Windows 11, x64. Download the GitHub Release artifacts for the latest tag when available,
 or build the installer locally (see [Building](#building-from-source)) with
 `node scripts/release/build-release.mjs --sign`.
 
-- `Hangline_1.4.0_x64-setup.exe` — per-user install to `%LOCALAPPDATA%\Programs\Hangline` (no admin),
+- `Hangline_1.4.1_x64-setup.exe` — per-user install to `%LOCALAPPDATA%\Programs\Hangline` (no admin),
   Start-menu shortcut (desktop shortcut optional), HKCU uninstall entry, embedded WebView2
   bootstrapper (network needed only on a machine without WebView2). Uninstall asks whether to keep or delete your Hangline data
   (default: keep).
-- `Hangline_1.4.0_x64-portable.zip` — unpack anywhere and run `Hangline.exe`; data still lives in
+- `Hangline_1.4.1_x64-portable.zip` — unpack anywhere and run `Hangline.exe`; data still lives in
   `%LOCALAPPDATA%\Hangline` (a true portable mode is post-V1).
-- **Authenticode status:** releases up to v1.4.0 are **unsigned** — Windows SmartScreen shows an
+- **Authenticode status:** releases up to v1.4.1 are **unsigned** — Windows SmartScreen shows an
   unknown publisher. Hangline is applying for free code signing from SignPath Foundation; once the
   signing policy is enabled, releases will be Authenticode-signed. Until then, verify the SHA-256 in
   `SHA256SUMS.txt`. See the [Code signing policy](CODE_SIGNING_POLICY.md).
 - **Network:** the app is local-only. The **only** request is the update check (daily if
   `autoCheckUpdates` is on, or manual from the tray); updates are signed and verified before install.
-  The release endpoint/repository is a placeholder until the operator publishes a GitHub repo.
+  The official endpoint is GitHub; when GitHub is unreachable (much of mainland China) the updater
+  falls back to three public release mirrors (`ghfast.top`, `gh-proxy.com`, `ghproxy.net`) that serve
+  mirrored manifests for the same signed installer. The mirrors only transport public update data;
+  the installer signature and its version binding are always verified.
+- **Updating from v1.4.0 or older on a blocked network:** those builds only know the GitHub endpoint,
+  so install v1.4.1 once by hand. Accelerated download links are in the
+  [v1.4.1 release notes](docs/release/notes-v1.4.1.md); after that, in-app updates work normally.
 
 Release/update/signing/privacy runbook: [`docs/RELEASE.md`](docs/RELEASE.md).
 

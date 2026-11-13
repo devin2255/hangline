@@ -532,6 +532,15 @@ struct PublicState {          // IPC 快照（Rust 内部 AppState 还持有 Mut
 - `pnpm tauri signer generate` 生成公私钥；私钥仅存本机/CI Secret；公钥写入 `tauri.conf.json`。
 - 用户侧：下载新包 → 校验签名 → 静默安装（NSIS `/S`）→ 重启应用；失败回滚到旧版本目录。
 
+### 6.4 Amendment 2026-11-13 — 国内网络可用的更新通道（v1.4.1）
+
+- **背景**：GitHub Releases 清单/下载域在部分中国大陆网络不可达（实测 `github.com/.../latest.json` 直连失败），自动与手动检查更新均失败；这与「更新检查是唯一网络行为」的承诺不冲突，但更新通道需要冗余。
+- **方案**：发布流水线除官方 `latest.json` 外，额外生成三份国内镜像清单 `latest-cn-ghfast.json` / `latest-cn-gh-proxy.json` / `latest-cn-ghproxy-net.json`；每份清单的平台 `url` 分别改写为 `https://ghfast.top/`、`https://gh-proxy.com/`、`https://ghproxy.net/` 前缀，签名与官方清单逐字节一致。客户端 `updater.endpoints` 顺序为官方 → ghfast → gh-proxy.com → ghproxy.net；插件依次尝试，采用第一个可解析的清单。
+- **超时分阶段**：**检查阶段**每源 5 s 超时（被墙官方源快速失败，镜像尽快接管）；**下载阶段不设总超时**（慢速移动网络仍可完成约 7 MB 安装包）。该超时只加在 `check_updates` 的 updater 构建上，`install_update` 不继承。
+- **安全**：开启 `requireSignedVersion`。清单本身只有 TLS 保护，签名可信注释携带 `version:<x.y.z>`；镜像无法用旧版真实签名冒充新版（防降级）。CI 校验三份镜像清单的版本/签名/URL 前缀，并校验签名版本绑定（`scripts/release/verify-cn-manifests.mjs`）。
+- **边界**：新增的 3 个 endpoint 仍只服务更新检查与安装包下载；无遥测、无其他 HTTP 客户端、无账号。`pnpm check` 用 `scripts/check-update-endpoints.mjs` 保证 `tauri.conf.json` 与 `scripts/release/update-mirrors.mjs` 不会漂移。
+- **兼容与运维**：镜像通道从 v1.4.1 起生效；v1.4.0 及更早版本的国内用户需手动安装一次 v1.4.1（README/发布说明提供代理下载链接），此后自动更新可用。镜像依赖公共 GitHub 代理，可用性非 100%，故保留官方源优先 + 三镜像兜底。
+
 ---
 
 ## 7. 测试计划
