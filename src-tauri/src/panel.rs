@@ -636,6 +636,13 @@ pub fn create(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     if let Err(error) = crate::dropin::install(&win, app) {
         log::warn!("dropin: cannot install the drop target: {error}");
     }
+    // Debug-only: the cross-process drop probe cannot inject a reliable button-down for the drag
+    // watcher, so the acceptance harness can force the gate on when this build starts.
+    #[cfg(debug_assertions)]
+    if std::env::var_os("HANG_DROP_TEST_FORCE_GATE").is_some() {
+        log::warn!("dropin: HANG_DROP_TEST_FORCE_GATE is set; the panel stays drop-ready");
+        crate::hittest::set_force_gate(true);
+    }
     // Clicks pass through until the frontend reports a card rect under the cursor (or a drag is
     // hovering the strip, which the hit-test thread learns through `hittest::set_drag_hold`).
     win.set_ignore_cursor_events(true).ok();

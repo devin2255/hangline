@@ -45,10 +45,19 @@ fn hit_padding(scale: f64) -> i32 {
 /// space; the loop remains the only caller of `set_ignore_cursor_events`.
 static DRAG_HOLD: AtomicBool = AtomicBool::new(false);
 
+/// Debug-only acceptance harness flag: keep the panel hit-testable for cross-process drop probes
+/// that cannot reliably inject the button-down state the drag watcher needs. Never set in release.
+static FORCE_GATE: AtomicBool = AtomicBool::new(false);
+
 /// Enables/disables the temporary "accept drops" state (called by the drop-in drag watcher and by
 /// the debug drop probe).
 pub fn set_drag_hold(held: bool) {
     DRAG_HOLD.store(held, Ordering::Relaxed);
+}
+
+/// Debug-only: forces the "accept drops" gate on (acceptance harness cross-process probes).
+pub fn set_force_gate(forced: bool) {
+    FORCE_GATE.store(forced, Ordering::Relaxed);
 }
 
 /// Card hit rects shared between the `set_hit_rects` command and the poll loop.
@@ -113,7 +122,7 @@ fn run(app: AppHandle, rects: HitRects) {
             let guard = rects.lock();
             any_hit(local, &guard, hit_padding(scale))
         };
-        let hold = DRAG_HOLD.load(Ordering::Relaxed);
+        let hold = DRAG_HOLD.load(Ordering::Relaxed) || FORCE_GATE.load(Ordering::Relaxed);
         let should_ignore = !hit && !hold;
 
         if should_ignore != ignoring && panel.set_ignore_cursor_events(should_ignore).is_ok() {

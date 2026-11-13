@@ -757,6 +757,7 @@ fn watch(app: &AppHandle) {
             }
             if armed {
                 if !crate::reveal::drop_is_held() {
+                    log::info!("dropin: external drag armed; holding the line open");
                     crate::reveal::set_drop_hold(true);
                 }
                 if !reveal_requested && !crate::panel::is_visible() {
@@ -769,6 +770,11 @@ fn watch(app: &AppHandle) {
                 }
                 let inside = cursor.is_some_and(|point| panel_contains(app, point));
                 if inside != gate_held {
+                    log::info!(
+                        "dropin: click-through gate {} (cursor {} the panel)",
+                        if inside { "opened" } else { "closed" },
+                        if inside { "over" } else { "left" }
+                    );
                     crate::hittest::set_drag_hold(inside);
                     gate_held = inside;
                 }
