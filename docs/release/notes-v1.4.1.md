@@ -33,9 +33,9 @@ v1.4.1。三个加速下载地址（任选其一，下载后请用 `SHA256SUMS.t
 
 - 三份镜像清单与原清单：版本、notes、pub_date、签名逐字节一致，安装包 URL 分别指向对应加速前缀；
 - 签名可信注释含 `version:1.4.1`，`requireSignedVersion` 校验通过；
-- 发布构建通过 8.5 MB 体积门，`--selftest` PASS 9 / FAIL 0；
+- 发布构建通过 8.5 MB 体积门（CI 安装包 **7,335,285 B**，**86.30% used**）；`--selftest` PASS 9 / FAIL 0；
 - 本地更新 harness 新增「死端点 → 镜像端点」回退场景（`scripts/release/update-check-test.mjs`）；
-- 无 VPN 环境下通过三个代理分别下载安装包并核对 SHA-256 一致（发布后核验）。
+- 无 VPN 环境下通过三个代理分别完整下载安装包，SHA-256 均与 SHA256SUMS.txt 一致（已核验）；三份镜像清单已作为 Release 资产发布。
 
 ## 升级说明
 
