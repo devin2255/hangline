@@ -112,6 +112,12 @@ export type RopeColor =
   | "terracotta"
   | "violet";
 
+/** v1.6.0 Sweater Season frame thickness (Rust `sweaterWidth`). */
+export type SweaterWidth = "slim" | "classic" | "chunky";
+
+/** v1.6.0 seasonal rope theme (Rust `holidayTheme`; `auto` follows local-date windows). */
+export type HolidayTheme = "off" | "auto" | "christmas";
+
 /**
  * One item hung on the line (design spec 4.5; Rust `Item`).
  *
@@ -191,6 +197,12 @@ export interface Settings {
   ropeStyle: RopeStyle;
   /** v1.4.0 rope palette key (Rust `ropeColor`; default `"ink"`). */
   ropeColor: RopeColor;
+  /** v1.6.0 Sweater Season: draw a knitted frame on every card (default false). */
+  sweaterEnabled: boolean;
+  /** v1.6.0 frame thickness (default `"classic"`). */
+  sweaterWidth: SweaterWidth;
+  /** v1.6.0 seasonal rope theme (default `"off"`). */
+  holidayTheme: HolidayTheme;
   sound: boolean;
   startAtLogin: boolean;
   /** UI language tag; `"system"` follows the OS. */

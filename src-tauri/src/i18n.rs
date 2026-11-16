@@ -297,6 +297,16 @@ pub struct TrayStrings {
     pub rope_color_terracotta: &'static str,
     /// Rope colour: violet.
     pub rope_color_violet: &'static str,
+    /// v1.6.0 Sweater Season switch.
+    pub sweater: &'static str,
+    /// v1.6.0 "Holiday rope" submenu title.
+    pub holiday_menu: &'static str,
+    /// Holiday rope: off.
+    pub holiday_off: &'static str,
+    /// Holiday rope: follow the local festival windows.
+    pub holiday_auto: &'static str,
+    /// Holiday rope: keep the Christmas theme on.
+    pub holiday_christmas: &'static str,
     /// Shortcut submenu title.
     pub shortcut_menu: &'static str,
     /// Capture shortcut row (followed by the accelerator).
@@ -403,6 +413,11 @@ pub const EN: TrayStrings = TrayStrings {
     rope_color_haze: "Haze",
     rope_color_terracotta: "Terracotta",
     rope_color_violet: "Violet",
+    sweater: "Sweater Season",
+    holiday_menu: "Holiday rope",
+    holiday_off: "Off",
+    holiday_auto: "Auto (festival windows)",
+    holiday_christmas: "Christmas",
     shortcut_menu: "Shortcut",
     shortcut_capture: "Capture",
     shortcut_toggle: "Show/hide line",
@@ -481,6 +496,11 @@ pub const ZH_HANS: TrayStrings = TrayStrings {
     rope_color_haze: "雾霾蓝",
     rope_color_terracotta: "赤陶",
     rope_color_violet: "烟紫",
+    sweater: "毛衣季",
+    holiday_menu: "节日绳子",
+    holiday_off: "关闭",
+    holiday_auto: "自动（节日窗口）",
+    holiday_christmas: "圣诞",
     shortcut_menu: "快捷键",
     shortcut_capture: "截图",
     shortcut_toggle: "显示/隐藏线",
@@ -574,6 +594,11 @@ impl TrayStrings {
             ("rope_color_haze", self.rope_color_haze),
             ("rope_color_terracotta", self.rope_color_terracotta),
             ("rope_color_violet", self.rope_color_violet),
+            ("sweater", self.sweater),
+            ("holiday_menu", self.holiday_menu),
+            ("holiday_off", self.holiday_off),
+            ("holiday_auto", self.holiday_auto),
+            ("holiday_christmas", self.holiday_christmas),
             ("shortcut_menu", self.shortcut_menu),
             ("shortcut_capture", self.shortcut_capture),
             ("shortcut_toggle", self.shortcut_toggle),

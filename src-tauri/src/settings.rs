@@ -104,6 +104,39 @@ pub enum RopeColor {
     Violet,
 }
 
+/// Sweater frame thickness for the v1.6.0 "Sweater Season" appearance layer.
+///
+/// Serialized as `slim`/`classic`/`chunky`; the frontend owns the dp mapping so the palette and
+/// pattern can stay a pure renderer concern.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SweaterWidth {
+    /// A thin 6 dp frame.
+    Slim,
+    /// The default 9 dp frame.
+    #[default]
+    Classic,
+    /// A statement 12 dp frame.
+    Chunky,
+}
+
+/// Seasonal rope theme (v1.6.0 "holiday theme").
+///
+/// `off` is the default, `auto` follows the local-date window table (Christmas 12/01–01/06) and
+/// an explicit theme keeps that decoration on regardless of the calendar. Everything is local; no
+/// network request is involved.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum HolidayTheme {
+    /// No seasonal rope decoration.
+    #[default]
+    Off,
+    /// Apply a theme during its local-date window and restore afterwards.
+    Auto,
+    /// Always use the Christmas rope theme.
+    Christmas,
+}
+
 /// Colour theme (design spec 3.6 `theme`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -282,6 +315,12 @@ pub struct Settings {
     pub rope_style: RopeStyle,
     /// Rope colour (v1.4 appearance; default ink).
     pub rope_color: RopeColor,
+    /// v1.6.0 "Sweater Season": render a knitted frame on every card (default off).
+    pub sweater_enabled: bool,
+    /// v1.6.0 sweater frame thickness (default classic).
+    pub sweater_width: SweaterWidth,
+    /// v1.6.0 seasonal rope theme (default off; `auto` follows the local holiday window).
+    pub holiday_theme: HolidayTheme,
     /// Play copy/discard sounds.
     pub sound: bool,
     /// Start Hangline at login.
@@ -317,6 +356,9 @@ impl Default for Settings {
             card_size: CardSize::Medium,
             rope_style: RopeStyle::Silk,
             rope_color: RopeColor::Ink,
+            sweater_enabled: false,
+            sweater_width: SweaterWidth::Classic,
+            holiday_theme: HolidayTheme::Off,
             sound: true,
             start_at_login: false,
             language: "system".to_string(),
@@ -381,6 +423,9 @@ impl Settings {
             "cardSize" => self.card_size = expected_enum(key, &value)?,
             "ropeStyle" => self.rope_style = expected_enum(key, &value)?,
             "ropeColor" => self.rope_color = expected_enum(key, &value)?,
+            "sweaterEnabled" => self.sweater_enabled = expected_bool(key, &value)?,
+            "sweaterWidth" => self.sweater_width = expected_enum(key, &value)?,
+            "holidayTheme" => self.holiday_theme = expected_enum(key, &value)?,
             "sound" => self.sound = expected_bool(key, &value)?,
             "startAtLogin" => self.start_at_login = expected_bool(key, &value)?,
             "language" => self.language = validated_language(key, &value)?,
@@ -953,6 +998,12 @@ mod tests {
         assert_eq!(s.card_size, CardSize::Medium);
         assert_eq!(s.rope_style, RopeStyle::Silk, "v1.4 default rope style");
         assert_eq!(s.rope_color, RopeColor::Ink, "v1.4 default rope colour");
+        assert!(
+            !s.sweater_enabled,
+            "v1.6.0 Sweater Season must default to off so existing desktops are unchanged"
+        );
+        assert_eq!(s.sweater_width, SweaterWidth::Classic);
+        assert_eq!(s.holiday_theme, HolidayTheme::Off);
         assert!(s.sound);
         assert!(!s.start_at_login);
         assert_eq!(s.language, "system");
@@ -962,14 +1013,14 @@ mod tests {
     }
 
     #[test]
-    fn default_json_has_exactly_the_twenty_four_camel_case_keys() {
+    fn default_json_has_exactly_the_twenty_seven_camel_case_keys() {
         let value = serde_json::to_value(Settings::default()).expect("serialize defaults");
         let object = value.as_object().expect("settings must be a JSON object");
         assert_eq!(
             object.len(),
-            24,
+            27,
             "18 design-spec keys + keepForDays + captureCopyOnFinish + editLatestHotkey + \
-             searchHotkey + ropeStyle + ropeColor"
+             searchHotkey + ropeStyle + ropeColor + sweaterEnabled + sweaterWidth + holidayTheme"
         );
         for key in [
             "captureHotkey",
@@ -990,6 +1041,9 @@ mod tests {
             "cardSize",
             "ropeStyle",
             "ropeColor",
+            "sweaterEnabled",
+            "sweaterWidth",
+            "holidayTheme",
             "sound",
             "startAtLogin",
             "language",
@@ -1008,6 +1062,9 @@ mod tests {
         assert_eq!(object["cardSize"], json!("medium"));
         assert_eq!(object["ropeStyle"], json!("silk"));
         assert_eq!(object["ropeColor"], json!("ink"));
+        assert_eq!(object["sweaterEnabled"], json!(false));
+        assert_eq!(object["sweaterWidth"], json!("classic"));
+        assert_eq!(object["holidayTheme"], json!("off"));
         assert_eq!(object["theme"], json!("system"));
         assert_eq!(object["revealPeekMs"], json!(2500));
         assert_eq!(object["extraFolders"], json!([]));

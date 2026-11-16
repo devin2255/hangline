@@ -253,6 +253,12 @@ export interface GlassCardProps {
   onMoreActions?: (item: Item, anchor: HTMLElement) => void;
   /** Hover capsule's middle action (markup for images, trim for recordings). */
   onEdit?: (item: Item) => void;
+  /**
+   * v1.6.0 Sweater Season: a data-URL SVG frame drawn over the card edge. The panel computes it
+   * from the card's palette + stable pattern; the frame is decorative (pointer-events: none), never
+   * changes the card size/hit rect and never touches the screenshot itself.
+   */
+  sweaterFrame?: string;
   /** Reports the mounted hover capsule so the panel adds its rect to the click-through hit rects. */
   onActionsElement?: (element: HTMLElement | null) => void;
   /**
@@ -290,6 +296,7 @@ export function GlassCard({
   onContextMenu,
   onMoreActions,
   onEdit,
+  sweaterFrame,
   onActionsElement,
   onPreviewRequest,
 }: GlassCardProps) {
@@ -804,6 +811,14 @@ export function GlassCard({
             onContextMenu?.(itemRef.current, event.clientX, event.clientY);
           }}
         >
+          {sweaterFrame ? (
+            <div
+              className={`glass-card__sweater${reducedMotion ? "" : " glass-card__sweater--knit"}`}
+              style={{ backgroundImage: `url("${sweaterFrame}")` }}
+              data-sweater-frame="true"
+              aria-hidden="true"
+            />
+          ) : null}
           <div
             className="glass-card__photo"
             style={{ width: `${photo.width}px`, height: `${photo.height}px` }}

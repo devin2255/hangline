@@ -36,6 +36,7 @@ mod search_window;
 mod settings;
 mod shortcut_window;
 mod sound;
+mod sweater;
 mod store;
 mod thumbnails;
 mod tray;
@@ -974,6 +975,7 @@ pub fn run() {
             ipc::get_monitors,
             ipc::sync_panel_geometry,
             ipc::set_setting,
+  ipc::sweater_palette,
             ipc::set_item_note,
             ipc::set_item_tags,
             ipc::ocr_status,

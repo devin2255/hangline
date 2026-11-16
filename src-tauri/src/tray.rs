@@ -36,7 +36,8 @@ use crate::i18n::{self, Lang, TrayStrings};
 use crate::panel;
 use crate::reveal::{self, RevealReason};
 use crate::settings::{
-    CardSize, KeepForDays, KeepOnLine, RopeColor, RopeStyle, Settings, MAX_EXTRA_FOLDERS,
+    CardSize, HolidayTheme, KeepForDays, KeepOnLine, RopeColor, RopeStyle, Settings,
+    MAX_EXTRA_FOLDERS,
 };
 
 /// Stable tray icon id (looked up by tests/`tray_by_id`).
@@ -142,6 +143,14 @@ pub const ID_LANGUAGE_SYSTEM: &str = "tray.language.system";
 pub const ID_LANGUAGE_EN: &str = "tray.language.en";
 /// "Language ▸ 简体中文".
 pub const ID_LANGUAGE_ZH: &str = "tray.language.zh-Hans";
+/// "Sweater Season" switch (v1.6.0).
+pub const ID_SWEATER: &str = "tray.sweater";
+/// "Holiday rope ▸ Off".
+pub const ID_HOLIDAY_OFF: &str = "tray.holiday.off";
+/// "Holiday rope ▸ Auto".
+pub const ID_HOLIDAY_AUTO: &str = "tray.holiday.auto";
+/// "Holiday rope ▸ Christmas".
+pub const ID_HOLIDAY_CHRISTMAS: &str = "tray.holiday.christmas";
 /// "Quit Hangline".
 pub const ID_QUIT: &str = "tray.quit";
 
@@ -191,6 +200,10 @@ pub enum TrayAction {
     SetRopeStyle(RopeStyle),
     /// Set `ropeColor` (v1.4 appearance).
     SetRopeColor(RopeColor),
+    /// Toggle Sweater Season (v1.6.0).
+    ToggleSweater,
+    /// Set `holidayTheme` (v1.6.0 seasonal rope).
+    SetHolidayTheme(HolidayTheme),
     /// Show the change-shortcut window for a target.
     ChangeShortcut(Target),
     /// Open Hangline's own screenshot directory.
@@ -230,6 +243,8 @@ impl TrayAction {
             Self::SetCardSize(_) => "set card size",
             Self::SetRopeStyle(_) => "set rope style",
             Self::SetRopeColor(_) => "set rope color",
+            Self::ToggleSweater => "toggle sweater season",
+            Self::SetHolidayTheme(_) => "set holiday theme",
             Self::ChangeShortcut(_) => "change shortcut",
             Self::OpenScreenshotsFolder => "open screenshots folder",
             Self::ToggleSound => "toggle sound",
@@ -292,6 +307,10 @@ pub fn action_for(id: &str) -> Option<TrayAction> {
         ID_ROPE_COLOR_HAZE => TrayAction::SetRopeColor(RopeColor::Haze),
         ID_ROPE_COLOR_TERRACOTTA => TrayAction::SetRopeColor(RopeColor::Terracotta),
         ID_ROPE_COLOR_VIOLET => TrayAction::SetRopeColor(RopeColor::Violet),
+        ID_SWEATER => TrayAction::ToggleSweater,
+        ID_HOLIDAY_OFF => TrayAction::SetHolidayTheme(HolidayTheme::Off),
+        ID_HOLIDAY_AUTO => TrayAction::SetHolidayTheme(HolidayTheme::Auto),
+        ID_HOLIDAY_CHRISTMAS => TrayAction::SetHolidayTheme(HolidayTheme::Christmas),
         // The Appearance submenu is a title row only: it has an id (stable menu identity) but no
         // click action; its 12 child rows carry the actions above.
         ID_APPEARANCE => return None,
@@ -371,6 +390,10 @@ pub struct MenuState {
     pub rope_style: RopeStyle,
     /// Rope colour (v1.4 appearance).
     pub rope_color: RopeColor,
+    /// v1.6.0 Sweater Season switch.
+    pub sweater_enabled: bool,
+    /// v1.6.0 holiday rope theme.
+    pub holiday_theme: HolidayTheme,
     /// First hotkey registration failure, shown as a disabled hint row + tooltip suffix.
     pub hotkey_error: Option<HotkeyFailure>,
     /// Copy/discard sounds.
@@ -419,6 +442,8 @@ pub fn menu_state(
         card_size: settings.card_size,
         rope_style: settings.rope_style,
         rope_color: settings.rope_color,
+        sweater_enabled: settings.sweater_enabled,
+        holiday_theme: settings.holiday_theme,
         hotkey_error,
         sound: settings.sound,
         start_at_login,
@@ -502,6 +527,10 @@ struct Items {
     color_haze: CheckMenuItem<Wry>,
     color_terracotta: CheckMenuItem<Wry>,
     color_violet: CheckMenuItem<Wry>,
+    sweater: CheckMenuItem<Wry>,
+    holiday_off: CheckMenuItem<Wry>,
+    holiday_auto: CheckMenuItem<Wry>,
+    holiday_christmas: CheckMenuItem<Wry>,
     hotkey_capture: MenuItem<Wry>,
     hotkey_toggle: MenuItem<Wry>,
     hotkey_edit_latest: MenuItem<Wry>,
@@ -1006,9 +1035,49 @@ fn build_menu(
             &color_violet,
         ],
     )?;
+    let sweater = CheckMenuItem::with_id(
+        app,
+        ID_SWEATER,
+        strings.sweater,
+        true,
+        state.sweater_enabled,
+        None::<&str>,
+    )?;
+    let holiday_off = CheckMenuItem::with_id(
+        app,
+        ID_HOLIDAY_OFF,
+        strings.holiday_off,
+        true,
+        state.holiday_theme == HolidayTheme::Off,
+        None::<&str>,
+    )?;
+    let holiday_auto = CheckMenuItem::with_id(
+        app,
+        ID_HOLIDAY_AUTO,
+        strings.holiday_auto,
+        true,
+        state.holiday_theme == HolidayTheme::Auto,
+        None::<&str>,
+    )?;
+    let holiday_christmas = CheckMenuItem::with_id(
+        app,
+        ID_HOLIDAY_CHRISTMAS,
+        strings.holiday_christmas,
+        true,
+        state.holiday_theme == HolidayTheme::Christmas,
+        None::<&str>,
+    )?;
+    let holiday_menu = Submenu::with_items(
+        app,
+        strings.holiday_menu,
+        true,
+        &[&holiday_off, &holiday_auto, &holiday_christmas],
+    )?;
     let appearance_menu = Submenu::with_id(app, ID_APPEARANCE, strings.appearance_menu, true)?;
     appearance_menu.append(&rope_style_menu)?;
     appearance_menu.append(&rope_color_menu)?;
+    appearance_menu.append(&sweater)?;
+    appearance_menu.append(&holiday_menu)?;
 
     let failed_capture = state
         .hotkey_error
@@ -1188,6 +1257,10 @@ fn build_menu(
         color_haze,
         color_terracotta,
         color_violet,
+        sweater,
+        holiday_off,
+        holiday_auto,
+        holiday_christmas,
         hotkey_capture,
         hotkey_toggle,
         hotkey_edit_latest,
@@ -1430,6 +1503,20 @@ fn apply_state(
     items
         .color_violet
         .set_checked(state.rope_color == RopeColor::Violet)?;
+    items.sweater.set_text(strings.sweater)?;
+    items.sweater.set_checked(state.sweater_enabled)?;
+    items.holiday_off.set_text(strings.holiday_off)?;
+    items.holiday_auto.set_text(strings.holiday_auto)?;
+    items.holiday_christmas.set_text(strings.holiday_christmas)?;
+    items
+        .holiday_off
+        .set_checked(state.holiday_theme == HolidayTheme::Off)?;
+    items
+        .holiday_auto
+        .set_checked(state.holiday_theme == HolidayTheme::Auto)?;
+    items
+        .holiday_christmas
+        .set_checked(state.holiday_theme == HolidayTheme::Christmas)?;
 
     let failed_capture = state
         .hotkey_error
@@ -1649,6 +1736,12 @@ fn apply_menu_action(app: &AppHandle, action: TrayAction) {
         TrayAction::SetCardSize(size) => Some(("cardSize", serde_json::json!(size))),
         TrayAction::SetRopeStyle(style) => Some(("ropeStyle", serde_json::json!(style))),
         TrayAction::SetRopeColor(color) => Some(("ropeColor", serde_json::json!(color))),
+        TrayAction::ToggleSweater => {
+            Some(("sweaterEnabled", serde_json::json!(!settings.sweater_enabled)))
+        }
+        TrayAction::SetHolidayTheme(theme) => {
+            Some(("holidayTheme", serde_json::json!(theme)))
+        }
         TrayAction::SetLanguage(None) => Some(("language", serde_json::json!("system"))),
         TrayAction::SetLanguage(Some(lang)) => Some(("language", serde_json::json!(lang.tag()))),
         other => {
@@ -1941,6 +2034,20 @@ mod tests {
         assert_eq!(
             action_for(ID_ROPE_COLOR_VIOLET),
             Some(TrayAction::SetRopeColor(RopeColor::Violet))
+        );
+        // v1.6.0: Sweater Season and the holiday rope theme.
+        assert_eq!(action_for(ID_SWEATER), Some(TrayAction::ToggleSweater));
+        assert_eq!(
+            action_for(ID_HOLIDAY_OFF),
+            Some(TrayAction::SetHolidayTheme(HolidayTheme::Off))
+        );
+        assert_eq!(
+            action_for(ID_HOLIDAY_AUTO),
+            Some(TrayAction::SetHolidayTheme(HolidayTheme::Auto))
+        );
+        assert_eq!(
+            action_for(ID_HOLIDAY_CHRISTMAS),
+            Some(TrayAction::SetHolidayTheme(HolidayTheme::Christmas))
         );
         assert_eq!(
             action_for(ID_HOTKEY_CAPTURE),

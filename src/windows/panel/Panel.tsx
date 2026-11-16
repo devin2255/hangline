@@ -17,7 +17,7 @@
  */
 
 import { listen } from "@tauri-apps/api/event";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import { CardContextMenu } from "../../components/CardContextMenu";
 import { CardPreview } from "../../components/CardPreview";
@@ -38,6 +38,7 @@ import {
   reportPanelReady,
   setHitRects,
   setPanelBusy,
+  sweaterPalette,
   showInExplorer,
   startDrag,
   startFall,
@@ -109,6 +110,8 @@ import {
   visibleSlice,
 } from "../../lib/layout";
 import { tick as springTick } from "../../lib/spring";
+import { activeHolidayTheme, parseHolidayTheme } from "../../lib/holiday";
+import { patternForItem, sweaterFrameDataUrl } from "../../lib/sweater";
 import { t } from "../../lib/i18n";
 import { initAppState, useAppStore } from "../../lib/state";
 import { useResolvedTheme } from "../../lib/theme";
@@ -125,6 +128,7 @@ import type {
   RevealEvent,
   RopeColor,
   RopeStyle,
+  SweaterWidth,
   TrimStateEvent,
   TuckEvent,
   UpdateCheckFailedEvent,
@@ -376,6 +380,18 @@ export function Panel() {
 
   const state = useAppStore((store) => store.state);
   const items = state?.items ?? NO_ITEMS;
+
+  // v1.6.0 Sweater Season / holiday theme. Both default off; old settings.json files hydrate to
+  // the safe defaults through the missing-field fallbacks below.
+  const sweaterEnabled = state?.settings.sweaterEnabled === true;
+  const sweaterWidthSetting = state?.settings.sweaterWidth;
+  const sweaterWidth: SweaterWidth =
+    sweaterWidthSetting === "slim" || sweaterWidthSetting === "chunky"
+      ? sweaterWidthSetting
+      : "classic";
+  const holidayTheme = parseHolidayTheme(state?.settings.holidayTheme);
+  const holiday = activeHolidayTheme(holidayTheme);
+  const [sweaterPalettes, setSweaterPalettes] = useState<Record<string, string[]>>({});
   const size = state?.settings.cardSize ?? "medium";
   const keepSetting = state?.settings.keepOnLine ?? "fit";
   const themeSetting = state?.settings.theme ?? "system";
@@ -408,6 +424,57 @@ export function Panel() {
   // Oldest → newest, newest on the right (Rust keeps `items` sorted ascending).
   const visible = items.slice(range.start, range.end);
   const newestId = items.length > 0 ? items[items.length - 1].id : "";
+
+  // Palette fetch: one local Rust decode per visible card, cached for the panel session. A card
+  // whose thumbnail cannot be decoded gets the backend's stable fallback palette instead of an
+  // error, so enabling Sweater Season never produces an empty frame.
+  useEffect(() => {
+    if (!sweaterEnabled) {
+      if (Object.keys(sweaterPalettes).length > 0) setSweaterPalettes({});
+      return;
+    }
+    const missing = visible.filter((item) => !sweaterPalettes[item.id]);
+    if (missing.length === 0) return;
+    let cancelled = false;
+    void Promise.all(
+      missing.map(async (item) => {
+        try {
+          const colors = await sweaterPalette(item.id);
+          return [item.id, colors] as const;
+        } catch (error) {
+          console.warn("Hangline panel: sweater palette unavailable", item.id, error);
+          return null;
+        }
+      }),
+    ).then((rows) => {
+      if (cancelled) return;
+      setSweaterPalettes((previous) => {
+        const next = { ...previous };
+        for (const row of rows) if (row) next[row[0]] = row[1];
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [sweaterEnabled, visible, sweaterPalettes]);
+
+  const sweaterFrames = useMemo(() => {
+    const frames: Record<string, string> = {};
+    if (!sweaterEnabled) return frames;
+    for (const item of visible) {
+      const palette = sweaterPalettes[item.id];
+      if (palette) {
+        frames[item.id] = sweaterFrameDataUrl(
+          palette,
+          patternForItem(item.id),
+          sweaterWidth,
+          cardVisualSize(item, size),
+        );
+      }
+    }
+    return frames;
+  }, [sweaterEnabled, visible, sweaterPalettes, sweaterWidth]);
 
   // --- v1.4.0 rope appearance + dynamic sag ----------------------------------------------------
   /**
@@ -2643,6 +2710,8 @@ export function Panel() {
       data-drop-toast={dropToast ?? undefined}
       data-rope-style={ropeStyle}
       data-rope-color={ropeColor}
+      data-sweater-enabled={sweaterEnabled}
+      data-holiday-theme={holiday ?? "off"}
       // v1.4.0: the palette reaches CSS/SVG as one custom property; Panel.css derives the base
       // rope/shadow/sheen/brass tokens from it with `color-mix` (theme-adaptive).
       style={{ "--rope-palette": ROPE_PALETTE[ropeColor] } as CSSProperties}
@@ -2661,7 +2730,7 @@ export function Panel() {
         onDragStart={(event) => event.preventDefault()}
       >
         <div className="panel__line" style={lineStyle}>
-          <Rope width={line} sag={sag} style={ropeStyle} color={ropeColor} />
+          <Rope width={line} sag={sag} style={ropeStyle} color={ropeColor} holiday={holiday} />
           {/*
             v1.5.0 drag-in drop feedback + the empty-line hint share this capsule slot (spec §8):
             the drop hint/toast replaces the idle hint instead of stacking. `pointer-events: none`
@@ -2702,6 +2771,7 @@ export function Panel() {
                 onEdit={openEditorFor}
                 onContextMenu={openCardMenuAt}
                 onMoreActions={openCardMenuAtElement}
+                sweaterFrame={sweaterFrames[item.id]}
                 onActionsElement={setActionsElement}
                 onPreviewRequest={handlePreviewRequest}
                 gesturesLocked={menuSuppressed}

@@ -194,6 +194,16 @@ export function setSetting<K extends SettingsKey>(key: K, value: Settings[K]): P
 }
 
 /**
+ * v1.6.0 Sweater Season: three yarn colours (`[main, contrast, neutral]`) for one card.
+ *
+ * Derived locally from the cached thumbnail by the Rust palette sampler; undecodable images get a
+ * stable fallback palette instead of an error.
+ */
+export function sweaterPalette(id: string): Promise<string[]> {
+  return invoke<string[]>("sweater_palette", { id });
+}
+
+/**
  * Starts Hangline's own freeze-frame region capture (Task 16, design spec §3.2 A).
  *
  * Rust hides the line if needed, grabs the virtual screen, saves the frozen frame and shows the

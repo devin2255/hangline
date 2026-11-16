@@ -54,6 +54,33 @@ pub fn set_setting(
     crate::actions::apply(&app, &key, value)
 }
 
+/// v1.6.0 Sweater Season: returns the three yarn colours for one card.
+///
+/// The palette is derived from the cached thumbnail (or the original when no thumbnail exists) by
+/// [`crate::sweater`]. Decode failures fall back to a stable palette from the item hash, so a
+/// screenshot with an unusual format still gets a sweater instead of an error toast.
+#[tauri::command]
+pub fn sweater_palette(id: String, app: AppHandle) -> Result<Vec<String>, String> {
+    let state = app.state::<AppState>();
+    let Some(item) = state.snapshot().items.into_iter().find(|item| item.id == id) else {
+        return Err(format!("unknown item: {id}"));
+    };
+    let path = item
+        .thumb_path
+        .clone()
+        .unwrap_or_else(|| item.path.clone());
+    match crate::sweater::palette_for_path(&path) {
+        Ok(palette) => Ok(palette),
+        Err(error) => {
+            log::warn!(
+                "sweater: palette extraction failed for {}: {error}; using the item fallback",
+                path.display()
+            );
+            Ok(crate::sweater::fallback_palette(item.hash))
+        }
+    }
+}
+
 /// Replaces one card's note (Wave 2 W2.1).
 ///
 /// Validation (`≤ 2000` characters), the single revision bump and the single `state.json` write
