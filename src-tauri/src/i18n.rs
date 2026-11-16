@@ -297,8 +297,12 @@ pub struct TrayStrings {
     pub rope_color_terracotta: &'static str,
     /// Rope colour: violet.
     pub rope_color_violet: &'static str,
-    /// v1.6.0 Sweater Season switch.
-    pub sweater: &'static str,
+    /// v1.6.0 card frame submenu title.
+    pub frame_menu: &'static str,
+    /// Card frame: none.
+    pub frame_none: &'static str,
+    /// Card frame: knitted sweater.
+    pub frame_sweater: &'static str,
     /// v1.6.0 "Holiday rope" submenu title.
     pub holiday_menu: &'static str,
     /// v1.6.0 sweater frame width submenu title.
@@ -325,6 +329,18 @@ pub struct TrayStrings {
     pub holiday_auto: &'static str,
     /// Holiday rope: keep the Christmas theme on.
     pub holiday_christmas: &'static str,
+    /// Holiday rope: New Year.
+    pub holiday_new_year: &'static str,
+    /// Holiday rope: Spring Festival.
+    pub holiday_spring_festival: &'static str,
+    /// Holiday rope: Valentine's Day.
+    pub holiday_valentine: &'static str,
+    /// Holiday rope: Mid-Autumn Festival.
+    pub holiday_mid_autumn: &'static str,
+    /// Holiday rope: National Day.
+    pub holiday_national_day: &'static str,
+    /// Holiday rope: Halloween.
+    pub holiday_halloween: &'static str,
     /// Shortcut submenu title.
     pub shortcut_menu: &'static str,
     /// Capture shortcut row (followed by the accelerator).
@@ -431,7 +447,9 @@ pub const EN: TrayStrings = TrayStrings {
     rope_color_haze: "Haze",
     rope_color_terracotta: "Terracotta",
     rope_color_violet: "Violet",
-    sweater: "Sweater Season",
+    frame_menu: "Border",
+    frame_none: "None",
+    frame_sweater: "Sweater",
     holiday_menu: "Holiday rope",
     sweater_width_menu: "Sweater frame",
     sweater_width_slim: "Slim",
@@ -445,6 +463,12 @@ pub const EN: TrayStrings = TrayStrings {
     holiday_off: "Off",
     holiday_auto: "Auto (festival windows)",
     holiday_christmas: "Christmas",
+    holiday_new_year: "New Year",
+    holiday_spring_festival: "Spring Festival",
+    holiday_valentine: "Valentine's Day",
+    holiday_mid_autumn: "Mid-Autumn",
+    holiday_national_day: "National Day",
+    holiday_halloween: "Halloween",
     shortcut_menu: "Shortcut",
     shortcut_capture: "Capture",
     shortcut_toggle: "Show/hide line",
@@ -523,7 +547,9 @@ pub const ZH_HANS: TrayStrings = TrayStrings {
     rope_color_haze: "雾霾蓝",
     rope_color_terracotta: "赤陶",
     rope_color_violet: "烟紫",
-    sweater: "毛衣季",
+    frame_menu: "边框",
+    frame_none: "无",
+    frame_sweater: "毛衣",
     holiday_menu: "节日绳子",
     sweater_width_menu: "毛衣边框",
     sweater_width_slim: "细",
@@ -537,6 +563,12 @@ pub const ZH_HANS: TrayStrings = TrayStrings {
     holiday_off: "关闭",
     holiday_auto: "自动（节日窗口）",
     holiday_christmas: "圣诞",
+    holiday_new_year: "元旦",
+    holiday_spring_festival: "春节",
+    holiday_valentine: "情人节",
+    holiday_mid_autumn: "中秋",
+    holiday_national_day: "国庆",
+    holiday_halloween: "万圣节",
     shortcut_menu: "快捷键",
     shortcut_capture: "截图",
     shortcut_toggle: "显示/隐藏线",
@@ -630,7 +662,9 @@ impl TrayStrings {
             ("rope_color_haze", self.rope_color_haze),
             ("rope_color_terracotta", self.rope_color_terracotta),
             ("rope_color_violet", self.rope_color_violet),
-            ("sweater", self.sweater),
+            ("frame_menu", self.frame_menu),
+            ("frame_none", self.frame_none),
+            ("frame_sweater", self.frame_sweater),
             ("holiday_menu", self.holiday_menu),
             ("sweater_width_menu", self.sweater_width_menu),
             ("sweater_width_slim", self.sweater_width_slim),
@@ -644,6 +678,12 @@ impl TrayStrings {
             ("holiday_off", self.holiday_off),
             ("holiday_auto", self.holiday_auto),
             ("holiday_christmas", self.holiday_christmas),
+            ("holiday_new_year", self.holiday_new_year),
+            ("holiday_spring_festival", self.holiday_spring_festival),
+            ("holiday_valentine", self.holiday_valentine),
+            ("holiday_mid_autumn", self.holiday_mid_autumn),
+            ("holiday_national_day", self.holiday_national_day),
+            ("holiday_halloween", self.holiday_halloween),
             ("shortcut_menu", self.shortcut_menu),
             ("shortcut_capture", self.shortcut_capture),
             ("shortcut_toggle", self.shortcut_toggle),

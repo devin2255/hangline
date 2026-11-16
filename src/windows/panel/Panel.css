@@ -1048,31 +1048,30 @@
 }
 
 /* Hide the normal rope materials while the Christmas cord is drawn. */
-.panel__rope[data-rope-holiday="christmas"] .rope--silk,
-.panel__rope[data-rope-holiday="christmas"] .rope--linen,
-.panel__rope[data-rope-holiday="christmas"] .rope--linen-texture,
-.panel__rope[data-rope-holiday="christmas"] .rope--brass,
-.panel__rope[data-rope-holiday="christmas"] .rope--aurora-glow,
-.panel__rope[data-rope-holiday="christmas"] .rope--aurora-core,
-.panel__rope[data-rope-holiday="christmas"] .rope--highlight {
+.panel__rope[data-rope-holiday] .rope--silk,
+.panel__rope[data-rope-holiday] .rope--linen,
+.panel__rope[data-rope-holiday] .rope--linen-texture,
+.panel__rope[data-rope-holiday] .rope--brass,
+.panel__rope[data-rope-holiday] .rope--aurora-glow,
+.panel__rope[data-rope-holiday] .rope--aurora-core,
+.panel__rope[data-rope-holiday] .rope--highlight {
   opacity: 0;
 }
 
-.panel__rope[data-rope-holiday="christmas"] .rope--holiday {
+.panel__rope[data-rope-holiday] .rope--holiday {
   fill: none;
   stroke-width: 2.6;
   opacity: 1;
 }
 
-.panel__rope[data-rope-holiday="christmas"] .rope--holiday-glow {
+.panel__rope[data-rope-holiday] .rope--holiday-glow {
   fill: none;
   stroke-width: 3.4;
   opacity: 0.28;
 }
 
-.panel__rope[data-rope-holiday="christmas"] .rope--holiday-thread {
+.panel__rope[data-rope-holiday] .rope--holiday-thread {
   fill: none;
-  stroke: #c9a05c;
   stroke-width: 0.7;
   opacity: 0.75;
   transform: translateY(-0.5px);

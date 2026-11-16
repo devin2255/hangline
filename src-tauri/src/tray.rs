@@ -143,8 +143,10 @@ pub const ID_LANGUAGE_SYSTEM: &str = "tray.language.system";
 pub const ID_LANGUAGE_EN: &str = "tray.language.en";
 /// "Language ▸ 简体中文".
 pub const ID_LANGUAGE_ZH: &str = "tray.language.zh-Hans";
-/// "Sweater Season" switch (v1.6.0).
-pub const ID_SWEATER: &str = "tray.sweater";
+/// "Border ▸ None" (v1.6.0).
+pub const ID_FRAME_NONE: &str = "tray.frame.none";
+/// "Border ▸ Sweater" (v1.6.0).
+pub const ID_FRAME_SWEATER: &str = "tray.frame.sweater";
 /// "Sweater frame ▸ Slim".
 pub const ID_SWEATER_SLIM: &str = "tray.sweater.width.slim";
 /// "Sweater frame ▸ Classic".
@@ -165,6 +167,18 @@ pub const ID_HOLIDAY_OFF: &str = "tray.holiday.off";
 pub const ID_HOLIDAY_AUTO: &str = "tray.holiday.auto";
 /// "Holiday rope ▸ Christmas".
 pub const ID_HOLIDAY_CHRISTMAS: &str = "tray.holiday.christmas";
+/// "Holiday rope ▸ New Year".
+pub const ID_HOLIDAY_NEW_YEAR: &str = "tray.holiday.new-year";
+/// "Holiday rope ▸ Spring Festival".
+pub const ID_HOLIDAY_SPRING_FESTIVAL: &str = "tray.holiday.spring-festival";
+/// "Holiday rope ▸ Valentine's Day".
+pub const ID_HOLIDAY_VALENTINE: &str = "tray.holiday.valentine";
+/// "Holiday rope ▸ Mid-Autumn".
+pub const ID_HOLIDAY_MID_AUTUMN: &str = "tray.holiday.mid-autumn";
+/// "Holiday rope ▸ National Day".
+pub const ID_HOLIDAY_NATIONAL_DAY: &str = "tray.holiday.national-day";
+/// "Holiday rope ▸ Halloween".
+pub const ID_HOLIDAY_HALLOWEEN: &str = "tray.holiday.halloween";
 /// "Quit Hangline".
 pub const ID_QUIT: &str = "tray.quit";
 
@@ -214,8 +228,8 @@ pub enum TrayAction {
     SetRopeStyle(RopeStyle),
     /// Set `ropeColor` (v1.4 appearance).
     SetRopeColor(RopeColor),
-    /// Toggle Sweater Season (v1.6.0).
-    ToggleSweater,
+    /// Select the card border: no frame or the knitted sweater (v1.6.0).
+    SetSweaterEnabled(bool),
     /// Set the sweater frame width (v1.6.0).
     SetSweaterWidth(SweaterWidth),
     /// Set the sweater yarn palette (v1.6.0).
@@ -261,7 +275,7 @@ impl TrayAction {
             Self::SetCardSize(_) => "set card size",
             Self::SetRopeStyle(_) => "set rope style",
             Self::SetRopeColor(_) => "set rope color",
-            Self::ToggleSweater => "toggle sweater season",
+            Self::SetSweaterEnabled(_) => "set sweater border",
             Self::SetSweaterWidth(_) => "set sweater width",
             Self::SetSweaterPalette(_) => "set sweater palette",
             Self::SetHolidayTheme(_) => "set holiday theme",
@@ -327,7 +341,8 @@ pub fn action_for(id: &str) -> Option<TrayAction> {
         ID_ROPE_COLOR_HAZE => TrayAction::SetRopeColor(RopeColor::Haze),
         ID_ROPE_COLOR_TERRACOTTA => TrayAction::SetRopeColor(RopeColor::Terracotta),
         ID_ROPE_COLOR_VIOLET => TrayAction::SetRopeColor(RopeColor::Violet),
-        ID_SWEATER => TrayAction::ToggleSweater,
+        ID_FRAME_NONE => TrayAction::SetSweaterEnabled(false),
+        ID_FRAME_SWEATER => TrayAction::SetSweaterEnabled(true),
         ID_SWEATER_SLIM => TrayAction::SetSweaterWidth(SweaterWidth::Slim),
         ID_SWEATER_CLASSIC => TrayAction::SetSweaterWidth(SweaterWidth::Classic),
         ID_SWEATER_CHUNKY => TrayAction::SetSweaterWidth(SweaterWidth::Chunky),
@@ -338,6 +353,12 @@ pub fn action_for(id: &str) -> Option<TrayAction> {
         ID_HOLIDAY_OFF => TrayAction::SetHolidayTheme(HolidayTheme::Off),
         ID_HOLIDAY_AUTO => TrayAction::SetHolidayTheme(HolidayTheme::Auto),
         ID_HOLIDAY_CHRISTMAS => TrayAction::SetHolidayTheme(HolidayTheme::Christmas),
+        ID_HOLIDAY_NEW_YEAR => TrayAction::SetHolidayTheme(HolidayTheme::NewYear),
+        ID_HOLIDAY_SPRING_FESTIVAL => TrayAction::SetHolidayTheme(HolidayTheme::SpringFestival),
+        ID_HOLIDAY_VALENTINE => TrayAction::SetHolidayTheme(HolidayTheme::Valentine),
+        ID_HOLIDAY_MID_AUTUMN => TrayAction::SetHolidayTheme(HolidayTheme::MidAutumn),
+        ID_HOLIDAY_NATIONAL_DAY => TrayAction::SetHolidayTheme(HolidayTheme::NationalDay),
+        ID_HOLIDAY_HALLOWEEN => TrayAction::SetHolidayTheme(HolidayTheme::Halloween),
         // The Appearance submenu is a title row only: it has an id (stable menu identity) but no
         // click action; its 12 child rows carry the actions above.
         ID_APPEARANCE => return None,
@@ -560,7 +581,8 @@ struct Items {
     color_haze: CheckMenuItem<Wry>,
     color_terracotta: CheckMenuItem<Wry>,
     color_violet: CheckMenuItem<Wry>,
-    sweater: CheckMenuItem<Wry>,
+    frame_none: CheckMenuItem<Wry>,
+    frame_sweater: CheckMenuItem<Wry>,
     sweater_slim: CheckMenuItem<Wry>,
     sweater_classic: CheckMenuItem<Wry>,
     sweater_chunky: CheckMenuItem<Wry>,
@@ -571,6 +593,12 @@ struct Items {
     holiday_off: CheckMenuItem<Wry>,
     holiday_auto: CheckMenuItem<Wry>,
     holiday_christmas: CheckMenuItem<Wry>,
+    holiday_new_year: CheckMenuItem<Wry>,
+    holiday_spring_festival: CheckMenuItem<Wry>,
+    holiday_valentine: CheckMenuItem<Wry>,
+    holiday_mid_autumn: CheckMenuItem<Wry>,
+    holiday_national_day: CheckMenuItem<Wry>,
+    holiday_halloween: CheckMenuItem<Wry>,
     hotkey_capture: MenuItem<Wry>,
     hotkey_toggle: MenuItem<Wry>,
     hotkey_edit_latest: MenuItem<Wry>,
@@ -1075,13 +1103,27 @@ fn build_menu(
             &color_violet,
         ],
     )?;
-    let sweater = CheckMenuItem::with_id(
+    let frame_none = CheckMenuItem::with_id(
         app,
-        ID_SWEATER,
-        strings.sweater,
+        ID_FRAME_NONE,
+        strings.frame_none,
+        true,
+        !state.sweater_enabled,
+        None::<&str>,
+    )?;
+    let frame_sweater = CheckMenuItem::with_id(
+        app,
+        ID_FRAME_SWEATER,
+        strings.frame_sweater,
         true,
         state.sweater_enabled,
         None::<&str>,
+    )?;
+    let frame_menu = Submenu::with_items(
+        app,
+        strings.frame_menu,
+        true,
+        &[&frame_none, &frame_sweater],
     )?;
     let sweater_slim = CheckMenuItem::with_id(
         app,
@@ -1180,16 +1222,74 @@ fn build_menu(
         state.holiday_theme == HolidayTheme::Christmas,
         None::<&str>,
     )?;
+    let holiday_new_year = CheckMenuItem::with_id(
+        app,
+        ID_HOLIDAY_NEW_YEAR,
+        strings.holiday_new_year,
+        true,
+        state.holiday_theme == HolidayTheme::NewYear,
+        None::<&str>,
+    )?;
+    let holiday_spring_festival = CheckMenuItem::with_id(
+        app,
+        ID_HOLIDAY_SPRING_FESTIVAL,
+        strings.holiday_spring_festival,
+        true,
+        state.holiday_theme == HolidayTheme::SpringFestival,
+        None::<&str>,
+    )?;
+    let holiday_valentine = CheckMenuItem::with_id(
+        app,
+        ID_HOLIDAY_VALENTINE,
+        strings.holiday_valentine,
+        true,
+        state.holiday_theme == HolidayTheme::Valentine,
+        None::<&str>,
+    )?;
+    let holiday_mid_autumn = CheckMenuItem::with_id(
+        app,
+        ID_HOLIDAY_MID_AUTUMN,
+        strings.holiday_mid_autumn,
+        true,
+        state.holiday_theme == HolidayTheme::MidAutumn,
+        None::<&str>,
+    )?;
+    let holiday_national_day = CheckMenuItem::with_id(
+        app,
+        ID_HOLIDAY_NATIONAL_DAY,
+        strings.holiday_national_day,
+        true,
+        state.holiday_theme == HolidayTheme::NationalDay,
+        None::<&str>,
+    )?;
+    let holiday_halloween = CheckMenuItem::with_id(
+        app,
+        ID_HOLIDAY_HALLOWEEN,
+        strings.holiday_halloween,
+        true,
+        state.holiday_theme == HolidayTheme::Halloween,
+        None::<&str>,
+    )?;
     let holiday_menu = Submenu::with_items(
         app,
         strings.holiday_menu,
         true,
-        &[&holiday_off, &holiday_auto, &holiday_christmas],
+        &[
+            &holiday_off,
+            &holiday_auto,
+            &holiday_new_year,
+            &holiday_spring_festival,
+            &holiday_valentine,
+            &holiday_mid_autumn,
+            &holiday_national_day,
+            &holiday_halloween,
+            &holiday_christmas,
+        ],
     )?;
     let appearance_menu = Submenu::with_id(app, ID_APPEARANCE, strings.appearance_menu, true)?;
     appearance_menu.append(&rope_style_menu)?;
     appearance_menu.append(&rope_color_menu)?;
-    appearance_menu.append(&sweater)?;
+    appearance_menu.append(&frame_menu)?;
     appearance_menu.append(&sweater_width_menu)?;
     appearance_menu.append(&sweater_palette_menu)?;
     appearance_menu.append(&holiday_menu)?;
@@ -1372,7 +1472,8 @@ fn build_menu(
         color_haze,
         color_terracotta,
         color_violet,
-        sweater,
+        frame_none,
+        frame_sweater,
         sweater_slim,
         sweater_classic,
         sweater_chunky,
@@ -1382,6 +1483,12 @@ fn build_menu(
         sweater_palette_berry,
         holiday_off,
         holiday_auto,
+        holiday_new_year,
+        holiday_spring_festival,
+        holiday_valentine,
+        holiday_mid_autumn,
+        holiday_national_day,
+        holiday_halloween,
         holiday_christmas,
         hotkey_capture,
         hotkey_toggle,
@@ -1625,8 +1732,10 @@ fn apply_state(
     items
         .color_violet
         .set_checked(state.rope_color == RopeColor::Violet)?;
-    items.sweater.set_text(strings.sweater)?;
-    items.sweater.set_checked(state.sweater_enabled)?;
+    items.frame_none.set_text(strings.frame_none)?;
+    items.frame_sweater.set_text(strings.frame_sweater)?;
+    items.frame_none.set_checked(!state.sweater_enabled)?;
+    items.frame_sweater.set_checked(state.sweater_enabled)?;
     items.sweater_slim.set_text(strings.sweater_width_slim)?;
     items.sweater_classic.set_text(strings.sweater_width_classic)?;
     items.sweater_chunky.set_text(strings.sweater_width_chunky)?;
@@ -1657,6 +1766,16 @@ fn apply_state(
         .set_checked(state.sweater_palette == SweaterPalette::Berry)?;
     items.holiday_off.set_text(strings.holiday_off)?;
     items.holiday_auto.set_text(strings.holiday_auto)?;
+    items.holiday_new_year.set_text(strings.holiday_new_year)?;
+    items
+        .holiday_spring_festival
+        .set_text(strings.holiday_spring_festival)?;
+    items.holiday_valentine.set_text(strings.holiday_valentine)?;
+    items.holiday_mid_autumn.set_text(strings.holiday_mid_autumn)?;
+    items
+        .holiday_national_day
+        .set_text(strings.holiday_national_day)?;
+    items.holiday_halloween.set_text(strings.holiday_halloween)?;
     items.holiday_christmas.set_text(strings.holiday_christmas)?;
     items
         .holiday_off
@@ -1664,6 +1783,24 @@ fn apply_state(
     items
         .holiday_auto
         .set_checked(state.holiday_theme == HolidayTheme::Auto)?;
+    items
+        .holiday_new_year
+        .set_checked(state.holiday_theme == HolidayTheme::NewYear)?;
+    items
+        .holiday_spring_festival
+        .set_checked(state.holiday_theme == HolidayTheme::SpringFestival)?;
+    items
+        .holiday_valentine
+        .set_checked(state.holiday_theme == HolidayTheme::Valentine)?;
+    items
+        .holiday_mid_autumn
+        .set_checked(state.holiday_theme == HolidayTheme::MidAutumn)?;
+    items
+        .holiday_national_day
+        .set_checked(state.holiday_theme == HolidayTheme::NationalDay)?;
+    items
+        .holiday_halloween
+        .set_checked(state.holiday_theme == HolidayTheme::Halloween)?;
     items
         .holiday_christmas
         .set_checked(state.holiday_theme == HolidayTheme::Christmas)?;
@@ -1886,8 +2023,8 @@ fn apply_menu_action(app: &AppHandle, action: TrayAction) {
         TrayAction::SetCardSize(size) => Some(("cardSize", serde_json::json!(size))),
         TrayAction::SetRopeStyle(style) => Some(("ropeStyle", serde_json::json!(style))),
         TrayAction::SetRopeColor(color) => Some(("ropeColor", serde_json::json!(color))),
-        TrayAction::ToggleSweater => {
-            Some(("sweaterEnabled", serde_json::json!(!settings.sweater_enabled)))
+        TrayAction::SetSweaterEnabled(enabled) => {
+            Some(("sweaterEnabled", serde_json::json!(enabled)))
         }
         TrayAction::SetSweaterWidth(width) => {
             Some(("sweaterWidth", serde_json::json!(width)))
@@ -2191,8 +2328,9 @@ mod tests {
             action_for(ID_ROPE_COLOR_VIOLET),
             Some(TrayAction::SetRopeColor(RopeColor::Violet))
         );
-        // v1.6.0: Sweater Season and the holiday rope theme.
-        assert_eq!(action_for(ID_SWEATER), Some(TrayAction::ToggleSweater));
+        // v1.6.0: the card border and the holiday rope theme.
+        assert_eq!(action_for(ID_FRAME_NONE), Some(TrayAction::SetSweaterEnabled(false)));
+        assert_eq!(action_for(ID_FRAME_SWEATER), Some(TrayAction::SetSweaterEnabled(true)));
         assert_eq!(
             action_for(ID_SWEATER_SLIM),
             Some(TrayAction::SetSweaterWidth(SweaterWidth::Slim))
@@ -2232,6 +2370,30 @@ mod tests {
         assert_eq!(
             action_for(ID_HOLIDAY_CHRISTMAS),
             Some(TrayAction::SetHolidayTheme(HolidayTheme::Christmas))
+        );
+        assert_eq!(
+            action_for(ID_HOLIDAY_NEW_YEAR),
+            Some(TrayAction::SetHolidayTheme(HolidayTheme::NewYear))
+        );
+        assert_eq!(
+            action_for(ID_HOLIDAY_SPRING_FESTIVAL),
+            Some(TrayAction::SetHolidayTheme(HolidayTheme::SpringFestival))
+        );
+        assert_eq!(
+            action_for(ID_HOLIDAY_VALENTINE),
+            Some(TrayAction::SetHolidayTheme(HolidayTheme::Valentine))
+        );
+        assert_eq!(
+            action_for(ID_HOLIDAY_MID_AUTUMN),
+            Some(TrayAction::SetHolidayTheme(HolidayTheme::MidAutumn))
+        );
+        assert_eq!(
+            action_for(ID_HOLIDAY_NATIONAL_DAY),
+            Some(TrayAction::SetHolidayTheme(HolidayTheme::NationalDay))
+        );
+        assert_eq!(
+            action_for(ID_HOLIDAY_HALLOWEEN),
+            Some(TrayAction::SetHolidayTheme(HolidayTheme::Halloween))
         );
         assert_eq!(
             action_for(ID_HOTKEY_CAPTURE),

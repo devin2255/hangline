@@ -137,17 +137,29 @@ pub enum SweaterWidth {
 
 /// Seasonal rope theme (v1.6.0 "holiday theme").
 ///
-/// `off` is the default, `auto` follows the local-date window table (Christmas 12/01–01/06) and
-/// an explicit theme keeps that decoration on regardless of the calendar. Everything is local; no
-/// network request is involved.
+/// `off` is the default, `auto` follows the local-date window table and an explicit theme keeps
+/// that decoration on regardless of the calendar. Everything is local; no network request is
+/// involved. The kebab-case wire values are also the frontend `HolidayThemeId` strings.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "kebab-case")]
 pub enum HolidayTheme {
     /// No seasonal rope decoration.
     #[default]
     Off,
-    /// Apply a theme during its local-date window and restore afterwards.
+    /// Apply the theme whose local-date window contains today, then restore afterwards.
     Auto,
+    /// Always use the New Year rope theme.
+    NewYear,
+    /// Always use the Spring Festival rope theme.
+    SpringFestival,
+    /// Always use the Valentine's Day rope theme.
+    Valentine,
+    /// Always use the Mid-Autumn Festival rope theme.
+    MidAutumn,
+    /// Always use the National Day rope theme.
+    NationalDay,
+    /// Always use the Halloween rope theme.
+    Halloween,
     /// Always use the Christmas rope theme.
     Christmas,
 }
@@ -1030,6 +1042,31 @@ mod tests {
         assert_eq!(s.theme, Theme::System);
         assert!(s.auto_check_updates);
         assert_eq!(s.last_update_check, "");
+    }
+
+    /// The holiday ids are a public wire contract: they must match the frontend `HolidayThemeId`
+    /// union and the string stored in `settings.json` (never a Rust debug name).
+    #[test]
+    fn holiday_theme_wire_values_are_kebab_case() {
+        let cases = [
+            (HolidayTheme::Off, "off"),
+            (HolidayTheme::Auto, "auto"),
+            (HolidayTheme::NewYear, "new-year"),
+            (HolidayTheme::SpringFestival, "spring-festival"),
+            (HolidayTheme::Valentine, "valentine"),
+            (HolidayTheme::MidAutumn, "mid-autumn"),
+            (HolidayTheme::NationalDay, "national-day"),
+            (HolidayTheme::Halloween, "halloween"),
+            (HolidayTheme::Christmas, "christmas"),
+        ];
+        for (theme, wire) in cases {
+            assert_eq!(serde_json::to_value(theme).unwrap(), json!(wire));
+            let mut settings = Settings::default();
+            settings
+                .set_json("holidayTheme", json!(wire))
+                .expect("every advertised holiday id must be accepted");
+            assert_eq!(settings.holiday_theme, theme);
+        }
     }
 
     #[test]
