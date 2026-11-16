@@ -128,8 +128,18 @@ export type SweaterWidth = "slim" | "classic" | "chunky";
 /** v1.6.0 sweater yarn palette (Rust `sweaterPalette`; `auto` samples each screenshot). */
 export type SweaterPalette = "auto" | "pine" | "frost" | "berry";
 
-/** v1.6.0 seasonal rope theme (Rust `holidayTheme`; `auto` follows local-date windows). */
-export type HolidayTheme = "off" | "auto" | "christmas";
+/** v1.6.0 holiday rope themes (Rust `holidayTheme` kebab-case wire values). */
+export type HolidayThemeId =
+  | "new-year"
+  | "spring-festival"
+  | "valentine"
+  | "mid-autumn"
+  | "national-day"
+  | "halloween"
+  | "christmas";
+
+/** `auto` follows the local-date windows; a specific id previews/pins that theme. */
+export type HolidayTheme = "off" | "auto" | HolidayThemeId;
 
 /**
  * One item hung on the line (design spec 4.5; Rust `Item`).

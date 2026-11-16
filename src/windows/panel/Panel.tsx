@@ -114,7 +114,6 @@ import {
 import { tick as springTick } from "../../lib/spring";
 import {
   activeHolidayTheme,
-  isChristmasWindow,
   markHolidayPromptSeen,
   parseHolidayTheme,
   readHolidayPromptSeen,
@@ -421,7 +420,7 @@ export function Panel() {
   useEffect(() => {
     if (!state || holidayTheme !== "off") return;
     const now = new Date();
-    if (!isChristmasWindow(now) || readHolidayPromptSeen(now)) return;
+    if (activeHolidayTheme("auto", now) === null || readHolidayPromptSeen(now)) return;
     markHolidayPromptSeen(now);
     setHolidayHintVisible(true);
     const timer = window.setTimeout(() => setHolidayHintVisible(false), 9000);
@@ -2843,7 +2842,7 @@ export function Panel() {
               role="status"
               aria-live="polite"
             >
-              {t("Christmas rope is here — tray → Appearance → Holiday rope")}
+              {t("Holiday rope is here — tray → Appearance → Holiday rope")}
             </p>
           ) : null}
           {visible.map((item, index) => {

@@ -1,64 +1,67 @@
 /** v1.6.0 local holiday windows for the rope theme. Pure and timezone-local by design. */
 
-export type HolidayTheme = "off" | "auto" | "christmas";
+import type { HolidayTheme, HolidayThemeId } from "./types";
+import { HOLIDAY_AUTO_PRIORITY, HOLIDAY_THEME_IDS, holidayWindowIncludes } from "./holidayThemes";
 
-export type ActiveHolidayTheme = "christmas" | null;
-
-const CHRISTMAS = { startMonth: 11, startDay: 1, endMonth: 0, endDay: 6 } as const;
+/** Resolved decorative theme; `null` means the normal rope. */
+export type ActiveHolidayTheme = HolidayThemeId | null;
 
 /** True for 12/01 through 01/06 inclusive (local calendar date). */
 export function isChristmasWindow(date: Date = new Date()): boolean {
-  const month = date.getMonth();
-  const day = date.getDate();
-  if (month === CHRISTMAS.startMonth) return day >= CHRISTMAS.startDay;
-  if (month === CHRISTMAS.endMonth) return day <= CHRISTMAS.endDay;
-  return false;
+  return holidayWindowIncludes("christmas", date);
 }
 
 /**
  * Resolves the rope theme that should be visible now.
  *
  * - `off`: never;
- * - `auto`: only inside the Christmas window;
- * - `christmas`: always (manual selection / preview).
+ * - `auto`: the highest-priority local-date window that contains today;
+ * - a specific id: always (manual selection / preview).
  */
 export function activeHolidayTheme(
   theme: HolidayTheme | undefined,
   date: Date = new Date(),
 ): ActiveHolidayTheme {
-  if (theme === "christmas") return "christmas";
-  if (theme === "auto" && isChristmasWindow(date)) return "christmas";
-  return null;
+  if (!theme || theme === "off") return null;
+  if (theme === "auto") {
+    return HOLIDAY_AUTO_PRIORITY.find((id) => holidayWindowIncludes(id, date)) ?? null;
+  }
+  return HOLIDAY_THEME_IDS.includes(theme) ? theme : null;
 }
 
 /** Stable wire-safe check used when hydrating a persisted setting. */
 export function parseHolidayTheme(value: unknown): HolidayTheme {
-  return value === "auto" || value === "christmas" ? value : "off";
+  if (value === "off" || value === "auto") return value;
+  return typeof value === "string" && HOLIDAY_THEME_IDS.includes(value as HolidayThemeId)
+    ? (value as HolidayThemeId)
+    : "off";
 }
 
-/** localStorage key prefix for the once-per-season Christmas hint (local only, no telemetry). */
+/** localStorage key prefix for the once-per-holiday hint (local only, no telemetry). */
 const HOLIDAY_PROMPT_PREFIX = "hangline.holidayPrompt";
 
 /**
- * The Christmas season spans New Year, so a January date belongs to the previous year's season.
- * The key keeps the hint once per season instead of once per calendar year.
+ * One hint per holiday per calendar year: the auto window resolves the holiday id, so New Year,
+ * Spring Festival, Christmas, ... each get their own once-only flag. Calendar-year keying is enough
+ * here because each window opens at most once in a year (Christmas's January tail is a new year and
+ * therefore a new key, which is acceptable for a passive hint).
  */
-export function holidaySeasonYear(date: Date): number {
-  return date.getMonth() === 0 ? date.getFullYear() - 1 : date.getFullYear();
-}
-
-/** localStorage key for "the user has already seen the Christmas hint this season". */
 export function holidayPromptKey(date: Date): string {
-  return `${HOLIDAY_PROMPT_PREFIX}.christmas.${holidaySeasonYear(date)}`;
+  const id = activeHolidayTheme("auto", date) ?? "none";
+  return `${HOLIDAY_PROMPT_PREFIX}.${id}.${date.getFullYear()}`;
 }
 
 /**
- * True when a passive hint should be shown at most once: inside the Christmas window, the theme is
- * still off, and this season's hint has not been shown yet. Pure so the date/seen half is testable
- * without a DOM; the localStorage read/write lives in the panel's effect.
+ * True when a passive hint should be shown at most once: a holiday auto-window is open, the theme
+ * is still off, and this holiday's hint has not been shown yet. Pure so the date/seen half is
+ * testable without a DOM; the localStorage read/write lives in the panel's effect.
  */
 export function holidayPromptDue(theme: HolidayTheme | string, date: Date, seen: boolean): boolean {
-  return isChristmasWindow(date) && parseHolidayTheme(theme) === "off" && !seen;
+  return (
+    parseHolidayTheme(theme) === "off" &&
+    activeHolidayTheme("auto", date) !== null &&
+    !seen
+  );
 }
 
 /** Reads the persisted hint flag; storage failures degrade to "already seen" (never nag). */
