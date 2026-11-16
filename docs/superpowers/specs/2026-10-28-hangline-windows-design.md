@@ -20,7 +20,7 @@ Windows 没有等价的「系统截图落盘钩子」，也没有菜单栏，但
 
 Tendedero 的 LICENSE 为 MIT + 「Name and icon」附加条款：修改/再分发版本**必须换名换图标**，且不得暗示官方背书。因此：
 
-- 产品名 **Hangline**，中文展示名「晾图绳」；图标必须为原创（代码/SVG 绘制，不复制 Tendedero 图标）；
+- 产品名 **Hangline**，中文展示名「晾图绳」；图标必须为原创（代码绘制，不复制 Tendedero 图标）；
 - 代码为独立实现，V1 不复制 Tendedero 源码；**允许**移植其 11 语言翻译文本（MIT 覆盖，需在 `THIRD_PARTY_NOTICES.md` 注明版权与出处）；
 - README 明确写「inspired by Tendedero」，不与官方产生混淆。
 
@@ -512,7 +512,7 @@ struct PublicState {          // IPC 快照（Rust 内部 AppState 还持有 Mut
   - `Hangline_<version>_x64.msi`（可选，V1.1）
   - portable zip（`pnpm tauri build --no-bundle` 后手工 zip，附 `portable` 标记文件）
 - WebView2：`webviewInstallMode: downloadBootstrapper`（在线安装）或 `embedBootstrapper`（+1.5 MB，离线可用）。**默认 embedBootstrapper**，保证离线机器可装。
-- 图标：SVG/代码绘制 → `pnpm tauri icon` 生成全套；**不复制 Tendedero 图标**。
+- 图标：代码绘制（`scripts/design/app-icon.py` 输出 `src-tauri/app-icon.png`）→ `pnpm tauri icon src-tauri/app-icon.png` 生成全套；**不复制 Tendedero 图标**。
 - 版本号：`package.json` 与 `src-tauri/tauri.conf.json` 同步（构建脚本 `scripts/version.mjs` 校验，不一致即失败）。
 
 ### 6.2 签名与发布
@@ -690,7 +690,7 @@ struct PublicState {          // IPC 快照（Rust 内部 AppState 还持有 Mut
 
 - 本项目代码：**MIT**（`LICENSE`）。
 - 第三方与灵感：`THIRD_PARTY_NOTICES.md` 注明 Tendedero（MIT，© 2026 Alejandro Buján）为形态灵感来源；若移植其翻译文本，逐语言注明译者（来自其 PR/commit 记录）。
-- 图标与 README 插图：全部原创（SVG + `pnpm tauri icon` / Node 脚本渲染），不复用 Tendedero 美术。
+- 图标与 README 插图：全部原创（`src-tauri/app-icon.png` 由 `scripts/design/app-icon.py` 渲染，`pnpm tauri icon` 生成全套；README 插图为 Node/截图），不复用 Tendedero 美术。
 - 文档：`README.md`（英）+ `README.zh-Hans.md`；`docs/` 放验收记录与实验报告；`docs/superpowers/specs/` 放本设计文档。
 
 ---

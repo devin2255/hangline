@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.5.2 — 2026-11-16
+
+> A refreshed app icon.
+
+- **New app icon.** The clothesline is still the mark — now drawn as a deep ink-green tile, a warm
+  silk rope with brass end caps, a brass clothespin and one sunset postcard. The new art has a
+  clearer silhouette at 16–32 px, a softer rope sag and a real card shadow.
+- Every platform icon was re-generated from the new 1024 px source: Windows `.ico` (16/24/32/48/64/
+  256), macOS `.icns`, Store logos, tray icon and the NSIS/portable installer icon; the press-kit
+  logo (`docs/press/hangline-logo.png`) was refreshed too.
+- The reproducible source lives in `src-tauri/app-icon.png` (rendered by
+  `scripts/design/app-icon.py`); regenerate with `pnpm tauri icon src-tauri/app-icon.png`.
+- No functional changes.
+
 ## 1.5.1 — 2026-11-16
 
 > The update row shows the running version.
