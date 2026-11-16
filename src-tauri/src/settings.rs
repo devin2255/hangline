@@ -110,6 +110,21 @@ pub enum RopeColor {
 /// pattern can stay a pure renderer concern.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+pub enum SweaterPalette {
+    /// Sample each screenshot's own colours (default).
+    #[default]
+    Auto,
+    /// Deep pine + brass + cream: the curated winter set.
+    Pine,
+    /// Frosted blue-grey + snow + slate: the quiet curated set.
+    Frost,
+    /// Berry red + gold + parchment: the warm curated set.
+    Berry,
+}
+
+/// v1.6.0 Sweater Season frame thickness (`sweaterWidth`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum SweaterWidth {
     /// A thin 6 dp frame.
     Slim,
@@ -319,6 +334,8 @@ pub struct Settings {
     pub sweater_enabled: bool,
     /// v1.6.0 sweater frame thickness (default classic).
     pub sweater_width: SweaterWidth,
+    /// v1.6.0 sweater yarn palette (default auto = sample each screenshot).
+    pub sweater_palette: SweaterPalette,
     /// v1.6.0 seasonal rope theme (default off; `auto` follows the local holiday window).
     pub holiday_theme: HolidayTheme,
     /// Play copy/discard sounds.
@@ -358,6 +375,7 @@ impl Default for Settings {
             rope_color: RopeColor::Ink,
             sweater_enabled: false,
             sweater_width: SweaterWidth::Classic,
+            sweater_palette: SweaterPalette::Auto,
             holiday_theme: HolidayTheme::Off,
             sound: true,
             start_at_login: false,
@@ -425,6 +443,7 @@ impl Settings {
             "ropeColor" => self.rope_color = expected_enum(key, &value)?,
             "sweaterEnabled" => self.sweater_enabled = expected_bool(key, &value)?,
             "sweaterWidth" => self.sweater_width = expected_enum(key, &value)?,
+            "sweaterPalette" => self.sweater_palette = expected_enum(key, &value)?,
             "holidayTheme" => self.holiday_theme = expected_enum(key, &value)?,
             "sound" => self.sound = expected_bool(key, &value)?,
             "startAtLogin" => self.start_at_login = expected_bool(key, &value)?,
@@ -1003,6 +1022,7 @@ mod tests {
             "v1.6.0 Sweater Season must default to off so existing desktops are unchanged"
         );
         assert_eq!(s.sweater_width, SweaterWidth::Classic);
+        assert_eq!(s.sweater_palette, SweaterPalette::Auto);
         assert_eq!(s.holiday_theme, HolidayTheme::Off);
         assert!(s.sound);
         assert!(!s.start_at_login);
@@ -1013,14 +1033,15 @@ mod tests {
     }
 
     #[test]
-    fn default_json_has_exactly_the_twenty_seven_camel_case_keys() {
+    fn default_json_has_exactly_the_twenty_eight_camel_case_keys() {
         let value = serde_json::to_value(Settings::default()).expect("serialize defaults");
         let object = value.as_object().expect("settings must be a JSON object");
         assert_eq!(
             object.len(),
-            27,
+            28,
             "18 design-spec keys + keepForDays + captureCopyOnFinish + editLatestHotkey + \
-             searchHotkey + ropeStyle + ropeColor + sweaterEnabled + sweaterWidth + holidayTheme"
+             searchHotkey + ropeStyle + ropeColor + sweaterEnabled + sweaterWidth + sweaterPalette + \
+             holidayTheme"
         );
         for key in [
             "captureHotkey",
@@ -1043,6 +1064,7 @@ mod tests {
             "ropeColor",
             "sweaterEnabled",
             "sweaterWidth",
+            "sweaterPalette",
             "holidayTheme",
             "sound",
             "startAtLogin",
@@ -1064,6 +1086,7 @@ mod tests {
         assert_eq!(object["ropeColor"], json!("ink"));
         assert_eq!(object["sweaterEnabled"], json!(false));
         assert_eq!(object["sweaterWidth"], json!("classic"));
+        assert_eq!(object["sweaterPalette"], json!("auto"));
         assert_eq!(object["holidayTheme"], json!("off"));
         assert_eq!(object["theme"], json!("system"));
         assert_eq!(object["revealPeekMs"], json!(2500));

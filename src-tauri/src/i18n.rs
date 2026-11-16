@@ -309,6 +309,16 @@ pub struct TrayStrings {
     pub sweater_width_classic: &'static str,
     /// Sweater frame width: chunky.
     pub sweater_width_chunky: &'static str,
+    /// v1.6.0 sweater yarn palette submenu title.
+    pub sweater_palette_menu: &'static str,
+    /// Sweater palette: sample each screenshot.
+    pub sweater_palette_auto: &'static str,
+    /// Sweater palette: curated pine.
+    pub sweater_palette_pine: &'static str,
+    /// Sweater palette: curated frost.
+    pub sweater_palette_frost: &'static str,
+    /// Sweater palette: curated berry.
+    pub sweater_palette_berry: &'static str,
     /// Holiday rope: off.
     pub holiday_off: &'static str,
     /// Holiday rope: follow the local festival windows.
@@ -427,6 +437,11 @@ pub const EN: TrayStrings = TrayStrings {
     sweater_width_slim: "Slim",
     sweater_width_classic: "Classic",
     sweater_width_chunky: "Chunky",
+    sweater_palette_menu: "Sweater palette",
+    sweater_palette_auto: "Auto (from screenshot)",
+    sweater_palette_pine: "Pine",
+    sweater_palette_frost: "Frost",
+    sweater_palette_berry: "Berry",
     holiday_off: "Off",
     holiday_auto: "Auto (festival windows)",
     holiday_christmas: "Christmas",
@@ -514,6 +529,11 @@ pub const ZH_HANS: TrayStrings = TrayStrings {
     sweater_width_slim: "细",
     sweater_width_classic: "经典",
     sweater_width_chunky: "粗",
+    sweater_palette_menu: "毛衣配色",
+    sweater_palette_auto: "自动（取自截图）",
+    sweater_palette_pine: "松林",
+    sweater_palette_frost: "霜白",
+    sweater_palette_berry: "浆果",
     holiday_off: "关闭",
     holiday_auto: "自动（节日窗口）",
     holiday_christmas: "圣诞",
@@ -616,6 +636,11 @@ impl TrayStrings {
             ("sweater_width_slim", self.sweater_width_slim),
             ("sweater_width_classic", self.sweater_width_classic),
             ("sweater_width_chunky", self.sweater_width_chunky),
+            ("sweater_palette_menu", self.sweater_palette_menu),
+            ("sweater_palette_auto", self.sweater_palette_auto),
+            ("sweater_palette_pine", self.sweater_palette_pine),
+            ("sweater_palette_frost", self.sweater_palette_frost),
+            ("sweater_palette_berry", self.sweater_palette_berry),
             ("holiday_off", self.holiday_off),
             ("holiday_auto", self.holiday_auto),
             ("holiday_christmas", self.holiday_christmas),

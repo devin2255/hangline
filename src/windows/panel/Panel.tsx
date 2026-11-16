@@ -112,9 +112,16 @@ import {
   visibleSlice,
 } from "../../lib/layout";
 import { tick as springTick } from "../../lib/spring";
-import { activeHolidayTheme, parseHolidayTheme } from "../../lib/holiday";
+import {
+  activeHolidayTheme,
+  isChristmasWindow,
+  markHolidayPromptSeen,
+  parseHolidayTheme,
+  readHolidayPromptSeen,
+} from "../../lib/holiday";
 import {
   SWEATER_PATTERNS,
+  curatedSweaterPalette,
   patternForItemWithOverride,
   sweaterFrameDataUrl,
 } from "../../lib/sweater";
@@ -395,8 +402,31 @@ export function Panel() {
     sweaterWidthSetting === "slim" || sweaterWidthSetting === "chunky"
       ? sweaterWidthSetting
       : "classic";
+  const sweaterPaletteMode =
+    state?.settings.sweaterPalette === "pine" ||
+    state?.settings.sweaterPalette === "frost" ||
+    state?.settings.sweaterPalette === "berry"
+      ? state.settings.sweaterPalette
+      : "auto";
+  const curatedPalette = useMemo(
+    () => curatedSweaterPalette(sweaterPaletteMode),
+    [sweaterPaletteMode],
+  );
   const holidayTheme = parseHolidayTheme(state?.settings.holidayTheme);
   const holiday = activeHolidayTheme(holidayTheme);
+
+  // v1.6.0: a passive, once-per-season hint while the Christmas window is open and the theme is
+  // still off. It never takes focus and points at the tray; the flag lives only in localStorage.
+  const [holidayHintVisible, setHolidayHintVisible] = useState(false);
+  useEffect(() => {
+    if (!state || holidayTheme !== "off") return;
+    const now = new Date();
+    if (!isChristmasWindow(now) || readHolidayPromptSeen(now)) return;
+    markHolidayPromptSeen(now);
+    setHolidayHintVisible(true);
+    const timer = window.setTimeout(() => setHolidayHintVisible(false), 9000);
+    return () => window.clearTimeout(timer);
+  }, [holidayTheme, state]);
   const [sweaterPalettes, setSweaterPalettes] = useState<Record<string, string[]>>({});
   const size = state?.settings.cardSize ?? "medium";
   const keepSetting = state?.settings.keepOnLine ?? "fit";
@@ -435,7 +465,7 @@ export function Panel() {
   // whose thumbnail cannot be decoded gets the backend's stable fallback palette instead of an
   // error, so enabling Sweater Season never produces an empty frame.
   useEffect(() => {
-    if (!sweaterEnabled) {
+    if (!sweaterEnabled || curatedPalette) {
       if (Object.keys(sweaterPalettes).length > 0) setSweaterPalettes({});
       return;
     }
@@ -463,13 +493,13 @@ export function Panel() {
     return () => {
       cancelled = true;
     };
-  }, [sweaterEnabled, visible, sweaterPalettes]);
+  }, [sweaterEnabled, visible, sweaterPalettes, curatedPalette]);
 
   const sweaterFrames = useMemo(() => {
     const frames: Record<string, string> = {};
     if (!sweaterEnabled) return frames;
     for (const item of visible) {
-      const palette = sweaterPalettes[item.id];
+      const palette = curatedPalette ?? sweaterPalettes[item.id];
       if (item.sweater?.enabled === false) continue;
       if (palette) {
         frames[item.id] = sweaterFrameDataUrl(
@@ -481,7 +511,7 @@ export function Panel() {
       }
     }
     return frames;
-  }, [sweaterEnabled, visible, sweaterPalettes, sweaterWidth, size]);
+  }, [sweaterEnabled, visible, sweaterPalettes, sweaterWidth, size, curatedPalette]);
 
   // --- v1.4.0 rope appearance + dynamic sag ----------------------------------------------------
   /**
@@ -2803,6 +2833,17 @@ export function Panel() {
               aria-live={dropPill.kind === "toast" ? "polite" : undefined}
             >
               {dropPillLabel}
+            </p>
+          ) : null}
+          {!dropPill && holidayHintVisible ? (
+            <p
+              className="panel__hint panel__holiday-hint"
+              data-kind="holiday-hint"
+              style={{ top: `${ropeY(panelWidth, panelWidth / 2, sag) + 34}px` }}
+              role="status"
+              aria-live="polite"
+            >
+              {t("Christmas rope is here — tray → Appearance → Holiday rope")}
             </p>
           ) : null}
           {visible.map((item, index) => {

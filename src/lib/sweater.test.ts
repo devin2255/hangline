@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildSweaterSvg,
   normalizePalette,
+  curatedSweaterPalette,
   isSweaterPattern,
   patternForItem,
   patternForItemWithOverride,
@@ -22,6 +23,14 @@ describe("sweater frame generator", () => {
     }
     expect(seen.size).toBeGreaterThan(2);
     for (const pattern of seen) expect(SWEATER_PATTERNS).toContain(pattern);
+  });
+
+  it("exposes the three curated palettes and rejects stale values", () => {
+    expect(curatedSweaterPalette("pine")).toHaveLength(3);
+    expect(curatedSweaterPalette("frost")).toHaveLength(3);
+    expect(curatedSweaterPalette("berry")).toHaveLength(3);
+    expect(curatedSweaterPalette("auto")).toBeNull();
+    expect(curatedSweaterPalette("not-a-palette")).toBeNull();
   });
 
   it("prefers a valid per-card chart override and ignores stale slugs", () => {

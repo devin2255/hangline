@@ -6,12 +6,33 @@
  * and the card's hit rect / rope geometry stay unchanged.
  */
 
+import type { SweaterPalette } from "./types";
+
 export type SweaterPattern = "chevron" | "checks" | "snowflake" | "stripe" | "fairisle";
 
 export type SweaterWidth = "slim" | "classic" | "chunky";
 
 /** Default drawing viewBox used by tests; the panel passes the card's real CSS size. */
 export const SWEATER_VIEWBOX = { width: 300, height: 200 } as const;
+
+/** Frame thickness in CSS pixels for each setting (the SVG is generated at the card size). */
+/** Curated palettes for the "Sweater palette" tray submenu (order = main, contrast, neutral). */
+export const CURATED_SWEATER_PALETTES: Record<
+  Exclude<SweaterPalette, "auto">,
+  readonly [string, string, string]
+> = {
+  pine: ["#2F4A38", "#C9A05C", "#EFE3CC"],
+  frost: ["#8FA6B2", "#DDE7EA", "#3D4A55"],
+  berry: ["#7E2F3B", "#D9B45C", "#F1E4D2"],
+};
+
+/** Returns a curated palette copy for a known slug, or null for `auto`/stale values. */
+export function curatedSweaterPalette(palette: unknown): string[] | null {
+  if (palette === "pine" || palette === "frost" || palette === "berry") {
+    return [...CURATED_SWEATER_PALETTES[palette]];
+  }
+  return null;
+}
 
 /** Frame thickness in CSS pixels for each setting (the SVG is generated at the card size). */
 export const SWEATER_THICKNESS: Record<SweaterWidth, number> = {

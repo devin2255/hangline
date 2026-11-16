@@ -125,6 +125,9 @@ export interface SweaterSpec {
 /** v1.6.0 Sweater Season frame thickness (Rust `sweaterWidth`). */
 export type SweaterWidth = "slim" | "classic" | "chunky";
 
+/** v1.6.0 sweater yarn palette (Rust `sweaterPalette`; `auto` samples each screenshot). */
+export type SweaterPalette = "auto" | "pine" | "frost" | "berry";
+
 /** v1.6.0 seasonal rope theme (Rust `holidayTheme`; `auto` follows local-date windows). */
 export type HolidayTheme = "off" | "auto" | "christmas";
 
@@ -213,6 +216,8 @@ export interface Settings {
   sweaterEnabled: boolean;
   /** v1.6.0 frame thickness (default `"classic"`). */
   sweaterWidth: SweaterWidth;
+  /** v1.6.0 yarn palette (default `"auto"` = sample each screenshot). */
+  sweaterPalette: SweaterPalette;
   /** v1.6.0 seasonal rope theme (default `"off"`). */
   holidayTheme: HolidayTheme;
   sound: boolean;

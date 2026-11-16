@@ -37,7 +37,7 @@ use crate::panel;
 use crate::reveal::{self, RevealReason};
 use crate::settings::{
     CardSize, HolidayTheme, KeepForDays, KeepOnLine, RopeColor, RopeStyle, Settings,
-    SweaterWidth, MAX_EXTRA_FOLDERS,
+    SweaterPalette, SweaterWidth, MAX_EXTRA_FOLDERS,
 };
 
 /// Stable tray icon id (looked up by tests/`tray_by_id`).
@@ -151,6 +151,14 @@ pub const ID_SWEATER_SLIM: &str = "tray.sweater.width.slim";
 pub const ID_SWEATER_CLASSIC: &str = "tray.sweater.width.classic";
 /// "Sweater frame ▸ Chunky".
 pub const ID_SWEATER_CHUNKY: &str = "tray.sweater.width.chunky";
+/// "Sweater palette ▸ Auto".
+pub const ID_SWEATER_PALETTE_AUTO: &str = "tray.sweater.palette.auto";
+/// "Sweater palette ▸ Pine".
+pub const ID_SWEATER_PALETTE_PINE: &str = "tray.sweater.palette.pine";
+/// "Sweater palette ▸ Frost".
+pub const ID_SWEATER_PALETTE_FROST: &str = "tray.sweater.palette.frost";
+/// "Sweater palette ▸ Berry".
+pub const ID_SWEATER_PALETTE_BERRY: &str = "tray.sweater.palette.berry";
 /// "Holiday rope ▸ Off".
 pub const ID_HOLIDAY_OFF: &str = "tray.holiday.off";
 /// "Holiday rope ▸ Auto".
@@ -210,6 +218,8 @@ pub enum TrayAction {
     ToggleSweater,
     /// Set the sweater frame width (v1.6.0).
     SetSweaterWidth(SweaterWidth),
+    /// Set the sweater yarn palette (v1.6.0).
+    SetSweaterPalette(SweaterPalette),
     /// Set `holidayTheme` (v1.6.0 seasonal rope).
     SetHolidayTheme(HolidayTheme),
     /// Show the change-shortcut window for a target.
@@ -253,6 +263,7 @@ impl TrayAction {
             Self::SetRopeColor(_) => "set rope color",
             Self::ToggleSweater => "toggle sweater season",
             Self::SetSweaterWidth(_) => "set sweater width",
+            Self::SetSweaterPalette(_) => "set sweater palette",
             Self::SetHolidayTheme(_) => "set holiday theme",
             Self::ChangeShortcut(_) => "change shortcut",
             Self::OpenScreenshotsFolder => "open screenshots folder",
@@ -320,6 +331,10 @@ pub fn action_for(id: &str) -> Option<TrayAction> {
         ID_SWEATER_SLIM => TrayAction::SetSweaterWidth(SweaterWidth::Slim),
         ID_SWEATER_CLASSIC => TrayAction::SetSweaterWidth(SweaterWidth::Classic),
         ID_SWEATER_CHUNKY => TrayAction::SetSweaterWidth(SweaterWidth::Chunky),
+        ID_SWEATER_PALETTE_AUTO => TrayAction::SetSweaterPalette(SweaterPalette::Auto),
+        ID_SWEATER_PALETTE_PINE => TrayAction::SetSweaterPalette(SweaterPalette::Pine),
+        ID_SWEATER_PALETTE_FROST => TrayAction::SetSweaterPalette(SweaterPalette::Frost),
+        ID_SWEATER_PALETTE_BERRY => TrayAction::SetSweaterPalette(SweaterPalette::Berry),
         ID_HOLIDAY_OFF => TrayAction::SetHolidayTheme(HolidayTheme::Off),
         ID_HOLIDAY_AUTO => TrayAction::SetHolidayTheme(HolidayTheme::Auto),
         ID_HOLIDAY_CHRISTMAS => TrayAction::SetHolidayTheme(HolidayTheme::Christmas),
@@ -406,6 +421,8 @@ pub struct MenuState {
     pub sweater_enabled: bool,
     /// v1.6.0 sweater frame width.
     pub sweater_width: SweaterWidth,
+    /// v1.6.0 sweater yarn palette.
+    pub sweater_palette: SweaterPalette,
     /// v1.6.0 holiday rope theme.
     pub holiday_theme: HolidayTheme,
     /// First hotkey registration failure, shown as a disabled hint row + tooltip suffix.
@@ -458,6 +475,7 @@ pub fn menu_state(
         rope_color: settings.rope_color,
         sweater_enabled: settings.sweater_enabled,
         sweater_width: settings.sweater_width,
+        sweater_palette: settings.sweater_palette,
         holiday_theme: settings.holiday_theme,
         hotkey_error,
         sound: settings.sound,
@@ -546,6 +564,10 @@ struct Items {
     sweater_slim: CheckMenuItem<Wry>,
     sweater_classic: CheckMenuItem<Wry>,
     sweater_chunky: CheckMenuItem<Wry>,
+    sweater_palette_auto: CheckMenuItem<Wry>,
+    sweater_palette_pine: CheckMenuItem<Wry>,
+    sweater_palette_frost: CheckMenuItem<Wry>,
+    sweater_palette_berry: CheckMenuItem<Wry>,
     holiday_off: CheckMenuItem<Wry>,
     holiday_auto: CheckMenuItem<Wry>,
     holiday_christmas: CheckMenuItem<Wry>,
@@ -1091,6 +1113,49 @@ fn build_menu(
         true,
         &[&sweater_slim, &sweater_classic, &sweater_chunky],
     )?;
+    let sweater_palette_auto = CheckMenuItem::with_id(
+        app,
+        ID_SWEATER_PALETTE_AUTO,
+        strings.sweater_palette_auto,
+        true,
+        state.sweater_palette == SweaterPalette::Auto,
+        None::<&str>,
+    )?;
+    let sweater_palette_pine = CheckMenuItem::with_id(
+        app,
+        ID_SWEATER_PALETTE_PINE,
+        strings.sweater_palette_pine,
+        true,
+        state.sweater_palette == SweaterPalette::Pine,
+        None::<&str>,
+    )?;
+    let sweater_palette_frost = CheckMenuItem::with_id(
+        app,
+        ID_SWEATER_PALETTE_FROST,
+        strings.sweater_palette_frost,
+        true,
+        state.sweater_palette == SweaterPalette::Frost,
+        None::<&str>,
+    )?;
+    let sweater_palette_berry = CheckMenuItem::with_id(
+        app,
+        ID_SWEATER_PALETTE_BERRY,
+        strings.sweater_palette_berry,
+        true,
+        state.sweater_palette == SweaterPalette::Berry,
+        None::<&str>,
+    )?;
+    let sweater_palette_menu = Submenu::with_items(
+        app,
+        strings.sweater_palette_menu,
+        true,
+        &[
+            &sweater_palette_auto,
+            &sweater_palette_pine,
+            &sweater_palette_frost,
+            &sweater_palette_berry,
+        ],
+    )?;
     let holiday_off = CheckMenuItem::with_id(
         app,
         ID_HOLIDAY_OFF,
@@ -1126,6 +1191,7 @@ fn build_menu(
     appearance_menu.append(&rope_color_menu)?;
     appearance_menu.append(&sweater)?;
     appearance_menu.append(&sweater_width_menu)?;
+    appearance_menu.append(&sweater_palette_menu)?;
     appearance_menu.append(&holiday_menu)?;
 
     let failed_capture = state
@@ -1310,6 +1376,10 @@ fn build_menu(
         sweater_slim,
         sweater_classic,
         sweater_chunky,
+        sweater_palette_auto,
+        sweater_palette_pine,
+        sweater_palette_frost,
+        sweater_palette_berry,
         holiday_off,
         holiday_auto,
         holiday_christmas,
@@ -1569,6 +1639,22 @@ fn apply_state(
     items
         .sweater_chunky
         .set_checked(state.sweater_width == SweaterWidth::Chunky)?;
+    items.sweater_palette_auto.set_text(strings.sweater_palette_auto)?;
+    items.sweater_palette_pine.set_text(strings.sweater_palette_pine)?;
+    items.sweater_palette_frost.set_text(strings.sweater_palette_frost)?;
+    items.sweater_palette_berry.set_text(strings.sweater_palette_berry)?;
+    items
+        .sweater_palette_auto
+        .set_checked(state.sweater_palette == SweaterPalette::Auto)?;
+    items
+        .sweater_palette_pine
+        .set_checked(state.sweater_palette == SweaterPalette::Pine)?;
+    items
+        .sweater_palette_frost
+        .set_checked(state.sweater_palette == SweaterPalette::Frost)?;
+    items
+        .sweater_palette_berry
+        .set_checked(state.sweater_palette == SweaterPalette::Berry)?;
     items.holiday_off.set_text(strings.holiday_off)?;
     items.holiday_auto.set_text(strings.holiday_auto)?;
     items.holiday_christmas.set_text(strings.holiday_christmas)?;
@@ -1805,6 +1891,9 @@ fn apply_menu_action(app: &AppHandle, action: TrayAction) {
         }
         TrayAction::SetSweaterWidth(width) => {
             Some(("sweaterWidth", serde_json::json!(width)))
+        }
+        TrayAction::SetSweaterPalette(palette) => {
+            Some(("sweaterPalette", serde_json::json!(palette)))
         }
         TrayAction::SetHolidayTheme(theme) => {
             Some(("holidayTheme", serde_json::json!(theme)))
@@ -2115,6 +2204,22 @@ mod tests {
         assert_eq!(
             action_for(ID_SWEATER_CHUNKY),
             Some(TrayAction::SetSweaterWidth(SweaterWidth::Chunky))
+        );
+        assert_eq!(
+            action_for(ID_SWEATER_PALETTE_AUTO),
+            Some(TrayAction::SetSweaterPalette(SweaterPalette::Auto))
+        );
+        assert_eq!(
+            action_for(ID_SWEATER_PALETTE_PINE),
+            Some(TrayAction::SetSweaterPalette(SweaterPalette::Pine))
+        );
+        assert_eq!(
+            action_for(ID_SWEATER_PALETTE_FROST),
+            Some(TrayAction::SetSweaterPalette(SweaterPalette::Frost))
+        );
+        assert_eq!(
+            action_for(ID_SWEATER_PALETTE_BERRY),
+            Some(TrayAction::SetSweaterPalette(SweaterPalette::Berry))
         );
         assert_eq!(
             action_for(ID_HOLIDAY_OFF),

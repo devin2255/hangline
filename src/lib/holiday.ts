@@ -35,3 +35,46 @@ export function activeHolidayTheme(
 export function parseHolidayTheme(value: unknown): HolidayTheme {
   return value === "auto" || value === "christmas" ? value : "off";
 }
+
+/** localStorage key prefix for the once-per-season Christmas hint (local only, no telemetry). */
+const HOLIDAY_PROMPT_PREFIX = "hangline.holidayPrompt";
+
+/**
+ * The Christmas season spans New Year, so a January date belongs to the previous year's season.
+ * The key keeps the hint once per season instead of once per calendar year.
+ */
+export function holidaySeasonYear(date: Date): number {
+  return date.getMonth() === 0 ? date.getFullYear() - 1 : date.getFullYear();
+}
+
+/** localStorage key for "the user has already seen the Christmas hint this season". */
+export function holidayPromptKey(date: Date): string {
+  return `${HOLIDAY_PROMPT_PREFIX}.christmas.${holidaySeasonYear(date)}`;
+}
+
+/**
+ * True when a passive hint should be shown at most once: inside the Christmas window, the theme is
+ * still off, and this season's hint has not been shown yet. Pure so the date/seen half is testable
+ * without a DOM; the localStorage read/write lives in the panel's effect.
+ */
+export function holidayPromptDue(theme: HolidayTheme | string, date: Date, seen: boolean): boolean {
+  return isChristmasWindow(date) && parseHolidayTheme(theme) === "off" && !seen;
+}
+
+/** Reads the persisted hint flag; storage failures degrade to "already seen" (never nag). */
+export function readHolidayPromptSeen(date: Date): boolean {
+  try {
+    return window.localStorage.getItem(holidayPromptKey(date)) === "1";
+  } catch {
+    return true;
+  }
+}
+
+/** Marks the hint as shown for this season; storage failures are harmless. */
+export function markHolidayPromptSeen(date: Date): void {
+  try {
+    window.localStorage.setItem(holidayPromptKey(date), "1");
+  } catch {
+    // Private/blocked storage: the in-memory timer still hides the pill for this session.
+  }
+}
