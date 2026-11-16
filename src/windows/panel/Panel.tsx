@@ -17,7 +17,7 @@
  */
 
 import { listen } from "@tauri-apps/api/event";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import { CardContextMenu } from "../../components/CardContextMenu";
 import { CardPreview } from "../../components/CardPreview";
@@ -37,7 +37,9 @@ import {
   openTrim,
   reportPanelReady,
   setHitRects,
+  setItemSweater,
   setPanelBusy,
+  sweaterPalette,
   showInExplorer,
   startDrag,
   startFall,
@@ -51,6 +53,7 @@ import {
   interactiveRects,
   menuItemsFor,
   menuOuterHeightFor,
+  sweaterMenuItemsFor,
   openCardMenu,
   setSubmenuOpen,
   shouldSuppressCardGesture,
@@ -109,6 +112,19 @@ import {
   visibleSlice,
 } from "../../lib/layout";
 import { tick as springTick } from "../../lib/spring";
+import {
+  activeHolidayTheme,
+  isChristmasWindow,
+  markHolidayPromptSeen,
+  parseHolidayTheme,
+  readHolidayPromptSeen,
+} from "../../lib/holiday";
+import {
+  SWEATER_PATTERNS,
+  curatedSweaterPalette,
+  patternForItemWithOverride,
+  sweaterFrameDataUrl,
+} from "../../lib/sweater";
 import { t } from "../../lib/i18n";
 import { initAppState, useAppStore } from "../../lib/state";
 import { useResolvedTheme } from "../../lib/theme";
@@ -125,6 +141,7 @@ import type {
   RevealEvent,
   RopeColor,
   RopeStyle,
+  SweaterWidth,
   TrimStateEvent,
   TuckEvent,
   UpdateCheckFailedEvent,
@@ -376,6 +393,41 @@ export function Panel() {
 
   const state = useAppStore((store) => store.state);
   const items = state?.items ?? NO_ITEMS;
+
+  // v1.6.0 Sweater Season / holiday theme. Both default off; old settings.json files hydrate to
+  // the safe defaults through the missing-field fallbacks below.
+  const sweaterEnabled = state?.settings.sweaterEnabled === true;
+  const sweaterWidthSetting = state?.settings.sweaterWidth;
+  const sweaterWidth: SweaterWidth =
+    sweaterWidthSetting === "slim" || sweaterWidthSetting === "chunky"
+      ? sweaterWidthSetting
+      : "classic";
+  const sweaterPaletteMode =
+    state?.settings.sweaterPalette === "pine" ||
+    state?.settings.sweaterPalette === "frost" ||
+    state?.settings.sweaterPalette === "berry"
+      ? state.settings.sweaterPalette
+      : "auto";
+  const curatedPalette = useMemo(
+    () => curatedSweaterPalette(sweaterPaletteMode),
+    [sweaterPaletteMode],
+  );
+  const holidayTheme = parseHolidayTheme(state?.settings.holidayTheme);
+  const holiday = activeHolidayTheme(holidayTheme);
+
+  // v1.6.0: a passive, once-per-season hint while the Christmas window is open and the theme is
+  // still off. It never takes focus and points at the tray; the flag lives only in localStorage.
+  const [holidayHintVisible, setHolidayHintVisible] = useState(false);
+  useEffect(() => {
+    if (!state || holidayTheme !== "off") return;
+    const now = new Date();
+    if (!isChristmasWindow(now) || readHolidayPromptSeen(now)) return;
+    markHolidayPromptSeen(now);
+    setHolidayHintVisible(true);
+    const timer = window.setTimeout(() => setHolidayHintVisible(false), 9000);
+    return () => window.clearTimeout(timer);
+  }, [holidayTheme, state]);
+  const [sweaterPalettes, setSweaterPalettes] = useState<Record<string, string[]>>({});
   const size = state?.settings.cardSize ?? "medium";
   const keepSetting = state?.settings.keepOnLine ?? "fit";
   const themeSetting = state?.settings.theme ?? "system";
@@ -408,6 +460,58 @@ export function Panel() {
   // Oldest → newest, newest on the right (Rust keeps `items` sorted ascending).
   const visible = items.slice(range.start, range.end);
   const newestId = items.length > 0 ? items[items.length - 1].id : "";
+
+  // Palette fetch: one local Rust decode per visible card, cached for the panel session. A card
+  // whose thumbnail cannot be decoded gets the backend's stable fallback palette instead of an
+  // error, so enabling Sweater Season never produces an empty frame.
+  useEffect(() => {
+    if (!sweaterEnabled || curatedPalette) {
+      if (Object.keys(sweaterPalettes).length > 0) setSweaterPalettes({});
+      return;
+    }
+    const missing = visible.filter((item) => !sweaterPalettes[item.id]);
+    if (missing.length === 0) return;
+    let cancelled = false;
+    void Promise.all(
+      missing.map(async (item) => {
+        try {
+          const colors = await sweaterPalette(item.id);
+          return [item.id, colors] as const;
+        } catch (error) {
+          console.warn("Hangline panel: sweater palette unavailable", item.id, error);
+          return null;
+        }
+      }),
+    ).then((rows) => {
+      if (cancelled) return;
+      setSweaterPalettes((previous) => {
+        const next = { ...previous };
+        for (const row of rows) if (row) next[row[0]] = row[1];
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [sweaterEnabled, visible, sweaterPalettes, curatedPalette]);
+
+  const sweaterFrames = useMemo(() => {
+    const frames: Record<string, string> = {};
+    if (!sweaterEnabled) return frames;
+    for (const item of visible) {
+      const palette = curatedPalette ?? sweaterPalettes[item.id];
+      if (item.sweater?.enabled === false) continue;
+      if (palette) {
+        frames[item.id] = sweaterFrameDataUrl(
+          palette,
+          patternForItemWithOverride(item.id, item.sweater?.pattern),
+          sweaterWidth,
+          cardVisualSize(item, size),
+        );
+      }
+    }
+    return frames;
+  }, [sweaterEnabled, visible, sweaterPalettes, sweaterWidth, size, curatedPalette]);
 
   // --- v1.4.0 rope appearance + dynamic sag ----------------------------------------------------
   /**
@@ -525,17 +629,20 @@ export function Panel() {
 
   /** Opens the menu for `item` at a panel-client CSS anchor (pointer or capsule corner). */
   const openCardMenuAt = useCallback(
-    (item: Item, anchorClientX: number, anchorClientY: number) => {
+    (item: Item, anchorClientX: number, anchorClientY: number, mode: "card" | "sweater" = "card") => {
       const list = layoutRef.current.items;
       const index = list.findIndex((candidate) => candidate.id === item.id);
       if (index < 0) return;
       // `panelHeight` lets the pure model compact itself (Wave 2: the Search group makes the full
       // menu taller than the medium/small panel); the outer height includes the menu border.
-      const nodes = menuItemsFor(item, {
-        index,
-        total: list.length,
-        panelHeight: window.innerHeight,
-      });
+      const nodes =
+        mode === "sweater"
+          ? sweaterMenuItemsFor(item)
+          : menuItemsFor(item, {
+              index,
+              total: list.length,
+              panelHeight: window.innerHeight,
+            });
       // The reveal/tuck transform moves every client rect; absolute children are positioned in the
       // panel's untransformed client space, so the anchor must be un-translated first.
       const offsetY = panelRef.current ? currentTranslateY(panelRef.current) : 0;
@@ -549,6 +656,7 @@ export function Panel() {
           menuHeight: menuOuterHeightFor(nodes),
           panelWidth: window.innerWidth,
           panelHeight: window.innerHeight,
+          mode,
         }),
       );
       scheduleReportRef.current();
@@ -561,6 +669,15 @@ export function Panel() {
     (item: Item, anchor: HTMLElement) => {
       const rect = anchor.getBoundingClientRect();
       openCardMenuAt(item, rect.left, rect.bottom + 2);
+    },
+    [openCardMenuAt],
+  );
+
+  /** Opens the compact per-card sweater menu anchored to the hover capsule's yarn button. */
+  const openSweaterMenuAt = useCallback(
+    (item: Item, anchor: HTMLElement) => {
+      const rect = anchor.getBoundingClientRect();
+      openCardMenuAt(item, rect.left, rect.bottom + 2, "sweater");
     },
     [openCardMenuAt],
   );
@@ -1270,6 +1387,41 @@ export function Panel() {
         case "takeDownRemove":
           takeDownItem(item, false);
           return;
+        case "sweaterShuffle": {
+          const current = patternForItemWithOverride(item.id, item.sweater?.pattern);
+          const next = SWEATER_PATTERNS[(SWEATER_PATTERNS.indexOf(current) + 1) % SWEATER_PATTERNS.length];
+          void setItemSweater(item.id, {
+            pattern: next,
+            enabled: true,
+            locked: item.sweater?.locked === true,
+          }).catch((error: unknown) => {
+            console.warn(`Hangline panel: sweater shuffle of ${item.id} failed`, error);
+          });
+          return;
+        }
+        case "sweaterLock": {
+          const current = patternForItemWithOverride(item.id, item.sweater?.pattern);
+          void setItemSweater(item.id, {
+            pattern: item.sweater?.pattern ?? current,
+            enabled: true,
+            locked: item.sweater?.locked !== true,
+          }).catch((error: unknown) => {
+            console.warn(`Hangline panel: sweater lock of ${item.id} failed`, error);
+          });
+          return;
+        }
+        case "sweaterOff":
+        case "sweaterOn": {
+          const current = patternForItemWithOverride(item.id, item.sweater?.pattern);
+          void setItemSweater(item.id, {
+            pattern: item.sweater?.pattern ?? current,
+            enabled: action === "sweaterOn",
+            locked: item.sweater?.locked === true,
+          }).catch((error: unknown) => {
+            console.warn(`Hangline panel: sweater toggle of ${item.id} failed`, error);
+          });
+          return;
+        }
         case "takeDownLeft":
         case "takeDownRight": {
           const side = action === "takeDownLeft" ? "before" : "after";
@@ -2578,11 +2730,13 @@ export function Panel() {
   const menuItem = menu ? (items.find((item) => item.id === menu.itemId) ?? null) : null;
   const menuNodes =
     menu && menuItem
-      ? menuItemsFor(menuItem, {
-          index: items.findIndex((item) => item.id === menuItem.id),
-          total: items.length,
-          panelHeight: window.innerHeight,
-        })
+      ? menu.mode === "sweater"
+        ? sweaterMenuItemsFor(menuItem)
+        : menuItemsFor(menuItem, {
+            index: items.findIndex((item) => item.id === menuItem.id),
+            total: items.length,
+            panelHeight: window.innerHeight,
+          })
       : null;
 
   // P5-2 notice text. The pill is deliberately small: availability + one action, manual-check
@@ -2643,6 +2797,8 @@ export function Panel() {
       data-drop-toast={dropToast ?? undefined}
       data-rope-style={ropeStyle}
       data-rope-color={ropeColor}
+      data-sweater-enabled={sweaterEnabled}
+      data-holiday-theme={holiday ?? "off"}
       // v1.4.0: the palette reaches CSS/SVG as one custom property; Panel.css derives the base
       // rope/shadow/sheen/brass tokens from it with `color-mix` (theme-adaptive).
       style={{ "--rope-palette": ROPE_PALETTE[ropeColor] } as CSSProperties}
@@ -2661,7 +2817,7 @@ export function Panel() {
         onDragStart={(event) => event.preventDefault()}
       >
         <div className="panel__line" style={lineStyle}>
-          <Rope width={line} sag={sag} style={ropeStyle} color={ropeColor} />
+          <Rope width={line} sag={sag} style={ropeStyle} color={ropeColor} holiday={holiday} />
           {/*
             v1.5.0 drag-in drop feedback + the empty-line hint share this capsule slot (spec §8):
             the drop hint/toast replaces the idle hint instead of stacking. `pointer-events: none`
@@ -2677,6 +2833,17 @@ export function Panel() {
               aria-live={dropPill.kind === "toast" ? "polite" : undefined}
             >
               {dropPillLabel}
+            </p>
+          ) : null}
+          {!dropPill && holidayHintVisible ? (
+            <p
+              className="panel__hint panel__holiday-hint"
+              data-kind="holiday-hint"
+              style={{ top: `${ropeY(panelWidth, panelWidth / 2, sag) + 34}px` }}
+              role="status"
+              aria-live="polite"
+            >
+              {t("Christmas rope is here — tray → Appearance → Holiday rope")}
             </p>
           ) : null}
           {visible.map((item, index) => {
@@ -2702,6 +2869,9 @@ export function Panel() {
                 onEdit={openEditorFor}
                 onContextMenu={openCardMenuAt}
                 onMoreActions={openCardMenuAtElement}
+                sweaterEnabled={sweaterEnabled}
+                onSweaterMenu={openSweaterMenuAt}
+                sweaterFrame={sweaterFrames[item.id]}
                 onActionsElement={setActionsElement}
                 onPreviewRequest={handlePreviewRequest}
                 gesturesLocked={menuSuppressed}

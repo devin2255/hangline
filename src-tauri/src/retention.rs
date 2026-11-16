@@ -217,6 +217,7 @@ mod tests {
             updated_at: added_at,
             note: String::new(),
             tags: Vec::new(),
+            sweater: None,
         }
     }
 

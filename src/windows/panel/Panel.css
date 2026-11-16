@@ -1010,3 +1010,172 @@
     animation: none;
   }
 }
+
+
+/* ============================================================================
+ * v1.6.0 Sweater Season + holiday rope
+ * ======================================================================== */
+
+/*
+ * Knitted frame overlay: painted on top of the photo but below the interaction capsule,
+ * take-down cross and menus. The screenshot itself is never resized and the card's hit rect is
+ * unchanged (pointer-events: none).
+ */
+.glass-card__sweater {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  border-radius: inherit;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  pointer-events: none;
+}
+
+.glass-card__sweater--knit {
+  animation: sweater-knit-in 480ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes sweater-knit-in {
+  from {
+    clip-path: inset(0 100% 0 0);
+    opacity: 0.35;
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+    opacity: 1;
+  }
+}
+
+/* Hide the normal rope materials while the Christmas cord is drawn. */
+.panel__rope[data-rope-holiday="christmas"] .rope--silk,
+.panel__rope[data-rope-holiday="christmas"] .rope--linen,
+.panel__rope[data-rope-holiday="christmas"] .rope--linen-texture,
+.panel__rope[data-rope-holiday="christmas"] .rope--brass,
+.panel__rope[data-rope-holiday="christmas"] .rope--aurora-glow,
+.panel__rope[data-rope-holiday="christmas"] .rope--aurora-core,
+.panel__rope[data-rope-holiday="christmas"] .rope--highlight {
+  opacity: 0;
+}
+
+.panel__rope[data-rope-holiday="christmas"] .rope--holiday {
+  fill: none;
+  stroke-width: 2.6;
+  opacity: 1;
+}
+
+.panel__rope[data-rope-holiday="christmas"] .rope--holiday-glow {
+  fill: none;
+  stroke-width: 3.4;
+  opacity: 0.28;
+}
+
+.panel__rope[data-rope-holiday="christmas"] .rope--holiday-thread {
+  fill: none;
+  stroke: #c9a05c;
+  stroke-width: 0.7;
+  opacity: 0.75;
+  transform: translateY(-0.5px);
+}
+
+.rope-holiday-stop--a {
+  stop-color: #1e3a2b;
+}
+
+.rope-holiday-stop--b {
+  stop-color: #2f523c;
+}
+
+.rope-light {
+  animation: rope-twinkle 4.2s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: top center;
+}
+
+.rope-light__wire {
+  stroke: #3a3a2e;
+  stroke-width: 0.6;
+  opacity: 0.55;
+}
+
+.rope-light__glow {
+  fill: #ffd48a;
+  opacity: 0.16;
+}
+
+.rope-light__bulb {
+  fill: #ffe7b0;
+}
+
+.rope-ornament {
+  animation: rope-sway 5.2s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: top center;
+}
+
+.rope-ornament__string {
+  stroke: #b89a63;
+  stroke-width: 0.9;
+  opacity: 0.8;
+}
+
+.rope-ornament__cap {
+  fill: #c9a05c;
+}
+
+.rope-pine {
+  fill: none;
+  stroke: #3e6b4f;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.rope-bow {
+  fill: #a34b4e;
+  fill-opacity: 0.18;
+  stroke: #a34b4e;
+  stroke-width: 2.4;
+}
+
+@keyframes rope-twinkle {
+  0%,
+  100% {
+    opacity: 0.72;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes rope-sway {
+  0%,
+  100% {
+    transform: rotate(-1.2deg);
+  }
+  50% {
+    transform: rotate(1.2deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glass-card__sweater--knit,
+  .rope-light,
+  .rope-ornament {
+    animation: none;
+  }
+}
+
+/* v1.6.0: the Sweater Season yarn action adds a fourth capsule button; keep the capsule narrower
+ * so it still fits the smallest 120 dp card without clipping at the panel edges. */
+.glass-card__actions--sweater .glass-card__action {
+  width: 20px;
+  height: 20px;
+}
+
+/* v1.6.0: once-per-season, passive Christmas hint; it shares the drop-pill slot but never overlaps
+ * the drag hint or toast (the render is mutually exclusive). */
+.panel__holiday-hint {
+  z-index: 8;
+  border-color: rgba(201, 160, 92, 0.55);
+  animation: drop-pill-in 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}

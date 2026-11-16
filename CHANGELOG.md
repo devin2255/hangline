@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.6.0 — 2026-11-16
+
+> Sweater Season + the Christmas rope.
+
+- **Sweater Season (default off).** Tray → Appearance → Sweater Season gives every card a knitted
+  frame generated from the screenshot's own colours — three locally sampled yarn colours, five
+  original charts (chevron, checks, snowflake, stripe, Fair Isle) chosen stably from the card id.
+  Three frame widths (6/9/12 dp) and four palettes (auto sample / pine / frost / berry). The
+  screenshot file, card size, rope geometry and click-through hit rects are untouched.
+- **Per-card wardrobe.** Hover a card and click the yarn button to shuffle the chart, lock/unlock
+  its look, or take the sweater off; the choice is stored on the item and survives restarts. A
+  card can also opt out while Sweater Season stays on for the rest of the line.
+- **Holiday rope (default off).** Tray → Appearance → Holiday rope: off / auto / Christmas. Auto
+  follows the **local** date window (December 1 – January 6); the themed rope adds a pine cord
+  with a gold thread, warm fairy lights, baubles, bells, stars, snowflakes, pinecones and
+  pine-sprig/ribbon ends. Outside the window the original rope style and colour return without
+  touching the saved settings; `Christmas` is an explicit preview override. Reduced motion keeps
+  the decorations still.
+- **One gentle hint.** While the Christmas window is open and the theme is still off, the panel
+  shows a passive, once-per-season hint pointing at the tray. It is local-only, takes no focus and
+  never opens a second window.
+- **No new network, no new window, no image edits.** Palette sampling happens from the local
+  thumbnail; every season is decided from the local clock; nothing leaves the machine.
+- Tests: 337 frontend tests, 410 Rust library tests, 33 binary tests; real-machine screenshots of
+  the panel and the yarn menu are in `docs/product/2026-11-16-v1.6.0-sweater-season.md`; the
+  installer size gate and `--selftest` are recorded in the release acceptance.
+
 ## 1.5.2 — 2026-11-16
 
 > A refreshed app icon.

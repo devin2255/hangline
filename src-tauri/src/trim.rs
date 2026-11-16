@@ -1011,6 +1011,7 @@ mod tests {
             updated_at: 0,
             note: String::new(),
             tags: Vec::new(),
+            sweater: None,
         }
     }
 

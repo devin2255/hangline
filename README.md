@@ -11,7 +11,7 @@ Tauri 2 (Rust) + React 19 + TypeScript + Vite. Windows x64.
 
 Repository: <https://github.com/devin2255/hangline>
 
-> **Status: Hangline 1.5.2 release (Wave 2 memory & search, the 1.4.0 rope appearance system, the 1.4.1 mainland update channel, the 1.5.0 drag-in drop — drag an image from Explorer, WeChat/QQ or a browser straight onto the line — the 1.5.1 tray version label, and the 1.5.2 refreshed app icon).**
+> **Status: Hangline 1.6.0 release (Sweater Season — local screenshot-colour knitted card frames with shuffle/lock/take-off — and the Christmas rope theme, plus Wave 2 memory & search, 1.4.0 rope appearance, 1.4.1 mainland update channel, 1.5.0 drag-in drop, 1.5.1 tray version label and the 1.5.2 app icon).**
 > The public source repository is <https://github.com/devin2255/hangline>; a GitHub Release is produced by the
 > `v*` tag workflow when signing secrets are configured, and the installer/portable ZIP can always be built locally.
 > The installer is currently unsigned (SmartScreen may warn); free code signing is being applied for
@@ -46,19 +46,19 @@ P4 multi-monitor placement under 100%/150% scaling (app UI only, neutral synthet
 More P4 evidence: [`docs/experiments/P4-multimon-settings.md`](docs/experiments/P4-multimon-settings.md),
 [`docs/acceptance/P4-core.md`](docs/acceptance/P4-core.md).
 
-## Install (1.5.2 release)
+## Install (1.6.0 release)
 
 Windows 10 22H2 or Windows 11, x64. Download the GitHub Release artifacts for the latest tag when available,
 or build the installer locally (see [Building](#building-from-source)) with
 `node scripts/release/build-release.mjs --sign`.
 
-- `Hangline_1.5.2_x64-setup.exe` — per-user install to `%LOCALAPPDATA%\Programs\Hangline` (no admin),
+- `Hangline_1.6.0_x64-setup.exe` — per-user install to `%LOCALAPPDATA%\Programs\Hangline` (no admin),
   Start-menu shortcut (desktop shortcut optional), HKCU uninstall entry, embedded WebView2
   bootstrapper (network needed only on a machine without WebView2). Uninstall asks whether to keep or delete your Hangline data
   (default: keep).
-- `Hangline_1.5.2_x64-portable.zip` — unpack anywhere and run `Hangline.exe`; data still lives in
+- `Hangline_1.6.0_x64-portable.zip` — unpack anywhere and run `Hangline.exe`; data still lives in
   `%LOCALAPPDATA%\Hangline` (a true portable mode is post-V1).
-- **Authenticode status:** releases up to v1.5.2 are **unsigned** — Windows SmartScreen shows an
+- **Authenticode status:** releases up to v1.6.0 are **unsigned** — Windows SmartScreen shows an
   unknown publisher. Hangline is applying for free code signing from SignPath Foundation; once the
   signing policy is enabled, releases will be Authenticode-signed. Until then, verify the SHA-256 in
   `SHA256SUMS.txt`. See the [Code signing policy](CODE_SIGNING_POLICY.md).
@@ -71,6 +71,8 @@ or build the installer locally (see [Building](#building-from-source)) with
 - **Updating from v1.4.0 or older on a blocked network:** those builds only know the GitHub endpoint,
   so install v1.4.1 once by hand. Accelerated download links are in the
   [v1.4.1 release notes](docs/release/notes-v1.4.1.md); after that, in-app updates work normally.
+
+- **What's new in 1.6.0:** [Sweater Season + the Christmas rope](docs/release/notes-v1.6.0.md).
 
 Release/update/signing/privacy runbook: [`docs/RELEASE.md`](docs/RELEASE.md).
 
@@ -109,8 +111,9 @@ artifact metadata, privacy policy, and how third-party components are handled) i
   watched folders are only removed from the line).
 - **A second surface on every card.** Right-click a card for copy image / copy as file / open /
   show in Explorer / markup (or trim the recording) / “Take down ▸” (Recycle Bin, remove from the
-  line only, everything to the left or right); hovering a card floats a three-button capsule
-  (copy / markup / more). The menu renders inside the panel window — no extra window, no focus.
+  line only, everything to the left or right); hovering a card floats the capsule (copy / markup /
+  more, plus the yarn button while Sweater Season is on). The menu renders inside the panel
+  window — no extra window, no focus.
 - **Find a screenshot again.** Press `Ctrl+Alt+F` (or tray → Search…) for an on-demand search
   window: it filters by file name, note, tag, path and — locally, via the Windows OCR engine —
   text inside the screenshot, on top of notes and comma-separated tags you can edit for every
@@ -123,6 +126,18 @@ artifact metadata, privacy policy, and how third-party components are handled) i
   aurora) and eight low-saturation colours (ink, ivory, champagne, fog, sage, haze, terracotta,
   violet), applied instantly and remembered. The rope starts almost straight and bends further
   with every hanging screenshot — the busier the line, the deeper the curve.
+- **Sweater Season (v1.6.0, off by default).** Tray → Appearance → Sweater Season wraps every card
+  in a knitted frame generated from the screenshot itself: three yarn colours sampled locally from
+  the thumbnail, five original charts chosen stably from the card id, three frame widths
+  (6/9/12 dp) and four palettes (auto / pine / frost / berry). Hover a card and click the yarn
+  button for **shuffle / lock / take off** per card; those choices persist. The image file, card
+  size, rope geometry and hit rects never change.
+- **Holiday rope (v1.6.0, off by default).** Tray → Appearance → Holiday rope: off / auto /
+  Christmas. Auto follows the local calendar (December 1 – January 6) and adds a pine-and-gold
+  cord with warm fairy lights, baubles, bells, stars, snowflakes, pinecones and pine-sprig/ribbon
+  ends. After the window it restores the saved rope automatically; `Christmas` is a manual preview
+  override. Reduced motion keeps everything still, and a once-per-season passive hint points at
+  the tray while the theme is still off.
 - **Drag a picture onto the line.** Drag images from Explorer, WeChat/QQ chats, a browser or a
   screenshot tool to the screen's top edge: the line slides in, accepts the drop and hangs the
   image as a card. Dropped images are copied into Hangline's own folder (so the source can be
@@ -148,7 +163,8 @@ artifact metadata, privacy policy, and how third-party components are handled) i
   startup, hourly while the app runs, and immediately after you change the window.
 - **Out of the way when you are gaming.** Full-screen apps, presentations and busy states hide the line automatically and it returns within a second; “Over full-screen apps” only applies when you have pinned the line.
 - **Tray settings.** Watch switches, extra watched folders (up to 3), keep
-  count and keep-for window, card size (small/medium/large), shortcuts with conflict rollback,
+  count and keep-for window, card size (small/medium/large), rope material/colour, Sweater Season
+  (width, palette), Holiday rope (off / auto / Christmas), shortcuts with conflict rollback,
   sounds, open at login, language (English / 简体中文 / follow system), copy-after-screenshot, quit.
   Destructive actions ask before running, the retention submenus explain what happens to files,
   and a shortcut that cannot be registered is reported instead of failing silently.
@@ -156,6 +172,14 @@ artifact metadata, privacy policy, and how third-party components are handled) i
 - **Settings that stick.** Remap all three global hotkeys (capture, show/hide, edit latest) with conflict detection and rollback, start at login through the standard Run key (quoted, path-with-spaces safe), sounds, card size, theme and language.
 - **Local and quiet.** No accounts, no telemetry, no analytics, no cloud. The only network
   request is the signed update check (daily when enabled, or manual from the tray).
+
+P6 Sweater Season + the Christmas rope (v1.6.0, app UI only; neutral synthetic screenshots),
+and the per-card yarn menu:
+
+![Sweater frames and the Christmas rope](docs/experiments/P6-sweater-panel.png)
+![Shuffle / lock / take off](docs/experiments/P6-sweater-menu.png)
+
+Real-machine notes: [`docs/product/2026-11-16-v1.6.0-sweater-season.md`](docs/product/2026-11-16-v1.6.0-sweater-season.md).
 
 ![The line holding more cards at 150% scaling](docs/experiments/P1-panel-ui-150pct.png)
 
@@ -271,7 +295,7 @@ Data lives under `%LOCALAPPDATA%\Hangline\` (`settings.json`,
 - **The hover preview is capped by the panel height** (the panel window never grows), so it is a
   large thumbnail rather than a full-screen viewer; the editor remains the way to inspect details.
 
-Hangline 1.5.2 is a release build; the functional milestones P1–P5 are implemented and the
+Hangline 1.6.0 is a release build; the functional milestones P1–P5 are implemented and the
 remaining items are manual/deferred checks (the acceptance documents track them in detail):
 
 - **Manual acceptance is pending.** The following still need a real person on an
@@ -280,7 +304,7 @@ remaining items are manual/deferred checks (the acceptance documents track them 
   (WeChat/QQ/browser), real wheel/touchpad scrolling, real pointer cross-screen
   following, and the folder picker. They are marked `MANUAL-PENDING` — not
   "passed" — in [`docs/acceptance/P1-core.md`](docs/acceptance/P1-core.md).
-- **Unsigned (for now).** The 1.5.2 installer/portable ZIP are built by the tag workflow and published
+- **Unsigned (for now).** The 1.6.0 installer/portable ZIP are built by the tag workflow and published
   on GitHub Releases; there is no Authenticode signature yet (SmartScreen warns). From v1.1.x on, code
   signing is planned through SignPath Foundation — the current latest release may still be unsigned
   until the signing policy is enabled; see [Code signing policy](CODE_SIGNING_POLICY.md). Auto-update is

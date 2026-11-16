@@ -54,6 +54,56 @@ pub fn set_setting(
     crate::actions::apply(&app, &key, value)
 }
 
+/// v1.6.0 Sweater Season: replaces one card's sweater override.
+///
+/// sweater = null restores the automatic chart; a present spec opts one card in/out, keeps a
+/// shuffled chart, or marks it locked. One persisted mutation + one state broadcast; a rejected
+/// chart slug is returned unchanged to the menu caller (which logs and keeps the card).
+#[tauri::command]
+pub fn set_item_sweater(
+    app: AppHandle,
+    id: String,
+    sweater: Option<crate::item::SweaterSpec>,
+) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let changed = state.set_sweater(&id, sweater).map_err(|error| {
+        log::warn!("ipc: set_item_sweater rejected for {id}: {error:#}");
+        error.to_string()
+    })?;
+    if changed {
+        log::info!("ipc: set_item_sweater updated {id}");
+        let _ = app_state::emit_state(&app);
+    }
+    Ok(())
+}
+
+/// v1.6.0 Sweater Season: returns the three yarn colours for one card.
+///
+/// The palette is derived from the cached thumbnail (or the original when no thumbnail exists) by
+/// [`crate::sweater`]. Decode failures fall back to a stable palette from the item hash, so a
+/// screenshot with an unusual format still gets a sweater instead of an error toast.
+#[tauri::command]
+pub fn sweater_palette(id: String, app: AppHandle) -> Result<Vec<String>, String> {
+    let state = app.state::<AppState>();
+    let Some(item) = state.snapshot().items.into_iter().find(|item| item.id == id) else {
+        return Err(format!("unknown item: {id}"));
+    };
+    let path = item
+        .thumb_path
+        .clone()
+        .unwrap_or_else(|| item.path.clone());
+    match crate::sweater::palette_for_path(&path) {
+        Ok(palette) => Ok(palette),
+        Err(error) => {
+            log::warn!(
+                "sweater: palette extraction failed for {}: {error}; using the item fallback",
+                path.display()
+            );
+            Ok(crate::sweater::fallback_palette(item.hash))
+        }
+    }
+}
+
 /// Replaces one card's note (Wave 2 W2.1).
 ///
 /// Validation (`≤ 2000` characters), the single revision bump and the single `state.json` write

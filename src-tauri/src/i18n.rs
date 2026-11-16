@@ -297,6 +297,34 @@ pub struct TrayStrings {
     pub rope_color_terracotta: &'static str,
     /// Rope colour: violet.
     pub rope_color_violet: &'static str,
+    /// v1.6.0 Sweater Season switch.
+    pub sweater: &'static str,
+    /// v1.6.0 "Holiday rope" submenu title.
+    pub holiday_menu: &'static str,
+    /// v1.6.0 sweater frame width submenu title.
+    pub sweater_width_menu: &'static str,
+    /// Sweater frame width: slim.
+    pub sweater_width_slim: &'static str,
+    /// Sweater frame width: classic (default).
+    pub sweater_width_classic: &'static str,
+    /// Sweater frame width: chunky.
+    pub sweater_width_chunky: &'static str,
+    /// v1.6.0 sweater yarn palette submenu title.
+    pub sweater_palette_menu: &'static str,
+    /// Sweater palette: sample each screenshot.
+    pub sweater_palette_auto: &'static str,
+    /// Sweater palette: curated pine.
+    pub sweater_palette_pine: &'static str,
+    /// Sweater palette: curated frost.
+    pub sweater_palette_frost: &'static str,
+    /// Sweater palette: curated berry.
+    pub sweater_palette_berry: &'static str,
+    /// Holiday rope: off.
+    pub holiday_off: &'static str,
+    /// Holiday rope: follow the local festival windows.
+    pub holiday_auto: &'static str,
+    /// Holiday rope: keep the Christmas theme on.
+    pub holiday_christmas: &'static str,
     /// Shortcut submenu title.
     pub shortcut_menu: &'static str,
     /// Capture shortcut row (followed by the accelerator).
@@ -403,6 +431,20 @@ pub const EN: TrayStrings = TrayStrings {
     rope_color_haze: "Haze",
     rope_color_terracotta: "Terracotta",
     rope_color_violet: "Violet",
+    sweater: "Sweater Season",
+    holiday_menu: "Holiday rope",
+    sweater_width_menu: "Sweater frame",
+    sweater_width_slim: "Slim",
+    sweater_width_classic: "Classic",
+    sweater_width_chunky: "Chunky",
+    sweater_palette_menu: "Sweater palette",
+    sweater_palette_auto: "Auto (from screenshot)",
+    sweater_palette_pine: "Pine",
+    sweater_palette_frost: "Frost",
+    sweater_palette_berry: "Berry",
+    holiday_off: "Off",
+    holiday_auto: "Auto (festival windows)",
+    holiday_christmas: "Christmas",
     shortcut_menu: "Shortcut",
     shortcut_capture: "Capture",
     shortcut_toggle: "Show/hide line",
@@ -481,6 +523,20 @@ pub const ZH_HANS: TrayStrings = TrayStrings {
     rope_color_haze: "雾霾蓝",
     rope_color_terracotta: "赤陶",
     rope_color_violet: "烟紫",
+    sweater: "毛衣季",
+    holiday_menu: "节日绳子",
+    sweater_width_menu: "毛衣边框",
+    sweater_width_slim: "细",
+    sweater_width_classic: "经典",
+    sweater_width_chunky: "粗",
+    sweater_palette_menu: "毛衣配色",
+    sweater_palette_auto: "自动（取自截图）",
+    sweater_palette_pine: "松林",
+    sweater_palette_frost: "霜白",
+    sweater_palette_berry: "浆果",
+    holiday_off: "关闭",
+    holiday_auto: "自动（节日窗口）",
+    holiday_christmas: "圣诞",
     shortcut_menu: "快捷键",
     shortcut_capture: "截图",
     shortcut_toggle: "显示/隐藏线",
@@ -574,6 +630,20 @@ impl TrayStrings {
             ("rope_color_haze", self.rope_color_haze),
             ("rope_color_terracotta", self.rope_color_terracotta),
             ("rope_color_violet", self.rope_color_violet),
+            ("sweater", self.sweater),
+            ("holiday_menu", self.holiday_menu),
+            ("sweater_width_menu", self.sweater_width_menu),
+            ("sweater_width_slim", self.sweater_width_slim),
+            ("sweater_width_classic", self.sweater_width_classic),
+            ("sweater_width_chunky", self.sweater_width_chunky),
+            ("sweater_palette_menu", self.sweater_palette_menu),
+            ("sweater_palette_auto", self.sweater_palette_auto),
+            ("sweater_palette_pine", self.sweater_palette_pine),
+            ("sweater_palette_frost", self.sweater_palette_frost),
+            ("sweater_palette_berry", self.sweater_palette_berry),
+            ("holiday_off", self.holiday_off),
+            ("holiday_auto", self.holiday_auto),
+            ("holiday_christmas", self.holiday_christmas),
             ("shortcut_menu", self.shortcut_menu),
             ("shortcut_capture", self.shortcut_capture),
             ("shortcut_toggle", self.shortcut_toggle),

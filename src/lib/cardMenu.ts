@@ -29,7 +29,11 @@ export type MenuActionId =
   | "takeDownRemove"
   | "takeDownLeft"
   | "takeDownRight"
-  | "search";
+  | "search"
+  | "sweaterShuffle"
+  | "sweaterLock"
+  | "sweaterOff"
+  | "sweaterOn";
 
 /** One executable row. `disabled` rows stay visible (they explain the state) but do nothing. */
 export interface MenuItemNode {
@@ -181,6 +185,24 @@ export function menuItemsFor(item: Item, options: MenuItemsOptions): MenuNode[] 
     row("Search", "search"),
   ];
   return fitMenuToPanel(nodes, options.panelHeight ?? 0);
+}
+
+/**
+ * v1.6.0: the compact three-row sweater menu opened from the card's hover capsule.
+ *
+ * It deliberately has no separator and no submenu so it fits the smallest panel; the rows adapt to
+ * the per-card override (a card that was taken off can be put back on, a locked card can be
+ * unlocked). The panel renders it through the same `CardContextMenu` with `mode: "sweater"`.
+ */
+export function sweaterMenuItemsFor(item: Item): MenuNode[] {
+  const enabled = item.sweater?.enabled !== false;
+  const locked = item.sweater?.locked === true;
+  if (!enabled) return [row("Put on sweater", "sweaterOn")];
+  return [
+    row("Shuffle sweater", "sweaterShuffle"),
+    row(locked ? "Unlock sweater" : "Lock sweater", "sweaterLock"),
+    row("Take off sweater", "sweaterOff"),
+  ];
 }
 
 /** Flattens a menu tree (top level + the take-down submenu) into its executable rows. */
@@ -338,6 +360,8 @@ export interface CardMenuState {
   x: number;
   y: number;
   submenuOpen: boolean;
+  /** v1.6.0: the compact per-card sweater menu (no submenu) instead of the full card menu. */
+  mode?: "card" | "sweater";
 }
 
 export interface OpenCardMenuInput {
@@ -350,6 +374,8 @@ export interface OpenCardMenuInput {
   /** Panel size in CSS pixels (`window.innerWidth`/`innerHeight`). */
   panelWidth: number;
   panelHeight: number;
+  /** v1.6.0: open the compact sweater menu instead of the full card menu. */
+  mode?: "card" | "sweater";
 }
 
 /**
@@ -382,6 +408,7 @@ export function openCardMenu(input: OpenCardMenuInput): CardMenuState {
     x: position.x,
     y: position.y,
     submenuOpen: false,
+    ...(input.mode === "sweater" ? { mode: "sweater" as const } : {}),
   };
 }
 

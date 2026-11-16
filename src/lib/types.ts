@@ -112,6 +112,25 @@ export type RopeColor =
   | "terracotta"
   | "violet";
 
+/** v1.6.0 per-card sweater override (Rust `item.sweater`). */
+export interface SweaterSpec {
+  /** Manual chart slug; omitted = automatic hash-derived chart. */
+  pattern?: string | null;
+  /** `false` opts this one card out of the global Sweater Season setting. */
+  enabled: boolean;
+  /** The user pinned this card's look. */
+  locked: boolean;
+}
+
+/** v1.6.0 Sweater Season frame thickness (Rust `sweaterWidth`). */
+export type SweaterWidth = "slim" | "classic" | "chunky";
+
+/** v1.6.0 sweater yarn palette (Rust `sweaterPalette`; `auto` samples each screenshot). */
+export type SweaterPalette = "auto" | "pine" | "frost" | "berry";
+
+/** v1.6.0 seasonal rope theme (Rust `holidayTheme`; `auto` follows local-date windows). */
+export type HolidayTheme = "off" | "auto" | "christmas";
+
 /**
  * One item hung on the line (design spec 4.5; Rust `Item`).
  *
@@ -156,6 +175,8 @@ export interface Item {
    * `[]`. Tag values are free-form and trimmed server-side.
    */
   tags: string[];
+  /** v1.6.0 per-card sweater override; absent = automatic (global setting decides). */
+  sweater?: SweaterSpec | null;
 }
 
 /** The 18 design-spec user settings plus the `keepForDays` age-retention extension (Rust `Settings`). */
@@ -191,6 +212,14 @@ export interface Settings {
   ropeStyle: RopeStyle;
   /** v1.4.0 rope palette key (Rust `ropeColor`; default `"ink"`). */
   ropeColor: RopeColor;
+  /** v1.6.0 Sweater Season: draw a knitted frame on every card (default false). */
+  sweaterEnabled: boolean;
+  /** v1.6.0 frame thickness (default `"classic"`). */
+  sweaterWidth: SweaterWidth;
+  /** v1.6.0 yarn palette (default `"auto"` = sample each screenshot). */
+  sweaterPalette: SweaterPalette;
+  /** v1.6.0 seasonal rope theme (default `"off"`). */
+  holidayTheme: HolidayTheme;
   sound: boolean;
   startAtLogin: boolean;
   /** UI language tag; `"system"` follows the OS. */

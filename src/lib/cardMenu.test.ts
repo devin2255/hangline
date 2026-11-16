@@ -23,6 +23,7 @@ import {
   isRecordingItem,
   menuHeightFor,
   menuItemsFor,
+  sweaterMenuItemsFor,
   menuNodeHeight,
   menuOuterHeightFor,
   openCardMenu,
@@ -51,6 +52,28 @@ function makeItem(kind: ItemKind, id = "item-1"): Item {
     tags: [],
   };
 }
+
+describe("v1.6.0 sweater menu", () => {
+  it("offers shuffle, lock and take-off for an active sweater", () => {
+    const item = { ...makeItem("capture"), sweater: { pattern: "checks", enabled: true, locked: false } };
+    expect(itemNodes(sweaterMenuItemsFor(item)).map((node) => node.action)).toEqual([
+      "sweaterShuffle",
+      "sweaterLock",
+      "sweaterOff",
+    ]);
+  });
+
+  it("offers put-on for a card that opted out", () => {
+    const item = { ...makeItem("capture"), sweater: { pattern: null, enabled: false, locked: true } };
+    expect(itemNodes(sweaterMenuItemsFor(item)).map((node) => node.action)).toEqual(["sweaterOn"]);
+  });
+
+  it("labels a locked sweater as unlockable", () => {
+    const item = { ...makeItem("capture"), sweater: { pattern: null, enabled: true, locked: true } };
+    const lock = itemNodes(sweaterMenuItemsFor(item)).find((node) => node.action === "sweaterLock");
+    expect(lock?.labelKey).toBe("Unlock sweater");
+  });
+});
 
 function itemNodes(nodes: MenuNode[]) {
   return flattenMenuItems(nodes);

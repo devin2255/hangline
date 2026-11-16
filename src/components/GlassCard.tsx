@@ -253,6 +253,16 @@ export interface GlassCardProps {
   onMoreActions?: (item: Item, anchor: HTMLElement) => void;
   /** Hover capsule's middle action (markup for images, trim for recordings). */
   onEdit?: (item: Item) => void;
+  /** v1.6.0: the global Sweater Season switch; shows the capsule's yarn action when true. */
+  sweaterEnabled?: boolean;
+  /** v1.6.0: opens the compact per-card sweater menu anchored to the yarn button. */
+  onSweaterMenu?: (item: Item, anchor: HTMLElement) => void;
+  /**
+   * v1.6.0 Sweater Season: a data-URL SVG frame drawn over the card edge. The panel computes it
+   * from the card's palette + stable pattern; the frame is decorative (pointer-events: none), never
+   * changes the card size/hit rect and never touches the screenshot itself.
+   */
+  sweaterFrame?: string;
   /** Reports the mounted hover capsule so the panel adds its rect to the click-through hit rects. */
   onActionsElement?: (element: HTMLElement | null) => void;
   /**
@@ -290,6 +300,9 @@ export function GlassCard({
   onContextMenu,
   onMoreActions,
   onEdit,
+  sweaterEnabled = false,
+  onSweaterMenu,
+  sweaterFrame,
   onActionsElement,
   onPreviewRequest,
 }: GlassCardProps) {
@@ -804,6 +817,14 @@ export function GlassCard({
             onContextMenu?.(itemRef.current, event.clientX, event.clientY);
           }}
         >
+          {sweaterFrame ? (
+            <div
+              className={`glass-card__sweater${reducedMotion ? "" : " glass-card__sweater--knit"}`}
+              style={{ backgroundImage: `url("${sweaterFrame}")` }}
+              data-sweater-frame="true"
+              aria-hidden="true"
+            />
+          ) : null}
           <div
             className="glass-card__photo"
             style={{ width: `${photo.width}px`, height: `${photo.height}px` }}
@@ -895,7 +916,7 @@ export function GlassCard({
           */}
           {actionsVisible ? (
             <div
-              className="glass-card__actions"
+              className={`glass-card__actions${sweaterEnabled ? " glass-card__actions--sweater" : ""}`}
               data-action="card-actions"
               role="group"
               aria-label={t("More actions")}
@@ -957,6 +978,24 @@ export function GlassCard({
                   </svg>
                 )}
               </button>
+              {sweaterEnabled ? (
+                <button
+                  type="button"
+                  className="glass-card__action"
+                  data-action="card-sweater"
+                  aria-label={t("Sweater")}
+                  title={t("Sweater")}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onSweaterMenu?.(itemRef.current, event.currentTarget);
+                  }}
+                >
+                  <svg viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+                    <circle cx="6" cy="6" r="4.4" />
+                    <path d="M2.2 4.6c2.4-.6 4.6.4 7.4 2M2.2 7.4c2.4-.6 4.6.4 7.4 2M4.4 2.2c1 1.8 2.2 3.4 3.2 5.4" />
+                  </svg>
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="glass-card__action"
