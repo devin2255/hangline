@@ -204,6 +204,16 @@ export function sweaterPalette(id: string): Promise<string[]> {
 }
 
 /**
+ * v1.6.0 Sweater Season: replaces one card's sweater override.
+ *
+ * `null` restores the automatic chart; a spec lets one card opt out, keep a shuffled chart, or be
+ * marked locked. The Rust side validates the chart slug before persisting.
+ */
+export function setItemSweater(id: string, sweater: import("./types").SweaterSpec | null): Promise<void> {
+  return invoke("set_item_sweater", { id, sweater });
+}
+
+/**
  * Starts Hangline's own freeze-frame region capture (Task 16, design spec §3.2 A).
  *
  * Rust hides the line if needed, grabs the virtual screen, saves the frozen frame and shows the

@@ -38,6 +38,47 @@ pub enum ItemKind {
     WatchedFolder,
 }
 
+/// v1.6.0 originals: the knitted charts the frontend may render for a card.
+pub const SWEATER_PATTERNS: &[&str] = &["chevron", "checks", "snowflake", "stripe", "fairisle"];
+
+/// Per-card sweater override (v1.6.0 "Sweater Season").
+///
+/// The absence of the whole field means "automatic": the global setting decides whether the card
+/// wears a sweater and the chart comes from a stable hash of the card id. A present value lets one
+/// card opt out, keep a shuffled chart, or mark itself locked without touching the global setting.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SweaterSpec {
+    /// Manual chart slug; None keeps the automatic hash-derived chart.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pattern: Option<String>,
+    /// False opts this card out of the global sweater setting.
+    #[serde(default = "default_sweater_enabled")]
+    pub enabled: bool,
+    /// UI marker: the user pinned this card's look.
+    #[serde(default)]
+    pub locked: bool,
+}
+
+fn default_sweater_enabled() -> bool {
+    true
+}
+
+impl SweaterSpec {
+    /// Rejects a chart slug the frontend does not know (a stale/hand-edited state file).
+    pub fn validate(&self) -> Result<(), String> {
+        if let Some(pattern) = &self.pattern {
+            if !SWEATER_PATTERNS.contains(&pattern.as_str()) {
+                return Err(format!(
+                    "unknown sweater pattern {pattern:?} (expected one of {})",
+                    SWEATER_PATTERNS.join(", ")
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
 /// One item hung on the line (design spec 4.5).
 ///
 /// Field names are serialized in camelCase to match the TypeScript `Item` interface. `path` is an
@@ -84,6 +125,9 @@ pub struct Item {
     /// 20 non-empty tags of at most 32 characters); empty for pre-Wave-2 items.
     #[serde(default)]
     pub tags: Vec<String>,
+    /// v1.6.0 per-card sweater override; `None` = automatic (global setting decides).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sweater: Option<SweaterSpec>,
 }
 
 impl Item {
@@ -111,6 +155,7 @@ impl Item {
             updated_at: added_at,
             note: String::new(),
             tags: Vec::new(),
+            sweater: None,
         }
     }
 }
@@ -248,6 +293,7 @@ mod tests {
             updated_at: 1_700_000_000_900,
             note: "A useful screenshot".to_string(),
             tags: vec!["work".to_string(), "reference".to_string()],
+            sweater: None,
         };
         let value = serde_json::to_value(&item).expect("serialize item");
         assert_eq!(

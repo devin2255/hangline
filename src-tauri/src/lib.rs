@@ -978,6 +978,7 @@ pub fn run() {
   ipc::sweater_palette,
             ipc::set_item_note,
             ipc::set_item_tags,
+  ipc::set_item_sweater,
             ipc::ocr_status,
             ipc::build_ocr_index,
             ipc::search_ocr,

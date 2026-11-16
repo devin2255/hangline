@@ -37,6 +37,7 @@ import {
   openTrim,
   reportPanelReady,
   setHitRects,
+  setItemSweater,
   setPanelBusy,
   sweaterPalette,
   showInExplorer,
@@ -52,6 +53,7 @@ import {
   interactiveRects,
   menuItemsFor,
   menuOuterHeightFor,
+  sweaterMenuItemsFor,
   openCardMenu,
   setSubmenuOpen,
   shouldSuppressCardGesture,
@@ -111,7 +113,11 @@ import {
 } from "../../lib/layout";
 import { tick as springTick } from "../../lib/spring";
 import { activeHolidayTheme, parseHolidayTheme } from "../../lib/holiday";
-import { patternForItem, sweaterFrameDataUrl } from "../../lib/sweater";
+import {
+  SWEATER_PATTERNS,
+  patternForItemWithOverride,
+  sweaterFrameDataUrl,
+} from "../../lib/sweater";
 import { t } from "../../lib/i18n";
 import { initAppState, useAppStore } from "../../lib/state";
 import { useResolvedTheme } from "../../lib/theme";
@@ -464,17 +470,18 @@ export function Panel() {
     if (!sweaterEnabled) return frames;
     for (const item of visible) {
       const palette = sweaterPalettes[item.id];
+      if (item.sweater?.enabled === false) continue;
       if (palette) {
         frames[item.id] = sweaterFrameDataUrl(
           palette,
-          patternForItem(item.id),
+          patternForItemWithOverride(item.id, item.sweater?.pattern),
           sweaterWidth,
           cardVisualSize(item, size),
         );
       }
     }
     return frames;
-  }, [sweaterEnabled, visible, sweaterPalettes, sweaterWidth]);
+  }, [sweaterEnabled, visible, sweaterPalettes, sweaterWidth, size]);
 
   // --- v1.4.0 rope appearance + dynamic sag ----------------------------------------------------
   /**
@@ -592,17 +599,20 @@ export function Panel() {
 
   /** Opens the menu for `item` at a panel-client CSS anchor (pointer or capsule corner). */
   const openCardMenuAt = useCallback(
-    (item: Item, anchorClientX: number, anchorClientY: number) => {
+    (item: Item, anchorClientX: number, anchorClientY: number, mode: "card" | "sweater" = "card") => {
       const list = layoutRef.current.items;
       const index = list.findIndex((candidate) => candidate.id === item.id);
       if (index < 0) return;
       // `panelHeight` lets the pure model compact itself (Wave 2: the Search group makes the full
       // menu taller than the medium/small panel); the outer height includes the menu border.
-      const nodes = menuItemsFor(item, {
-        index,
-        total: list.length,
-        panelHeight: window.innerHeight,
-      });
+      const nodes =
+        mode === "sweater"
+          ? sweaterMenuItemsFor(item)
+          : menuItemsFor(item, {
+              index,
+              total: list.length,
+              panelHeight: window.innerHeight,
+            });
       // The reveal/tuck transform moves every client rect; absolute children are positioned in the
       // panel's untransformed client space, so the anchor must be un-translated first.
       const offsetY = panelRef.current ? currentTranslateY(panelRef.current) : 0;
@@ -616,6 +626,7 @@ export function Panel() {
           menuHeight: menuOuterHeightFor(nodes),
           panelWidth: window.innerWidth,
           panelHeight: window.innerHeight,
+          mode,
         }),
       );
       scheduleReportRef.current();
@@ -628,6 +639,15 @@ export function Panel() {
     (item: Item, anchor: HTMLElement) => {
       const rect = anchor.getBoundingClientRect();
       openCardMenuAt(item, rect.left, rect.bottom + 2);
+    },
+    [openCardMenuAt],
+  );
+
+  /** Opens the compact per-card sweater menu anchored to the hover capsule's yarn button. */
+  const openSweaterMenuAt = useCallback(
+    (item: Item, anchor: HTMLElement) => {
+      const rect = anchor.getBoundingClientRect();
+      openCardMenuAt(item, rect.left, rect.bottom + 2, "sweater");
     },
     [openCardMenuAt],
   );
@@ -1337,6 +1357,41 @@ export function Panel() {
         case "takeDownRemove":
           takeDownItem(item, false);
           return;
+        case "sweaterShuffle": {
+          const current = patternForItemWithOverride(item.id, item.sweater?.pattern);
+          const next = SWEATER_PATTERNS[(SWEATER_PATTERNS.indexOf(current) + 1) % SWEATER_PATTERNS.length];
+          void setItemSweater(item.id, {
+            pattern: next,
+            enabled: true,
+            locked: item.sweater?.locked === true,
+          }).catch((error: unknown) => {
+            console.warn(`Hangline panel: sweater shuffle of ${item.id} failed`, error);
+          });
+          return;
+        }
+        case "sweaterLock": {
+          const current = patternForItemWithOverride(item.id, item.sweater?.pattern);
+          void setItemSweater(item.id, {
+            pattern: item.sweater?.pattern ?? current,
+            enabled: true,
+            locked: item.sweater?.locked !== true,
+          }).catch((error: unknown) => {
+            console.warn(`Hangline panel: sweater lock of ${item.id} failed`, error);
+          });
+          return;
+        }
+        case "sweaterOff":
+        case "sweaterOn": {
+          const current = patternForItemWithOverride(item.id, item.sweater?.pattern);
+          void setItemSweater(item.id, {
+            pattern: item.sweater?.pattern ?? current,
+            enabled: action === "sweaterOn",
+            locked: item.sweater?.locked === true,
+          }).catch((error: unknown) => {
+            console.warn(`Hangline panel: sweater toggle of ${item.id} failed`, error);
+          });
+          return;
+        }
         case "takeDownLeft":
         case "takeDownRight": {
           const side = action === "takeDownLeft" ? "before" : "after";
@@ -2645,11 +2700,13 @@ export function Panel() {
   const menuItem = menu ? (items.find((item) => item.id === menu.itemId) ?? null) : null;
   const menuNodes =
     menu && menuItem
-      ? menuItemsFor(menuItem, {
-          index: items.findIndex((item) => item.id === menuItem.id),
-          total: items.length,
-          panelHeight: window.innerHeight,
-        })
+      ? menu.mode === "sweater"
+        ? sweaterMenuItemsFor(menuItem)
+        : menuItemsFor(menuItem, {
+            index: items.findIndex((item) => item.id === menuItem.id),
+            total: items.length,
+            panelHeight: window.innerHeight,
+          })
       : null;
 
   // P5-2 notice text. The pill is deliberately small: availability + one action, manual-check
@@ -2771,6 +2828,8 @@ export function Panel() {
                 onEdit={openEditorFor}
                 onContextMenu={openCardMenuAt}
                 onMoreActions={openCardMenuAtElement}
+                sweaterEnabled={sweaterEnabled}
+                onSweaterMenu={openSweaterMenuAt}
                 sweaterFrame={sweaterFrames[item.id]}
                 onActionsElement={setActionsElement}
                 onPreviewRequest={handlePreviewRequest}

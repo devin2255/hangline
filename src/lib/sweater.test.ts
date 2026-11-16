@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   buildSweaterSvg,
   normalizePalette,
+  isSweaterPattern,
   patternForItem,
+  patternForItemWithOverride,
   stableHash,
   sweaterFrameDataUrl,
   SWEATER_PATTERNS,
@@ -20,6 +22,16 @@ describe("sweater frame generator", () => {
     }
     expect(seen.size).toBeGreaterThan(2);
     for (const pattern of seen) expect(SWEATER_PATTERNS).toContain(pattern);
+  });
+
+  it("prefers a valid per-card chart override and ignores stale slugs", () => {
+    const itemId = "override-item";
+    expect(patternForItemWithOverride(itemId, "snowflake")).toBe("snowflake");
+    expect(patternForItemWithOverride(itemId, "not-a-chart")).toBe(patternForItem(itemId));
+    expect(patternForItemWithOverride(itemId, null)).toBe(patternForItem(itemId));
+    expect(isSweaterPattern("checks")).toBe(true);
+    expect(isSweaterPattern("nope")).toBe(false);
+    expect(isSweaterPattern(7)).toBe(false);
   });
 
   it("hashes deterministically without negative numbers", () => {

@@ -54,6 +54,29 @@ pub fn set_setting(
     crate::actions::apply(&app, &key, value)
 }
 
+/// v1.6.0 Sweater Season: replaces one card's sweater override.
+///
+/// sweater = null restores the automatic chart; a present spec opts one card in/out, keeps a
+/// shuffled chart, or marks it locked. One persisted mutation + one state broadcast; a rejected
+/// chart slug is returned unchanged to the menu caller (which logs and keeps the card).
+#[tauri::command]
+pub fn set_item_sweater(
+    app: AppHandle,
+    id: String,
+    sweater: Option<crate::item::SweaterSpec>,
+) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let changed = state.set_sweater(&id, sweater).map_err(|error| {
+        log::warn!("ipc: set_item_sweater rejected for {id}: {error:#}");
+        error.to_string()
+    })?;
+    if changed {
+        log::info!("ipc: set_item_sweater updated {id}");
+        let _ = app_state::emit_state(&app);
+    }
+    Ok(())
+}
+
 /// v1.6.0 Sweater Season: returns the three yarn colours for one card.
 ///
 /// The palette is derived from the cached thumbnail (or the original when no thumbnail exists) by

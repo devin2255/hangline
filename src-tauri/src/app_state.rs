@@ -667,6 +667,32 @@ impl AppState {
         Ok(true)
     }
 
+    /// Replaces one card's sweater override (v1.6.0).
+    ///
+    /// None restores the automatic behaviour; a spec is validated against the five known chart
+    /// slugs before it is stored. One mutation = one revision bump + one atomic persist.
+    pub fn set_sweater(
+        &self,
+        id: &str,
+        sweater: Option<crate::item::SweaterSpec>,
+    ) -> anyhow::Result<bool> {
+        if let Some(spec) = &sweater {
+            spec.validate().map_err(anyhow::Error::msg)?;
+        }
+        let mut inner = self.lock();
+        let Some(existing) = inner.items.iter_mut().find(|item| item.id == id) else {
+            anyhow::bail!("cannot set the sweater: item {id} is not on the line");
+        };
+        if existing.sweater == sweater {
+            return Ok(false);
+        }
+        existing.sweater = sweater;
+        inner.bump();
+        store::save_atomic(&inner.dir, &inner.items)
+            .context("failed to persist the item sweater")?;
+        Ok(true)
+    }
+
     /// Removes the item with `id` (if any), persists, and returns the removed item.
     #[allow(dead_code)] // Task 12/13 (take-down / drag-away) remove items.
     pub fn remove(&self, id: &str) -> anyhow::Result<Option<Item>> {
@@ -849,7 +875,62 @@ mod tests {
             updated_at: added_at,
             note: String::new(),
             tags: Vec::new(),
+            sweater: None,
         }
+    }
+
+    /// v1.6.0 per-card sweater overrides: valid charts persist, invalid slugs are rejected, and
+    /// `None` restores the automatic behaviour.
+    #[test]
+    fn sweater_override_validates_and_round_trips() {
+        use crate::item::{SweaterSpec, SWEATER_PATTERNS};
+
+        let dir = test_dir("sweater-override");
+        let state = AppState::load(dir.clone());
+        let path = existing_file(&dir, "shot.png");
+        let id = "0123456789abcdef0123456789abcdef";
+        state
+            .add_item(item(id, &path, 10))
+            .expect("add the sweater test item");
+
+        let spec = SweaterSpec {
+            pattern: Some(SWEATER_PATTERNS[2].to_string()),
+            enabled: true,
+            locked: true,
+        };
+        assert!(state
+            .set_sweater(id, Some(spec.clone()))
+            .expect("valid sweater spec"));
+        assert_eq!(
+            state.item(id).expect("item present").sweater,
+            Some(spec),
+            "a valid override must round-trip through the state"
+        );
+
+        let before = state.snapshot();
+        let bad = SweaterSpec {
+            pattern: Some("not-a-chart".to_string()),
+            enabled: true,
+            locked: false,
+        };
+        assert!(
+            state.set_sweater(id, Some(bad)).is_err(),
+            "unknown chart slugs must be rejected"
+        );
+        assert_eq!(
+            state.snapshot().items,
+            before.items,
+            "a rejected sweater override must not mutate the line"
+        );
+
+        assert!(
+            state.set_sweater(id, None).expect("clear the override"),
+            "clearing a stored override must report a change"
+        );
+        assert!(
+            state.item(id).expect("item present").sweater.is_none(),
+            "None restores the automatic chart"
+        );
     }
 
     /// Adds `count` real-file items with strictly ascending `added_at`; returns `(id, path)` oldest

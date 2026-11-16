@@ -1164,3 +1164,10 @@
     animation: none;
   }
 }
+
+/* v1.6.0: the Sweater Season yarn action adds a fourth capsule button; keep the capsule narrower
+ * so it still fits the smallest 120 dp card without clipping at the panel edges. */
+.glass-card__actions--sweater .glass-card__action {
+  width: 20px;
+  height: 20px;
+}

@@ -47,6 +47,19 @@ export function patternForItem(itemId: string): SweaterPattern {
   return SWEATER_PATTERNS[stableHash(itemId) % SWEATER_PATTERNS.length];
 }
 
+/** True for a chart slug the renderer knows (persisted overrides are validated against this). */
+export function isSweaterPattern(value: unknown): value is SweaterPattern {
+  return typeof value === "string" && SWEATER_PATTERNS.includes(value as SweaterPattern);
+}
+
+/**
+ * Chart for a card: an explicit per-card override wins only when it is a known slug; otherwise the
+ * automatic stable hash applies.
+ */
+export function patternForItemWithOverride(itemId: string, override?: string | null): SweaterPattern {
+  return isSweaterPattern(override) ? override : patternForItem(itemId);
+}
+
 /** Normalises a palette to exactly three valid hex colours (invalid entries fall back). */
 export function normalizePalette(palette: readonly string[] | null | undefined): [string, string, string] {
   const valid = (palette ?? []).filter((color) => HEX.test(color)).slice(0, 3);

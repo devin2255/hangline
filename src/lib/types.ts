@@ -112,6 +112,16 @@ export type RopeColor =
   | "terracotta"
   | "violet";
 
+/** v1.6.0 per-card sweater override (Rust `item.sweater`). */
+export interface SweaterSpec {
+  /** Manual chart slug; omitted = automatic hash-derived chart. */
+  pattern?: string | null;
+  /** `false` opts this one card out of the global Sweater Season setting. */
+  enabled: boolean;
+  /** The user pinned this card's look. */
+  locked: boolean;
+}
+
 /** v1.6.0 Sweater Season frame thickness (Rust `sweaterWidth`). */
 export type SweaterWidth = "slim" | "classic" | "chunky";
 
@@ -162,6 +172,8 @@ export interface Item {
    * `[]`. Tag values are free-form and trimmed server-side.
    */
   tags: string[];
+  /** v1.6.0 per-card sweater override; absent = automatic (global setting decides). */
+  sweater?: SweaterSpec | null;
 }
 
 /** The 18 design-spec user settings plus the `keepForDays` age-retention extension (Rust `Settings`). */
