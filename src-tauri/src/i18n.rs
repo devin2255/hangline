@@ -321,6 +321,11 @@ pub struct TrayStrings {
     pub start_at_login: &'static str,
     /// Manual update check.
     pub check_updates: &'static str,
+    /// Suffix appended to the manual update row (`{}` = the running version).
+    ///
+    /// Users asked to see which build they are on next to "Check for updates…" (2026-11-16
+    /// feedback), so the tray row carries the version instead of adding another menu item.
+    pub check_updates_version: &'static str,
     /// Language submenu title.
     pub language_menu: &'static str,
     /// Follow the Windows UI language.
@@ -410,6 +415,7 @@ pub const EN: TrayStrings = TrayStrings {
     sound: "Sounds",
     start_at_login: "Open at login",
     check_updates: "Check for updates…",
+    check_updates_version: " (v{})",
     language_menu: "Language",
     language_system: "Follow system",
     language_en: "English",
@@ -487,6 +493,7 @@ pub const ZH_HANS: TrayStrings = TrayStrings {
     sound: "声音",
     start_at_login: "开机启动",
     check_updates: "检查更新…",
+    check_updates_version: "（v{}）",
     language_menu: "语言",
     language_system: "跟随系统",
     language_en: "English",
@@ -579,6 +586,7 @@ impl TrayStrings {
             ("sound", self.sound),
             ("start_at_login", self.start_at_login),
             ("check_updates", self.check_updates),
+            ("check_updates_version", self.check_updates_version),
             ("language_menu", self.language_menu),
             ("language_system", self.language_system),
             ("language_en", self.language_en),
@@ -598,6 +606,17 @@ impl TrayStrings {
     pub fn take_all_down_body(&self, count: usize) -> String {
         self.take_all_down_confirm_body
             .replacen("{}", &count.to_string(), 1)
+    }
+
+    /// Manual update row with the running version appended, e.g. `Check for updates… (v1.5.1)`.
+    ///
+    /// The tray menu is the only place the version is surfaced, so it answers "which build am I
+    /// on?" at the exact spot users look when they check for updates.
+    pub fn check_updates_with_version(&self) -> String {
+        let suffix = self
+            .check_updates_version
+            .replacen("{}", env!("CARGO_PKG_VERSION"), 1);
+        format!("{}{suffix}", self.check_updates)
     }
 
     /// W1.7 one startup-warning row: `• <label> (<accelerator>): <reason>`.
@@ -625,6 +644,33 @@ mod tests {
 
     /// The two V1 tables must expose exactly the same key set (design spec §3.10) and no empty
     /// value: a missing Chinese string would render as a blank menu row.
+    /// If the tray row kept showing just "Check for updates…", users could not tell which build
+    /// they are on (2026-11-16 feedback). The label must carry the running version in both
+    /// languages, keeping the update label as its prefix.
+    #[test]
+    fn check_updates_label_shows_the_running_version() {
+        let version = env!("CARGO_PKG_VERSION");
+        assert_eq!(
+            EN.check_updates_with_version(),
+            format!("Check for updates… (v{version})")
+        );
+        assert_eq!(
+            ZH_HANS.check_updates_with_version(),
+            format!("检查更新…（v{version}）")
+        );
+        for strings in [&EN, &ZH_HANS] {
+            let label = strings.check_updates_with_version();
+            assert!(
+                label.starts_with(strings.check_updates),
+                "the update row keeps its label prefix: {label}"
+            );
+            assert!(
+                label.contains(&format!("v{version}")),
+                "the update row shows the running version: {label}"
+            );
+        }
+    }
+
     #[test]
     fn en_and_zh_hans_tables_have_key_parity_and_no_blanks() {
         let en = EN.all();

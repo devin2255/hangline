@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.5.1 — 2026-11-16
+
+> The update row shows the running version.
+
+- **Current version in the tray.** The manual "Check for updates…" row now shows the installed
+  build (e.g. `Check for updates… (v1.5.1)`; 中文 `检查更新…（v1.5.1）`), so users can tell which
+  version they are on without hunting through folders or the release page.
+- The update check itself is unchanged: same signed manifest, same 24 h automatic gate, same
+  manual bypass.
+- Tests: a new i18n unit test pins the exact English/Chinese labels; the existing tray refresh
+  re-applies the label like the other dynamic rows.
+
 ## 1.5.0 — 2026-11-13
 
 > Drag-in drop.

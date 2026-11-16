@@ -1107,8 +1107,15 @@ fn build_menu(
         state.start_at_login,
         None::<&str>,
     )?;
-    let check_updates =
-        MenuItem::with_id(app, ID_CHECK_UPDATES, strings.check_updates, true, None::<&str>)?;
+    // Keep the running version visible in the tray: users asked which build they are on when
+    // they open "Check for updates…" (2026-11-16 feedback). The text is rebuilt on refresh.
+    let check_updates = MenuItem::with_id(
+        app,
+        ID_CHECK_UPDATES,
+        strings.check_updates_with_version(),
+        true,
+        None::<&str>,
+    )?;
     let language_system = CheckMenuItem::with_id(
         app,
         ID_LANGUAGE_SYSTEM,
@@ -1467,7 +1474,9 @@ fn apply_state(
     items.sound.set_checked(state.sound)?;
     items.start_at_login.set_text(strings.start_at_login)?;
     items.start_at_login.set_checked(state.start_at_login)?;
-    items.check_updates.set_text(strings.check_updates)?;
+    items
+        .check_updates
+        .set_text(strings.check_updates_with_version())?;
     items.language_system.set_text(strings.language_system)?;
     items.language_en.set_text(strings.language_en)?;
     items.language_zh.set_text(strings.language_zh_hans)?;
