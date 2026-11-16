@@ -37,7 +37,7 @@ use crate::panel;
 use crate::reveal::{self, RevealReason};
 use crate::settings::{
     CardSize, HolidayTheme, KeepForDays, KeepOnLine, RopeColor, RopeStyle, Settings,
-    MAX_EXTRA_FOLDERS,
+    SweaterWidth, MAX_EXTRA_FOLDERS,
 };
 
 /// Stable tray icon id (looked up by tests/`tray_by_id`).
@@ -145,6 +145,12 @@ pub const ID_LANGUAGE_EN: &str = "tray.language.en";
 pub const ID_LANGUAGE_ZH: &str = "tray.language.zh-Hans";
 /// "Sweater Season" switch (v1.6.0).
 pub const ID_SWEATER: &str = "tray.sweater";
+/// "Sweater frame ▸ Slim".
+pub const ID_SWEATER_SLIM: &str = "tray.sweater.width.slim";
+/// "Sweater frame ▸ Classic".
+pub const ID_SWEATER_CLASSIC: &str = "tray.sweater.width.classic";
+/// "Sweater frame ▸ Chunky".
+pub const ID_SWEATER_CHUNKY: &str = "tray.sweater.width.chunky";
 /// "Holiday rope ▸ Off".
 pub const ID_HOLIDAY_OFF: &str = "tray.holiday.off";
 /// "Holiday rope ▸ Auto".
@@ -202,6 +208,8 @@ pub enum TrayAction {
     SetRopeColor(RopeColor),
     /// Toggle Sweater Season (v1.6.0).
     ToggleSweater,
+    /// Set the sweater frame width (v1.6.0).
+    SetSweaterWidth(SweaterWidth),
     /// Set `holidayTheme` (v1.6.0 seasonal rope).
     SetHolidayTheme(HolidayTheme),
     /// Show the change-shortcut window for a target.
@@ -244,6 +252,7 @@ impl TrayAction {
             Self::SetRopeStyle(_) => "set rope style",
             Self::SetRopeColor(_) => "set rope color",
             Self::ToggleSweater => "toggle sweater season",
+            Self::SetSweaterWidth(_) => "set sweater width",
             Self::SetHolidayTheme(_) => "set holiday theme",
             Self::ChangeShortcut(_) => "change shortcut",
             Self::OpenScreenshotsFolder => "open screenshots folder",
@@ -308,6 +317,9 @@ pub fn action_for(id: &str) -> Option<TrayAction> {
         ID_ROPE_COLOR_TERRACOTTA => TrayAction::SetRopeColor(RopeColor::Terracotta),
         ID_ROPE_COLOR_VIOLET => TrayAction::SetRopeColor(RopeColor::Violet),
         ID_SWEATER => TrayAction::ToggleSweater,
+        ID_SWEATER_SLIM => TrayAction::SetSweaterWidth(SweaterWidth::Slim),
+        ID_SWEATER_CLASSIC => TrayAction::SetSweaterWidth(SweaterWidth::Classic),
+        ID_SWEATER_CHUNKY => TrayAction::SetSweaterWidth(SweaterWidth::Chunky),
         ID_HOLIDAY_OFF => TrayAction::SetHolidayTheme(HolidayTheme::Off),
         ID_HOLIDAY_AUTO => TrayAction::SetHolidayTheme(HolidayTheme::Auto),
         ID_HOLIDAY_CHRISTMAS => TrayAction::SetHolidayTheme(HolidayTheme::Christmas),
@@ -392,6 +404,8 @@ pub struct MenuState {
     pub rope_color: RopeColor,
     /// v1.6.0 Sweater Season switch.
     pub sweater_enabled: bool,
+    /// v1.6.0 sweater frame width.
+    pub sweater_width: SweaterWidth,
     /// v1.6.0 holiday rope theme.
     pub holiday_theme: HolidayTheme,
     /// First hotkey registration failure, shown as a disabled hint row + tooltip suffix.
@@ -443,6 +457,7 @@ pub fn menu_state(
         rope_style: settings.rope_style,
         rope_color: settings.rope_color,
         sweater_enabled: settings.sweater_enabled,
+        sweater_width: settings.sweater_width,
         holiday_theme: settings.holiday_theme,
         hotkey_error,
         sound: settings.sound,
@@ -528,6 +543,9 @@ struct Items {
     color_terracotta: CheckMenuItem<Wry>,
     color_violet: CheckMenuItem<Wry>,
     sweater: CheckMenuItem<Wry>,
+    sweater_slim: CheckMenuItem<Wry>,
+    sweater_classic: CheckMenuItem<Wry>,
+    sweater_chunky: CheckMenuItem<Wry>,
     holiday_off: CheckMenuItem<Wry>,
     holiday_auto: CheckMenuItem<Wry>,
     holiday_christmas: CheckMenuItem<Wry>,
@@ -1043,6 +1061,36 @@ fn build_menu(
         state.sweater_enabled,
         None::<&str>,
     )?;
+    let sweater_slim = CheckMenuItem::with_id(
+        app,
+        ID_SWEATER_SLIM,
+        strings.sweater_width_slim,
+        true,
+        state.sweater_width == SweaterWidth::Slim,
+        None::<&str>,
+    )?;
+    let sweater_classic = CheckMenuItem::with_id(
+        app,
+        ID_SWEATER_CLASSIC,
+        strings.sweater_width_classic,
+        true,
+        state.sweater_width == SweaterWidth::Classic,
+        None::<&str>,
+    )?;
+    let sweater_chunky = CheckMenuItem::with_id(
+        app,
+        ID_SWEATER_CHUNKY,
+        strings.sweater_width_chunky,
+        true,
+        state.sweater_width == SweaterWidth::Chunky,
+        None::<&str>,
+    )?;
+    let sweater_width_menu = Submenu::with_items(
+        app,
+        strings.sweater_width_menu,
+        true,
+        &[&sweater_slim, &sweater_classic, &sweater_chunky],
+    )?;
     let holiday_off = CheckMenuItem::with_id(
         app,
         ID_HOLIDAY_OFF,
@@ -1077,6 +1125,7 @@ fn build_menu(
     appearance_menu.append(&rope_style_menu)?;
     appearance_menu.append(&rope_color_menu)?;
     appearance_menu.append(&sweater)?;
+    appearance_menu.append(&sweater_width_menu)?;
     appearance_menu.append(&holiday_menu)?;
 
     let failed_capture = state
@@ -1258,6 +1307,9 @@ fn build_menu(
         color_terracotta,
         color_violet,
         sweater,
+        sweater_slim,
+        sweater_classic,
+        sweater_chunky,
         holiday_off,
         holiday_auto,
         holiday_christmas,
@@ -1505,6 +1557,18 @@ fn apply_state(
         .set_checked(state.rope_color == RopeColor::Violet)?;
     items.sweater.set_text(strings.sweater)?;
     items.sweater.set_checked(state.sweater_enabled)?;
+    items.sweater_slim.set_text(strings.sweater_width_slim)?;
+    items.sweater_classic.set_text(strings.sweater_width_classic)?;
+    items.sweater_chunky.set_text(strings.sweater_width_chunky)?;
+    items
+        .sweater_slim
+        .set_checked(state.sweater_width == SweaterWidth::Slim)?;
+    items
+        .sweater_classic
+        .set_checked(state.sweater_width == SweaterWidth::Classic)?;
+    items
+        .sweater_chunky
+        .set_checked(state.sweater_width == SweaterWidth::Chunky)?;
     items.holiday_off.set_text(strings.holiday_off)?;
     items.holiday_auto.set_text(strings.holiday_auto)?;
     items.holiday_christmas.set_text(strings.holiday_christmas)?;
@@ -1738,6 +1802,9 @@ fn apply_menu_action(app: &AppHandle, action: TrayAction) {
         TrayAction::SetRopeColor(color) => Some(("ropeColor", serde_json::json!(color))),
         TrayAction::ToggleSweater => {
             Some(("sweaterEnabled", serde_json::json!(!settings.sweater_enabled)))
+        }
+        TrayAction::SetSweaterWidth(width) => {
+            Some(("sweaterWidth", serde_json::json!(width)))
         }
         TrayAction::SetHolidayTheme(theme) => {
             Some(("holidayTheme", serde_json::json!(theme)))
@@ -2037,6 +2104,18 @@ mod tests {
         );
         // v1.6.0: Sweater Season and the holiday rope theme.
         assert_eq!(action_for(ID_SWEATER), Some(TrayAction::ToggleSweater));
+        assert_eq!(
+            action_for(ID_SWEATER_SLIM),
+            Some(TrayAction::SetSweaterWidth(SweaterWidth::Slim))
+        );
+        assert_eq!(
+            action_for(ID_SWEATER_CLASSIC),
+            Some(TrayAction::SetSweaterWidth(SweaterWidth::Classic))
+        );
+        assert_eq!(
+            action_for(ID_SWEATER_CHUNKY),
+            Some(TrayAction::SetSweaterWidth(SweaterWidth::Chunky))
+        );
         assert_eq!(
             action_for(ID_HOLIDAY_OFF),
             Some(TrayAction::SetHolidayTheme(HolidayTheme::Off))

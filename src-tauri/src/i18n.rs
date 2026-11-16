@@ -301,6 +301,14 @@ pub struct TrayStrings {
     pub sweater: &'static str,
     /// v1.6.0 "Holiday rope" submenu title.
     pub holiday_menu: &'static str,
+    /// v1.6.0 sweater frame width submenu title.
+    pub sweater_width_menu: &'static str,
+    /// Sweater frame width: slim.
+    pub sweater_width_slim: &'static str,
+    /// Sweater frame width: classic (default).
+    pub sweater_width_classic: &'static str,
+    /// Sweater frame width: chunky.
+    pub sweater_width_chunky: &'static str,
     /// Holiday rope: off.
     pub holiday_off: &'static str,
     /// Holiday rope: follow the local festival windows.
@@ -415,6 +423,10 @@ pub const EN: TrayStrings = TrayStrings {
     rope_color_violet: "Violet",
     sweater: "Sweater Season",
     holiday_menu: "Holiday rope",
+    sweater_width_menu: "Sweater frame",
+    sweater_width_slim: "Slim",
+    sweater_width_classic: "Classic",
+    sweater_width_chunky: "Chunky",
     holiday_off: "Off",
     holiday_auto: "Auto (festival windows)",
     holiday_christmas: "Christmas",
@@ -498,6 +510,10 @@ pub const ZH_HANS: TrayStrings = TrayStrings {
     rope_color_violet: "烟紫",
     sweater: "毛衣季",
     holiday_menu: "节日绳子",
+    sweater_width_menu: "毛衣边框",
+    sweater_width_slim: "细",
+    sweater_width_classic: "经典",
+    sweater_width_chunky: "粗",
     holiday_off: "关闭",
     holiday_auto: "自动（节日窗口）",
     holiday_christmas: "圣诞",
@@ -596,6 +612,10 @@ impl TrayStrings {
             ("rope_color_violet", self.rope_color_violet),
             ("sweater", self.sweater),
             ("holiday_menu", self.holiday_menu),
+            ("sweater_width_menu", self.sweater_width_menu),
+            ("sweater_width_slim", self.sweater_width_slim),
+            ("sweater_width_classic", self.sweater_width_classic),
+            ("sweater_width_chunky", self.sweater_width_chunky),
             ("holiday_off", self.holiday_off),
             ("holiday_auto", self.holiday_auto),
             ("holiday_christmas", self.holiday_christmas),
