@@ -1058,23 +1058,40 @@
   opacity: 0;
 }
 
+.panel__rope[data-rope-holiday] {
+  /* Keep the hand-tied end bows visible; the plain rope keeps the gentler 4% fade. */
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 2%, #000 98%, transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 2%, #000 98%, transparent 100%);
+}
+
+.panel__rope[data-rope-holiday] .rope--shadow {
+  stroke-width: 4.2;
+  opacity: 0.34;
+}
+
 .panel__rope[data-rope-holiday] .rope--holiday {
   fill: none;
-  stroke-width: 2.6;
+  stroke-width: 3.8;
   opacity: 1;
+  filter: drop-shadow(0 1.2px 1.4px rgba(0, 0, 0, 0.24));
+}
+
+.panel__rope[data-rope-holiday] .rope--holiday-highlight {
+  fill: none;
+  stroke-width: 0.9;
+  opacity: 0.4;
 }
 
 .panel__rope[data-rope-holiday] .rope--holiday-glow {
   fill: none;
-  stroke-width: 3.4;
-  opacity: 0.28;
+  stroke-width: 5.4;
+  opacity: 0.38;
 }
 
 .panel__rope[data-rope-holiday] .rope--holiday-thread {
   fill: none;
-  stroke-width: 0.7;
-  opacity: 0.75;
-  transform: translateY(-0.5px);
+  stroke-width: 0.85;
+  opacity: 0.82;
 }
 
 .rope-holiday-stop--a {
@@ -1097,19 +1114,51 @@
   opacity: 0.55;
 }
 
-.rope-light__glow {
-  fill: #ffd48a;
-  opacity: 0.16;
+.rope-light__halo {
+  opacity: 0.22;
+  filter: blur(2.4px);
 }
 
 .rope-light__bulb {
-  fill: #ffe7b0;
+  filter: drop-shadow(0 0 3px rgba(255, 226, 168, 0.75));
 }
 
 .rope-ornament {
   animation: rope-sway 5.2s ease-in-out infinite;
   transform-box: fill-box;
   transform-origin: top center;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.3));
+}
+
+.rope-ornament__knot {
+  fill: #d8b26a;
+  opacity: 0.95;
+}
+
+.rope-sprigs {
+  opacity: 0.92;
+}
+
+.rope-particle {
+  animation: rope-particle-breathe 9s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+@keyframes rope-particle-breathe {
+  0%,
+  100% {
+    opacity: 0.14;
+    translate: 0 0;
+  }
+  50% {
+    opacity: 0.4;
+    translate: 0 -3px;
+  }
+}
+
+.rope-end-bow {
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.32));
 }
 
 .rope-ornament__string {
@@ -1159,7 +1208,8 @@
 @media (prefers-reduced-motion: reduce) {
   .glass-card__sweater--knit,
   .rope-light,
-  .rope-ornament {
+  .rope-ornament,
+  .rope-particle {
     animation: none;
   }
 }
