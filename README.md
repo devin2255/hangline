@@ -11,7 +11,7 @@ Tauri 2 (Rust) + React 19 + TypeScript + Vite. Windows x64.
 
 Repository: <https://github.com/devin2255/hangline>
 
-> **Status: Hangline 1.6.5 release (holiday charms that hang from the cord in their own colours, with brass only on the fittings — plus the 1.6.4 stockinette sweater borders, the 1.6.3 quiet holiday garland, the 1.6.1 Border → Sweater setting, Wave 2 memory & search, 1.4.0 rope appearance, 1.4.1 mainland update channel, 1.5.0 drag-in drop, 1.5.1 tray version label and the 1.5.2 app icon).**
+> **Status: Hangline 1.6.6 release (README and figures aligned with the stockinette sweater borders and the hanging holiday charms — same app as 1.6.5, plus the 1.6.4 sweater, the 1.6.1 Border setting, Wave 2 memory & search, 1.4.0 rope appearance, 1.4.1 mainland update channel, 1.5.0 drag-in drop, 1.5.1 tray version label and the 1.5.2 app icon).**
 > The public source repository is <https://github.com/devin2255/hangline>; a GitHub Release is produced by the
 > `v*` tag workflow when signing secrets are configured, and the installer/portable ZIP can always be built locally.
 > The installer is currently unsigned (SmartScreen may warn); free code signing is being applied for
@@ -46,19 +46,19 @@ P4 multi-monitor placement under 100%/150% scaling (app UI only, neutral synthet
 More P4 evidence: [`docs/experiments/P4-multimon-settings.md`](docs/experiments/P4-multimon-settings.md),
 [`docs/acceptance/P4-core.md`](docs/acceptance/P4-core.md).
 
-## Install (1.6.5 release)
+## Install (1.6.6 release)
 
 Windows 10 22H2 or Windows 11, x64. Download the GitHub Release artifacts for the latest tag when available,
 or build the installer locally (see [Building](#building-from-source)) with
 `node scripts/release/build-release.mjs --sign`.
 
-- `Hangline_1.6.5_x64-setup.exe` — per-user install to `%LOCALAPPDATA%\Programs\Hangline` (no admin),
+- `Hangline_1.6.6_x64-setup.exe` — per-user install to `%LOCALAPPDATA%\Programs\Hangline` (no admin),
   Start-menu shortcut (desktop shortcut optional), HKCU uninstall entry, embedded WebView2
   bootstrapper (network needed only on a machine without WebView2). Uninstall asks whether to keep or delete your Hangline data
   (default: keep).
-- `Hangline_1.6.5_x64-portable.zip` — unpack anywhere and run `Hangline.exe`; data still lives in
+- `Hangline_1.6.6_x64-portable.zip` — unpack anywhere and run `Hangline.exe`; data still lives in
   `%LOCALAPPDATA%\Hangline` (a true portable mode is post-V1).
-- **Authenticode status:** releases up to v1.6.5 are **unsigned** — Windows SmartScreen shows an
+- **Authenticode status:** releases up to v1.6.6 are **unsigned** — Windows SmartScreen shows an
   unknown publisher. Hangline is applying for free code signing from SignPath Foundation; once the
   signing policy is enabled, releases will be Authenticode-signed. Until then, verify the SHA-256 in
   `SHA256SUMS.txt`. See the [Code signing policy](CODE_SIGNING_POLICY.md).
@@ -72,7 +72,7 @@ or build the installer locally (see [Building](#building-from-source)) with
   so install v1.4.1 once by hand. Accelerated download links are in the
   [v1.4.1 release notes](docs/release/notes-v1.4.1.md); after that, in-app updates work normally.
 
-- **What's new in 1.6.5:** [Holiday charms that hang](docs/release/notes-v1.6.5.md).
+- **What's new in 1.6.6:** [README and figures match the current look](docs/release/notes-v1.6.6.md).
 
 Release/update/signing/privacy runbook: [`docs/RELEASE.md`](docs/RELEASE.md).
 
@@ -126,24 +126,23 @@ artifact metadata, privacy policy, and how third-party components are handled) i
   aurora) and eight low-saturation colours (ink, ivory, champagne, fog, sage, haze, terracotta,
   violet), applied instantly and remembered. The rope starts almost straight and bends further
   with every hanging screenshot — the busier the line, the deeper the curve.
-- **Card border: None / Sweater (v1.6.1).** Tray → Appearance → **Border** picks the card edge
-  style directly — no separate "Sweater Season" switch. **Sweater** wraps every card in a knitted
-  frame generated from the screenshot itself: three yarn colours sampled locally from the
-  thumbnail, five original charts chosen stably from the card id, three frame widths (12/15/20 dp)
-  and four palettes (auto / pine / frost / berry). Hover a card and click the yarn button for
-  **shuffle / lock / take off** per card; those choices persist. The image file, card size, rope
-  geometry and hit rects never change.
-- **Holiday rope, seven themes (v1.6.1, off by default).** Tray → Appearance → Holiday rope:
-  off / auto / **New Year / Spring Festival / Valentine's Day / Mid-Autumn / National Day /
-  Halloween / Christmas**. A specific theme previews any time; **auto** uses local-date windows
-  (Spring Festival and Mid-Autumn come from a built-in lunar table, the rest are fixed windows).
-  Each theme has its own cord and ornaments — lanterns, hearts, moons, flags, pumpkins,
-  fireworks, baubles and more. After the window the saved rope returns automatically; reduced
-  motion keeps everything still and a passive once-per-holiday hint points at the tray.
-  **v1.6.3 visual pass:** a fine woven gradient cord with a soft outer glow and gold thread, small
-  brass / champagne / rose-gold / copper charm sets instead of large cartoon ornaments, fine
-  cord-woven motifs (pine, plum blossom, petals, pennants, bats, ...) and tiny brass cord ends
-  with silk tails. Sizes are down substantially; the garland reads as jewellery, not stickers.
+- **Card border: None / Sweater (default None).** Tray → Appearance → **Border**. **Sweater**
+  wraps every card in a stockinette frame. Each stitch is two round yarn legs — a cast shadow, a
+  darker rim, the yarn colour and a same-hue highlight — on a deeper wool ground, with a few loose
+  fibres. Three yarn colours are sampled locally from the thumbnail, or you pick pine / frost /
+  berry. Five charts (chevron, checks, snowflake, stripe, Fair Isle) are knitted into the stitches
+  and stay stable for a card. Widths are slim 12 dp, classic 15 dp and chunky 20 dp. Hover a card
+  and use the yarn button to **shuffle / lock / take off** that card; the choice persists. The
+  image file, card size, rope geometry and hit rects never change.
+- **Holiday rope, seven themes (off by default).** Tray → Appearance → Holiday rope: off / auto /
+  **New Year / Spring Festival / Valentine's Day / Mid-Autumn / National Day / Halloween /
+  Christmas**. A chosen theme stays on; **auto** follows the local date (Spring Festival and
+  Mid-Autumn use a built-in lunar table, the others use fixed windows). Each theme has its own
+  cord. Charms hang from a short thread and keep that theme's colour — lanterns, hearts, moons,
+  flags, pumpkins, fireworks, baubles — with brass only on the hook, cap and knot. The cord is a
+  fine gradient with a thin gold glint and small warm lights; both ends are a small brass cap and
+  two slim ribbon tails. When the window ends, the saved rope comes back. Reduced motion keeps the
+  decorations still, and a passive once-per-holiday hint points at the tray. Nothing is uploaded.
 - **Drag a picture onto the line.** Drag images from Explorer, WeChat/QQ chats, a browser or a
   screenshot tool to the screen's top edge: the line slides in, accepts the drop and hangs the
   image as a card. Dropped images are copied into Hangline's own folder (so the source can be
@@ -180,8 +179,8 @@ artifact metadata, privacy policy, and how third-party components are handled) i
 - **Local and quiet.** No accounts, no telemetry, no analytics, no cloud. The only network
   request is the signed update check (daily when enabled, or manual from the tray).
 
-P6/P7 card border + holiday themes (app UI only; neutral synthetic screenshots), plus the
-per-card yarn menu:
+P6/P7 card border and holiday themes, drawn with the current stockinette frames and hanging
+charms (app UI only; neutral synthetic screenshots):
 
 ![Sweater frames and the Christmas rope](docs/experiments/P6-sweater-panel.png)
 ![Shuffle / lock / take off](docs/experiments/P6-sweater-menu.png)
@@ -245,14 +244,14 @@ cargo check --manifest-path src-tauri/Cargo.toml --all-targets # 0 warnings
 | Single click a card | Copy image to the clipboard (PNG + DIBV5 + file drop / CF_HDROP). A "Copied" pill confirms it. |
 | Double click a card | Open the file in the default app (does not touch the clipboard). |
 | Right-click a card | Card menu: copy image / copy as file / open / show in Explorer / markup or trim / **Take down ▸** (Recycle Bin, remove from line, everything to the left or right). |
-| Hover a card | A three-button capsule floats under it (copy / markup / more). |
+| Hover a card | A capsule floats under it (copy / markup / more, plus a yarn button while Border is Sweater). |
 | `Ctrl+Alt+E` (default) | Open the newest card in the markup editor (recordings open in the trim window). |
 | `Ctrl+Alt+F` (default) | Open the search window (file name / note / tag / path / in-image text). |
 | Drag a card out | Native file drag: drop it on an app to copy, on a folder to move, on the Recycle Bin to delete. The card updates after the drop. |
 | × on a card | Take it down. Photos from Hangline's own screenshot folder go to the Recycle Bin; watched-folder files are only removed from the line. |
 | Mouse wheel / touchpad | Browse earlier cards when the retention limit is 25/50/100. |
 | Tray → Keep for | Age cleanup: keep forever (default) or the last 7/30/90 days. Expired Hangline-owned screenshots go to the Recycle Bin; watched-folder, system-screenshot and recording files are never deleted. |
-| Tray icon | Left click toggles the line; right click opens settings: sources, folders, keep count, keep-for window, size, shortcuts, sounds, autostart, check for updates, language, quit. |
+| Tray icon | Left click toggles the line; right click opens settings: sources, folders, keep count, keep-for window, size, rope material and colour, Border (None / Sweater), Holiday rope, shortcuts, sounds, autostart, check for updates, language, quit. |
 
 Shortcuts can be changed in **Tray → Shortcut**; a shortcut that is already
 taken is rejected and the previous one is restored. Extra watched folders are
@@ -306,7 +305,7 @@ Data lives under `%LOCALAPPDATA%\Hangline\` (`settings.json`,
 - **The hover preview is capped by the panel height** (the panel window never grows), so it is a
   large thumbnail rather than a full-screen viewer; the editor remains the way to inspect details.
 
-Hangline 1.6.5 is a release build; the functional milestones P1–P5 are implemented and the
+Hangline 1.6.6 is a release build; the functional milestones P1–P5 are implemented and the
 remaining items are manual/deferred checks (the acceptance documents track them in detail):
 
 - **Manual acceptance is pending.** The following still need a real person on an
@@ -315,7 +314,7 @@ remaining items are manual/deferred checks (the acceptance documents track them 
   (WeChat/QQ/browser), real wheel/touchpad scrolling, real pointer cross-screen
   following, and the folder picker. They are marked `MANUAL-PENDING` — not
   "passed" — in [`docs/acceptance/P1-core.md`](docs/acceptance/P1-core.md).
-- **Unsigned (for now).** The 1.6.5 installer/portable ZIP are built by the tag workflow and published
+- **Unsigned (for now).** The 1.6.6 installer/portable ZIP are built by the tag workflow and published
   on GitHub Releases; there is no Authenticode signature yet (SmartScreen warns). From v1.1.x on, code
   signing is planned through SignPath Foundation — the current latest release may still be unsigned
   until the signing policy is enabled; see [Code signing policy](CODE_SIGNING_POLICY.md). Auto-update is
