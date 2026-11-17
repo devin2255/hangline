@@ -280,14 +280,14 @@ function MotifShape({ motif }: { motif: HolidayCordMotif }) {
   }
 }
 
-/** Hand-tied thin ribbon at both ends; the right-hand one is mirrored. */
+/** Small brass cord end with two fine silk tails; the right-hand one is mirrored. */
 function RibbonBow({
   x,
   y,
   color,
   accent,
   flip = false,
-  scale = 1.45,
+  scale = 0.95,
 }: {
   x: number;
   y: number;
@@ -301,27 +301,12 @@ function RibbonBow({
       className="rope-end-bow"
       transform={`translate(${round(x)}, ${round(y)}) scale(${flip ? -scale : scale}, ${scale})`}
     >
-      <path
-        d="M0 0 C-7 -6 -15 -5 -14 0 C-13 4 -6 4 0 1 Z"
-        fill={color}
-        fillOpacity="0.9"
-        stroke={accent}
-        strokeOpacity="0.35"
-        strokeWidth="0.5"
-      />
-      <path
-        d="M0 0 C7 -6 15 -5 14 0 C13 4 6 4 0 1 Z"
-        fill={color}
-        fillOpacity="0.78"
-        stroke={accent}
-        strokeOpacity="0.35"
-        strokeWidth="0.5"
-      />
-      <path d="M-1 2 C-5 9 -7 17 -6 26 L-2 23 L0 2 Z" fill={color} fillOpacity="0.92" />
-      <path d="M1 2 C5 9 7 17 6 26 L2 23 L0 2 Z" fill={color} fillOpacity="0.78" />
-      <path d="M-5.4 25 L-2 22.2 L0 2 M5.4 25 L2 22.2 L0 2" fill="none" stroke={accent} strokeOpacity="0.45" strokeWidth="0.6" />
-      <circle r="2.1" fill={accent} />
-      <circle r="0.75" cx="-0.6" cy="-0.7" fill="#ffffff" fillOpacity="0.6" />
+      <rect x="-3.4" y="-2.6" width="6.8" height="5" rx="1.8" fill="#C8A96A" />
+      <rect x="-3.4" y="-0.5" width="6.8" height="1" fill="#8A6B3A" opacity="0.85" />
+      <path d="M-1.2 2.2 C-3.2 8 -4.4 15 -2.8 21 L0 18.2 L1 2.2 Z" fill={color} opacity="0.82" />
+      <path d="M1.2 2.2 C3.2 8 4.4 15 2.8 21 L0 18.2 L-1 2.2 Z" fill={color} opacity="0.66" />
+      <path d="M-1.6 2.2 C-3 8 -3.8 14 -3 19 M1.6 2.2 C3 8 3.8 14 3 19" fill="none" stroke={accent} strokeOpacity="0.35" strokeWidth="0.45" />
+      <circle r="1.4" fill={accent} />
     </g>
   );
 }
@@ -342,11 +327,8 @@ export function Rope({ width, sag, style, color, holiday = null }: RopeProps) {
   const holidayGradient = `rope-holiday-${uid}`;
   const holidayGlow = `rope-holiday-glow-${uid}`;
   const holidayBokeh = `rope-holiday-bokeh-${uid}`;
-  const ornamentColors = spec ? Array.from(new Set(spec.ornaments.map((ornament) => ornament.color))) : [];
-  const ornamentFillId = (color: string) => {
-    const index = ornamentColors.indexOf(color);
-    return `url(#rope-ornament-${uid}-${index < 0 ? 0 : index})`;
-  };
+  const holidayMetal = `rope-metal-${uid}`;
+  const metalFill = `url(#${holidayMetal})`;
 
   return (
     <svg
@@ -393,19 +375,13 @@ export function Rope({ width, sag, style, color, holiday = null }: RopeProps) {
             </filter>
           </>
         ) : null}
-        {ornamentColors.map((color, index) => (
-          <radialGradient
-            key={`ornament-gradient-${color}`}
-            id={`rope-ornament-${uid}-${index}`}
-            cx="34%"
-            cy="26%"
-            r="82%"
-          >
-            <stop offset="0" stopColor={shade(color, 34)} />
-            <stop offset="0.55" stopColor={color} />
-            <stop offset="1" stopColor={shade(color, -24)} />
+        {spec ? (
+          <radialGradient id={holidayMetal} cx="34%" cy="26%" r="82%">
+            <stop offset="0" stopColor={shade(spec.metal, 38)} />
+            <stop offset="0.5" stopColor={spec.metal} />
+            <stop offset="1" stopColor={shade(spec.metal, -32)} />
           </radialGradient>
-        ))}
+        ) : null}
       </defs>
 
       {/* Shared depth layer: every material sits on the same soft shadow. */}
@@ -430,12 +406,10 @@ export function Rope({ width, sag, style, color, holiday = null }: RopeProps) {
           {/* Ambient bokeh behind the cord: slow, low-opacity colour dust. */}
           <g className="rope-bokeh" filter={`url(#${holidayBokeh})`}>
             {[
-              { t: 0.12, r: 2.4, dy: 12, o: 0.18 },
-              { t: 0.27, r: 1.5, dy: 30, o: 0.12 },
-              { t: 0.42, r: 2.0, dy: 8, o: 0.1 },
-              { t: 0.58, r: 1.7, dy: 24, o: 0.11 },
-              { t: 0.73, r: 2.3, dy: 36, o: 0.14 },
-              { t: 0.88, r: 1.4, dy: 16, o: 0.16 },
+              { t: 0.14, r: 1.8, dy: 14, o: 0.1 },
+              { t: 0.42, r: 1.4, dy: 10, o: 0.07 },
+              { t: 0.73, r: 1.8, dy: 32, o: 0.09 },
+              { t: 0.9, r: 1.2, dy: 18, o: 0.1 },
             ].map((bokeh, index) => {
               const point = holidayRopePoint(safeWidth, safeSag, bokeh.t);
               return (
@@ -477,56 +451,18 @@ export function Rope({ width, sag, style, color, holiday = null }: RopeProps) {
             {spec.motifs.map((motif, index) => {
               const point = holidayRopePoint(safeWidth, safeSag, motif.t);
               const sideOffset = motif.side === "top" ? -3.2 : motif.side === "bottom" ? 3.2 : 0;
-              const scale = (motif.scale ?? 0.8) * 1.32;
+              const scale = (motif.scale ?? 0.8) * 0.82;
               return (
                 <g
                   key={`motif-${index}`}
                   transform={`translate(${round(point.x)}, ${round(point.y + sideOffset)}) scale(${scale})`}
                   opacity="0.9"
                 >
-                  <MotifShape motif={motif} />
+                  <MotifShape motif={{ ...motif, color: spec.metal }} />
                 </g>
               );
             })}
           </g>
-
-          {/* Sparse atmosphere: a few slow, barely-there particles around the garland. */}
-          {spec.ambient ? (
-            <g className="rope-particles">
-              {[
-                { t: 0.045, dy: -16, s: 0.65, d: 0 },
-                { t: 0.115, dy: 25, s: 0.42, d: 1.8 },
-                { t: 0.18, dy: -27, s: 0.34, d: 3.6 },
-                { t: 0.255, dy: 34, s: 0.5, d: 5.1 },
-                { t: 0.735, dy: 30, s: 0.44, d: 2.4 },
-                { t: 0.815, dy: -22, s: 0.36, d: 4.4 },
-                { t: 0.885, dy: 28, s: 0.5, d: 6.2 },
-                { t: 0.955, dy: -14, s: 0.62, d: 1.2 },
-              ].map((particle, index) => {
-                const point = holidayRopePoint(safeWidth, safeSag, particle.t);
-                return (
-                  <g
-                    key={`ambient-${index}`}
-                    transform={`translate(${round(point.x)}, ${round(point.y + particle.dy)}) scale(${particle.s})`}
-                  >
-                    <g
-                      className="rope-particle"
-                      style={{ animationDelay: `${particle.d}s` }}
-                      opacity="0.3"
-                    >
-                      <MotifShape
-                        motif={{
-                          t: particle.t,
-                          kind: spec.ambient!.kind,
-                          color: spec.ambient!.color,
-                        }}
-                      />
-                    </g>
-                  </g>
-                );
-              })}
-            </g>
-          ) : null}
 
           {/* Warm light points strung below the cord. */}
           {spec.lights.map((t, index) => {
@@ -540,8 +476,8 @@ export function Rope({ width, sag, style, color, holiday = null }: RopeProps) {
                 transform={`translate(${round(x)}, ${round(y + 7)}) scale(${scale})`}
               >
                 <line x1="0" y1="-7" x2="0" y2="0" className="rope-light__wire" />
-                <circle r="10.6" className="rope-light__halo" style={{ fill: spec.light }} />
-                <circle r="2.3" className="rope-light__bulb" style={{ fill: spec.light }} />
+                <circle r="6.6" className="rope-light__halo" style={{ fill: spec.light }} />
+                <circle r="1.8" className="rope-light__bulb" style={{ fill: spec.light }} />
               </g>
             );
           })}
@@ -551,8 +487,8 @@ export function Rope({ width, sag, style, color, holiday = null }: RopeProps) {
             const { x, y } = holidayRopePoint(safeWidth, safeSag, ornament.t);
             const cx = round(x);
             const top = round(y);
-            const hang = (ornament.hang ?? 20 + (index % 3) * 4) + 12;
-            const value = (ornament.scale ?? 1) * 1.65;
+            const hang = (ornament.hang ?? 20 + (index % 3) * 4) + 4;
+            const value = (ornament.scale ?? 1) * 1.0;
             return (
               <g
                 key={`ornament-${index}`}
@@ -562,7 +498,7 @@ export function Rope({ width, sag, style, color, holiday = null }: RopeProps) {
                 <line x1={cx} y1={top} x2={cx} y2={top + hang} className="rope-ornament__string" />
                 <circle cx={cx} cy={top + hang} r="1.4" className="rope-ornament__knot" />
                 <g transform={`translate(${cx}, ${top + hang}) scale(${value})`}>
-                  <OrnamentShape ornament={ornament} fillId={ornamentFillId(ornament.color)} />
+                  <OrnamentShape ornament={{ ...ornament, color: spec.metal }} fillId={metalFill} />
                 </g>
               </g>
             );

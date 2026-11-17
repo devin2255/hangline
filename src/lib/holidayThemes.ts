@@ -56,6 +56,8 @@ export interface HolidayRopeSpec {
   lights: readonly number[];
   ornaments: readonly HolidayOrnament[];
   motifs: readonly HolidayCordMotif[];
+  /** The single metal tone used by every hanging charm and cord motif. */
+  metal: string;
   /** Sparse, slowly breathing atmosphere particles around the garland. */
   ambient?: { kind: "snow" | "petal" | "heart" | "bat" | "sparkle"; color: string };
 }
@@ -74,6 +76,7 @@ const LIGHTS = [0.08, 0.21, 0.35, 0.52, 0.68, 0.82, 0.94] as const;
 
 export const HOLIDAY_ROPE_SPECS: Record<HolidayThemeId, HolidayRopeSpec> = {
   "new-year": {
+  metal: "#D8B467",
     cord: ["#5E1622", "#B8323D"],
     thread: "#E7C878",
     ribbon: "#D8B467",
@@ -102,6 +105,7 @@ export const HOLIDAY_ROPE_SPECS: Record<HolidayThemeId, HolidayRopeSpec> = {
     ],
   },
   "spring-festival": {
+  metal: "#D4A64F",
     cord: ["#7C171F", "#B8272E"],
     thread: "#EBC46A",
     ribbon: "#C74532",
@@ -129,6 +133,7 @@ export const HOLIDAY_ROPE_SPECS: Record<HolidayThemeId, HolidayRopeSpec> = {
     ],
   },
   valentine: {
+  metal: "#C98F9A",
     cord: ["#6E2439", "#B5526B"],
     thread: "#EBC9B8",
     ribbon: "#C9768B",
@@ -157,6 +162,7 @@ export const HOLIDAY_ROPE_SPECS: Record<HolidayThemeId, HolidayRopeSpec> = {
     ],
   },
   "mid-autumn": {
+  metal: "#E3C680",
     cord: ["#1D2943", "#3E5274"],
     thread: "#E8C46A",
     ribbon: "#C9A25A",
@@ -185,6 +191,7 @@ export const HOLIDAY_ROPE_SPECS: Record<HolidayThemeId, HolidayRopeSpec> = {
     ],
   },
   "national-day": {
+  metal: "#D8A945",
     cord: ["#7D171B", "#C0302D"],
     thread: "#F0C75E",
     ribbon: "#D8A945",
@@ -213,6 +220,7 @@ export const HOLIDAY_ROPE_SPECS: Record<HolidayThemeId, HolidayRopeSpec> = {
     ],
   },
   halloween: {
+  metal: "#B87333",
     cord: ["#2E1E3A", "#54305C"],
     thread: "#E28A37",
     ribbon: "#C46A2B",
@@ -239,6 +247,7 @@ export const HOLIDAY_ROPE_SPECS: Record<HolidayThemeId, HolidayRopeSpec> = {
     ],
   },
   christmas: {
+  metal: "#C9A05C",
     cord: ["#142E22", "#2F5A3A"],
     thread: "#D8B26A",
     ribbon: "#A34B4E",

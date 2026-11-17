@@ -1065,27 +1065,27 @@
 }
 
 .panel__rope[data-rope-holiday] .rope--shadow {
-  stroke-width: 4.2;
-  opacity: 0.34;
+  stroke-width: 3.3;
+  opacity: 0.3;
 }
 
 .panel__rope[data-rope-holiday] .rope--holiday {
   fill: none;
-  stroke-width: 3.8;
+  stroke-width: 3;
   opacity: 1;
   filter: drop-shadow(0 1.2px 1.4px rgba(0, 0, 0, 0.24));
 }
 
 .panel__rope[data-rope-holiday] .rope--holiday-highlight {
   fill: none;
-  stroke-width: 0.9;
-  opacity: 0.4;
+  stroke-width: 0.7;
+  opacity: 0.32;
 }
 
 .panel__rope[data-rope-holiday] .rope--holiday-glow {
   fill: none;
-  stroke-width: 5.4;
-  opacity: 0.38;
+  stroke-width: 4.4;
+  opacity: 0.26;
 }
 
 .panel__rope[data-rope-holiday] .rope--holiday-thread {
@@ -1115,8 +1115,8 @@
 }
 
 .rope-light__halo {
-  opacity: 0.22;
-  filter: blur(2.4px);
+  opacity: 0.12;
+  filter: blur(1.8px);
 }
 
 .rope-light__bulb {
@@ -1127,7 +1127,7 @@
   animation: rope-sway 5.2s ease-in-out infinite;
   transform-box: fill-box;
   transform-origin: top center;
-  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.3));
+  filter: drop-shadow(0 1.5px 1.5px rgba(0, 0, 0, 0.2));
 }
 
 .rope-ornament__knot {
@@ -1136,29 +1136,18 @@
 }
 
 .rope-sprigs {
-  opacity: 0.92;
+  opacity: 0.78;
 }
 
-.rope-particle {
-  animation: rope-particle-breathe 9s ease-in-out infinite;
-  transform-box: fill-box;
-  transform-origin: center;
-}
 
-@keyframes rope-particle-breathe {
-  0%,
-  100% {
-    opacity: 0.14;
-    translate: 0 0;
-  }
-  50% {
-    opacity: 0.4;
-    translate: 0 -3px;
-  }
-}
+
 
 .rope-end-bow {
-  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.32));
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.28));
+}
+
+.panel__rope[data-rope-holiday] .rope-holiday {
+  filter: saturate(0.82) brightness(0.97);
 }
 
 .rope-ornament__string {
