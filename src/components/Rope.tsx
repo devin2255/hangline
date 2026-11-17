@@ -66,143 +66,184 @@ function StarPath({ color, size = 8 }: { color: string; size?: number }) {
   return (
     <path
       transform={`scale(${s})`}
-      d="M0 -8 L2.4 -2.6 L8 -2.6 L3.6 1 L5.2 6.4 L0 3.2 L-5.2 6.4 L-3.6 1 L-8 -2.6 L-2.4 -2.6 Z"
+      d="M0 -8 L1.7 -2.5 L7.6 -2.5 L2.9 1.1 L4.6 6.6 L0 3.4 L-4.6 6.6 L-2.9 1.1 L-7.6 -2.5 L-1.7 -2.5 Z"
       fill={color}
     />
   );
 }
 
-/** One hanging ornament. Coordinates are absolute; scale/rotation are applied by the caller. */
-function OrnamentShape({ ornament, fillId }: { ornament: HolidayOrnament; fillId: string }) {
+/** Brass loop. The ornament group origin is the knot, and the charm hangs below it. */
+function CharmLoop({ metal }: { metal: string }) {
+  return (
+    <path
+      d="M0 0.4 C0.1 -1.6 1.8 -1.8 1.8 -0.4"
+      fill="none"
+      stroke={metal}
+      strokeWidth="0.9"
+      strokeLinecap="round"
+    />
+  );
+}
+
+/**
+ * Hanging charms. The knot is the origin; every shape hangs downward from a small brass loop.
+ * Bodies keep their own enamel colour. Brass is only the fitting.
+ */
+function OrnamentShape({ ornament, metal }: { ornament: HolidayOrnament; metal: string }) {
   const { kind, color } = ornament;
+  const deep = shade(color, -26);
+  const lit = shade(color, 36);
   switch (kind) {
     case "bauble":
       return (
         <g>
-          <circle r="10.4" fill={fillId} />
-          <circle r="10.4" fill="none" stroke="#000000" strokeOpacity="0.13" strokeWidth="0.8" />
-          <circle cx="-3.1" cy="-3.8" r="3.1" fill="#ffffff" fillOpacity="0.34" />
+          <CharmLoop metal={metal} />
+          <rect x="-1.7" y="1.2" width="3.4" height="1.8" rx="0.5" fill={metal} />
+          <circle cy="9.4" r="6.7" fill={deep} />
+          <circle cy="9.2" r="6.1" fill={color} />
           <path
-            d="M-7.2 -7.4 A10.4 10.4 0 0 0 -7.2 7.4"
+            d="M-3.6 6.2 A4.6 4.6 0 0 1 0.6 5.2"
             fill="none"
-            stroke="#ffffff"
-            strokeOpacity="0.2"
-            strokeWidth="1.5"
+            stroke={lit}
+            strokeWidth="1"
+            strokeLinecap="round"
           />
-          <rect x="-3.2" y="-13.2" width="6.4" height="4" rx="1.6" className="rope-ornament__cap" />
         </g>
       );
     case "star":
-      return <StarPath color={color} size={11} />;
+      return (
+        <g>
+          <CharmLoop metal={metal} />
+          <g transform="translate(0 9)">
+            <StarPath color={deep} size={12.2} />
+            <StarPath color={color} size={10.4} />
+          </g>
+        </g>
+      );
     case "bell":
       return (
         <g>
-          <path d="M-8 6 Q-6 -7 0 -8 Q6 -7 8 6 Z" fill={fillId} />
-          <path d="M-8 6 Q0 9 8 6" fill="none" stroke="#000000" strokeOpacity="0.16" strokeWidth="1" />
-          <circle cy="8.2" r="2.4" fill="#7A5A35" />
-          <path d="M-2.8 -4.8 Q0 -7 2.8 -4.8" fill="none" stroke="#FFF4DC" strokeOpacity="0.55" strokeWidth="1.3" />
+          <CharmLoop metal={metal} />
+          <rect x="-1.5" y="1.1" width="3" height="1.5" rx="0.4" fill={metal} />
+          <path d="M0 2.6 C-6.4 3.4 -7.2 10.2 -6.2 12.4 H6.2 C7.2 10.2 6.4 3.4 0 2.6 Z" fill={deep} />
+          <path d="M0 3.2 C-5.4 4 -6.2 10 -5.4 11.8 H5.4 C6.2 10 5.4 4 0 3.2 Z" fill={color} />
+          <path d="M-5.6 11.8 H5.6" stroke={metal} strokeWidth="1.3" strokeLinecap="round" />
+          <circle cy="13.6" r="1.35" fill={metal} />
+          <path d="M-2.2 5.4 Q0 4.2 2.2 5.6" fill="none" stroke={lit} strokeWidth="0.7" strokeLinecap="round" />
         </g>
       );
     case "snow":
       return (
-        <g stroke={color} strokeWidth="2" strokeLinecap="round">
-          <path d="M0 -10 V10 M-8.6 -5 L8.6 5 M8.6 -5 L-8.6 5" />
-          <path d="M0 -10 L-3 -6.6 M0 -10 L3 -6.6 M0 10 L-3 6.6 M0 10 L3 6.6" strokeWidth="1.3" />
-          <path d="M-8.6 -5 L-4.6 -5.6 M8.6 5 L4.6 5.6 M8.6 -5 L4.6 -5.6 M-8.6 5 L-4.6 5.6" strokeWidth="1.1" />
+        <g stroke={color} strokeLinecap="round" transform="translate(0 8)">
+          <path d="M0 -6.4 V6.4 M-5.5 -3.2 L5.5 3.2 M5.5 -3.2 L-5.5 3.2" strokeWidth="1.15" />
+          <path d="M0 -6.4 L-1.5 -4.4 M0 -6.4 L1.5 -4.4 M0 6.4 L-1.5 4.4 M0 6.4 L1.5 4.4" strokeWidth="0.75" />
         </g>
       );
     case "pinecone":
       return (
         <g>
-          <ellipse rx="7.2" ry="9.6" fill={color} />
-          <ellipse rx="4.4" ry="8.2" fill="#000000" fillOpacity="0.08" />
+          <CharmLoop metal={metal} />
+          <ellipse cx="0" cy="10.2" rx="4.6" ry="7.2" fill={deep} />
+          <ellipse cx="0" cy="10" rx="4.1" ry="6.6" fill={color} />
           <path
-            d="M-4.8 -4.4 L0 -1.2 L4.8 -4.4 M-5.4 0 L0 3.4 L5.4 0 M-4.8 4.6 L0 7.6 L4.8 4.6"
+            d="M-3.2 6.2 Q0 7.6 3.2 6.2 M-3.6 9.2 Q0 10.8 3.6 9.2 M-3.2 12.2 Q0 13.6 3.2 12.2"
             fill="none"
-            stroke="#5A3822"
-            strokeWidth="1.4"
+            stroke={deep}
+            strokeWidth="0.7"
+            strokeLinecap="round"
           />
         </g>
       );
     case "heart":
       return (
-        <path
-          d="M0 8 C-10.5 0 -10.5 -8 -3.5 -8 C-1.2 -8 0 -6 0 -4.6 C0 -6 1.2 -8 3.5 -8 C10.5 -8 10.5 0 0 8 Z"
-          fill={fillId}
-        />
+        <g>
+          <CharmLoop metal={metal} />
+          <path
+            d="M0 15.2 C-8.4 9.2 -8.2 3.2 -4.2 3.2 C-2.2 3.2 0 4.8 0 6.2 C0 4.8 2.2 3.2 4.2 3.2 C8.2 3.2 8.4 9.2 0 15.2 Z"
+            fill={deep}
+          />
+          <path
+            d="M0 14.4 C-7.4 8.8 -7.2 3.8 -3.6 3.8 C-1.8 3.8 0 5.2 0 6.4 C0 5.2 1.8 3.8 3.6 3.8 C7.2 3.8 7.4 8.8 0 14.4 Z"
+            fill={color}
+          />
+          <path d="M-2.6 6.2 C-3.8 5 -4.6 5.4 -4 6.6" fill="none" stroke={lit} strokeWidth="0.7" strokeLinecap="round" />
+        </g>
       );
     case "lantern":
       return (
         <g>
-          <path d="M-2.2 -14 Q0 -17 2.2 -14" fill="none" stroke="#C9A05C" strokeWidth="1.2" />
-          <path
-            d="M-7.2 -8.4 C-12.8 -4.4 -12.8 7.2 -7.2 11.4 C-3 14.6 3 14.6 7.2 11.4 C12.8 7.2 12.8 -4.4 7.2 -8.4 C3 -11.6 -3 -11.6 -7.2 -8.4 Z"
-            fill={fillId}
-          />
-          <path
-            d="M-4.6 -9.2 C-6.4 -4.4 -6.4 7.6 -4.6 12.2 M0 -10.4 V13.4 M4.6 -9.2 C6.4 -4.4 6.4 7.6 4.6 12.2"
-            fill="none"
-            stroke="#F2C14E"
-            strokeOpacity="0.38"
-            strokeWidth="0.9"
-          />
-          <path d="M-5.4 -9.2 H5.4" stroke="#E8C46A" strokeWidth="2.4" strokeLinecap="round" />
-          <path d="M-5.4 12.1 H5.4" stroke="#E8C46A" strokeWidth="2.4" strokeLinecap="round" />
-          <line x1="0" y1="14" x2="0" y2="20" stroke="#E8C46A" strokeWidth="1.1" />
-          <line x1="-2.4" y1="20" x2="2.4" y2="20" stroke="#E8C46A" strokeWidth="1.1" strokeLinecap="round" />
+          <path d="M0 0 V2.2" stroke={metal} strokeWidth="0.8" />
+          <path d="M-2.6 2.4 H2.6" stroke={metal} strokeWidth="1.15" strokeLinecap="round" />
+          <path d="M-4.6 4.2 C-6.6 8 -6.6 14 -4.6 17.2 H4.6 C6.6 14 6.6 8 4.6 4.2 Z" fill={deep} />
+          <path d="M-4.1 4.6 C-5.8 8.2 -5.8 13.6 -4.1 16.6 H4.1 C5.8 13.6 5.8 8.2 4.1 4.6 Z" fill={color} />
+          <path d="M-4.4 4.4 H4.4 M-4.4 16.8 H4.4" stroke={metal} strokeWidth="1.15" strokeLinecap="round" />
+          <path d="M-1.6 5.2 V16 M1.6 5.2 V16" stroke={lit} strokeOpacity="0.55" strokeWidth="0.45" />
+          <path d="M0 17.6 V20.4" stroke={metal} strokeWidth="0.6" />
+          <path d="M-1.3 20.4 H1.3" stroke={metal} strokeWidth="0.6" strokeLinecap="round" />
         </g>
       );
     case "firework":
       return (
-        <g stroke={color} strokeWidth="1.8" strokeLinecap="round">
-          <circle r="2.1" fill={color} stroke="none" />
-          <path d="M0 -13 V-5 M0 5 V13 M-13 0 H-5 M5 0 H13" />
-          <path d="M-9 -9 L-4 -4 M4 4 L9 9 M9 -9 L4 -4 M-4 4 L-9 9" />
-          <path d="M-4.6 -11.2 L-2.2 -7.2 M4.6 11.2 L2.2 7.2 M11.2 -4.6 L7.2 -2.2 M-11.2 4.6 L-7.2 2.2" strokeWidth="1.1" />
+        <g stroke={color} strokeLinecap="round" transform="translate(0 8)">
+          <circle r="1.15" fill={color} stroke="none" />
+          <path d="M0 -7.2 V-2.4 M0 2.4 V7.2 M-7.2 0 H-2.4 M2.4 0 H7.2" strokeWidth="0.9" />
+          <path d="M-5 -5 L-2.2 -2.2 M2.2 2.2 L5 5 M5 -5 L2.2 -2.2 M-2.2 2.2 L-5 5" strokeWidth="0.7" />
         </g>
       );
     case "mooncake":
       return (
         <g>
-          <circle r="9.2" fill={fillId} />
-          <circle r="9.2" fill="none" stroke="#000000" strokeOpacity="0.12" strokeWidth="0.8" />
-          <rect x="-4.6" y="-4.6" width="9.2" height="9.2" rx="2" fill="none" stroke="#F4D98B" strokeWidth="1.3" />
-          <path d="M0 -9.2 V-6 M0 6 V9.2 M-9.2 0 H-6 M6 0 H9.2" stroke="#F4D98B" strokeWidth="1.1" />
+          <CharmLoop metal={metal} />
+          <circle cy="9.2" r="6.4" fill={deep} />
+          <circle cy="9" r="5.8" fill={color} />
+          <circle cy="9" r="3.3" fill="none" stroke={lit} strokeWidth="0.7" />
+          <circle cy="9" r="1.1" fill={lit} fillOpacity="0.85" />
         </g>
       );
     case "pumpkin":
       return (
         <g>
-          <ellipse rx="9.6" ry="8.2" fill={fillId} />
-          <ellipse rx="5.4" ry="8" fill="#000000" fillOpacity="0.09" />
-          <ellipse rx="2.2" ry="7" fill="#ffffff" fillOpacity="0.08" />
-          <path d="M-2.8 -11 Q0 -15 2.8 -11 L2.2 -8 H-2.2 Z" fill="#4F6B3A" />
-          <path d="M-8 -2.6 Q-4 0.6 0 0.6 Q4 0.6 8 -2.6" fill="none" stroke="#000000" strokeOpacity="0.14" strokeWidth="1.1" />
+          <path d="M-0.7 1.6 C-0.2 -0.2 1.4 -0.2 1.6 1.8" fill="none" stroke={shade(metal, -18)} strokeWidth="1" strokeLinecap="round" />
+          <ellipse cx="-2.4" cy="9.4" rx="3.3" ry="5.6" fill={deep} />
+          <ellipse cx="2.4" cy="9.4" rx="3.3" ry="5.6" fill={deep} />
+          <ellipse cy="9.6" rx="3.1" ry="6" fill={color} />
+          <path d="M-1.2 5.2 V14.2 M1.2 5.2 V14.2" stroke={deep} strokeOpacity="0.45" strokeWidth="0.45" />
         </g>
       );
     case "bat":
       return (
-        <path
-          d="M0 -2.6 C-3.6 -7.4 -9.6 -5 -12 0 C-8.4 1.2 -6 3.6 -3.6 2.4 C-1.2 4.8 1.2 4.8 3.6 2.4 C6 3.6 8.4 1.2 12 0 C9.6 -5 3.6 -7.4 0 -2.6 Z"
-          fill={color}
-        />
+        <g transform="translate(0 7)">
+          <path
+            d="M0 -1.2 C-2.4 -4.6 -6.4 -3.4 -8.2 0.2 C-5.6 0.6 -4 2.4 -2.4 1.6 C-0.8 3.2 0.8 3.2 2.4 1.6 C4 2.4 5.6 0.6 8.2 0.2 C6.4 -3.4 2.4 -4.6 0 -1.2 Z"
+            fill={color}
+          />
+          <circle cx="-1.3" cy="-0.2" r="0.45" fill={lit} />
+          <circle cx="1.3" cy="-0.2" r="0.45" fill={lit} />
+        </g>
       );
     case "flag":
       return (
         <g>
-          <line x1="-8" y1="-11" x2="-8" y2="10" stroke="#C9A05C" strokeWidth="1.6" />
-          <path d="M-6.8 -9.6 H9 V-0.4 H-6.8 Z" fill={fillId} />
-          <path d="M0 -6 L1.2 -3.6 L3.8 -3.6 L1.8 -1.8 L2.5 0.8 L0 -0.8 L-2.5 0.8 L-1.8 -1.8 L-3.8 -3.6 L-1.2 -3.6 Z" fill="#F2C14E" />
+          <path d="M0 0 V16" stroke={metal} strokeWidth="0.9" strokeLinecap="round" />
+          <path d="M0.6 1.6 C6 2.2 8.4 3.6 8.6 5.6 C6.2 6.4 3.2 6.2 0.6 7.2 Z" fill={color} />
+          <path d="M0.6 2.2 C4.6 2.6 6.4 3.4 6.8 4.6" fill="none" stroke={lit} strokeWidth="0.45" strokeLinecap="round" />
         </g>
       );
     case "moon":
       return (
         <g>
-          <circle r="13.6" fill={color} fillOpacity="0.18" />
-          <circle r="12.2" fill={fillId} />
-          <circle cx="-4.2" cy="-3.2" r="2.6" fill="#ffffff" fillOpacity="0.28" />
-          <circle cx="4.4" cy="3.2" r="3.4" fill="#ffffff" fillOpacity="0.18" />
-          <circle cx="2.2" cy="-6.4" r="1.5" fill="#ffffff" fillOpacity="0.22" />
+          <CharmLoop metal={metal} />
+          <path
+            d="M2.4 3.2 A6.6 6.6 0 1 0 2.4 15.2 A5 5 0 1 1 2.4 3.2 Z"
+            fill={color}
+          />
+          <path
+            d="M1.2 5.4 A4.2 4.2 0 0 0 -1.6 8.2"
+            fill="none"
+            stroke={lit}
+            strokeWidth="0.7"
+            strokeLinecap="round"
+          />
         </g>
       );
   }
@@ -301,12 +342,11 @@ function RibbonBow({
       className="rope-end-bow"
       transform={`translate(${round(x)}, ${round(y)}) scale(${flip ? -scale : scale}, ${scale})`}
     >
-      <rect x="-3.4" y="-2.6" width="6.8" height="5" rx="1.8" fill="#C8A96A" />
-      <rect x="-3.4" y="-0.5" width="6.8" height="1" fill="#8A6B3A" opacity="0.85" />
-      <path d="M-1.2 2.2 C-3.2 8 -4.4 15 -2.8 21 L0 18.2 L1 2.2 Z" fill={color} opacity="0.82" />
-      <path d="M1.2 2.2 C3.2 8 4.4 15 2.8 21 L0 18.2 L-1 2.2 Z" fill={color} opacity="0.66" />
-      <path d="M-1.6 2.2 C-3 8 -3.8 14 -3 19 M1.6 2.2 C3 8 3.8 14 3 19" fill="none" stroke={accent} strokeOpacity="0.35" strokeWidth="0.45" />
-      <circle r="1.4" fill={accent} />
+      <rect x="-2.1" y="-1.5" width="4.2" height="3" rx="0.9" fill="#C8A96A" />
+      <rect x="-2.1" y="-0.3" width="4.2" height="0.7" fill="#8A6B3A" opacity="0.8" />
+      <path d="M-0.5 1.4 C-1.4 5.2 -1.8 9 -1.1 12.4" fill="none" stroke={color} strokeWidth="0.7" strokeLinecap="round" opacity="0.8" />
+      <path d="M0.5 1.4 C1.5 5.4 1.9 9.2 1.2 12.6" fill="none" stroke={color} strokeWidth="0.55" strokeLinecap="round" opacity="0.55" />
+      <circle r="0.9" fill={accent} />
     </g>
   );
 }
@@ -327,8 +367,6 @@ export function Rope({ width, sag, style, color, holiday = null }: RopeProps) {
   const holidayGradient = `rope-holiday-${uid}`;
   const holidayGlow = `rope-holiday-glow-${uid}`;
   const holidayBokeh = `rope-holiday-bokeh-${uid}`;
-  const holidayMetal = `rope-metal-${uid}`;
-  const metalFill = `url(#${holidayMetal})`;
 
   return (
     <svg
@@ -368,19 +406,12 @@ export function Rope({ width, sag, style, color, holiday = null }: RopeProps) {
               <stop offset="1" stopColor={spec.cord[0]} />
             </linearGradient>
             <filter id={holidayGlow} x="-40%" y="-80%" width="180%" height="260%">
-              <feGaussianBlur stdDeviation="5.2" />
+              <feGaussianBlur stdDeviation="2.4" />
             </filter>
             <filter id={holidayBokeh} x="-100%" y="-100%" width="300%" height="300%">
               <feGaussianBlur stdDeviation="2.6" />
             </filter>
           </>
-        ) : null}
-        {spec ? (
-          <radialGradient id={holidayMetal} cx="34%" cy="26%" r="82%">
-            <stop offset="0" stopColor={shade(spec.metal, 38)} />
-            <stop offset="0.5" stopColor={spec.metal} />
-            <stop offset="1" stopColor={shade(spec.metal, -32)} />
-          </radialGradient>
         ) : null}
       </defs>
 
@@ -443,7 +474,7 @@ export function Rope({ width, sag, style, color, holiday = null }: RopeProps) {
             className="rope rope--holiday-thread"
             d={path}
             stroke={spec.thread}
-            strokeDasharray="1.2 4.4"
+            strokeDasharray="0.7 5.6"
           />
 
           {/* Cord-woven motifs: small hand-drawn details between the hanging pieces. */}
@@ -451,14 +482,14 @@ export function Rope({ width, sag, style, color, holiday = null }: RopeProps) {
             {spec.motifs.map((motif, index) => {
               const point = holidayRopePoint(safeWidth, safeSag, motif.t);
               const sideOffset = motif.side === "top" ? -3.2 : motif.side === "bottom" ? 3.2 : 0;
-              const scale = (motif.scale ?? 0.8) * 0.82;
+              const scale = (motif.scale ?? 0.8) * 0.62;
               return (
                 <g
                   key={`motif-${index}`}
                   transform={`translate(${round(point.x)}, ${round(point.y + sideOffset)}) scale(${scale})`}
-                  opacity="0.9"
+                  opacity="0.72"
                 >
-                  <MotifShape motif={{ ...motif, color: spec.metal }} />
+                  <MotifShape motif={motif} />
                 </g>
               );
             })}
@@ -473,11 +504,11 @@ export function Rope({ width, sag, style, color, holiday = null }: RopeProps) {
                 key={`light-${index}`}
                 className="rope-light"
                 style={{ animationDelay: `${index * 230}ms` }}
-                transform={`translate(${round(x)}, ${round(y + 7)}) scale(${scale})`}
+                transform={`translate(${round(x)}, ${round(y + 4.5)}) scale(${scale})`}
               >
-                <line x1="0" y1="-7" x2="0" y2="0" className="rope-light__wire" />
-                <circle r="6.6" className="rope-light__halo" style={{ fill: spec.light }} />
-                <circle r="1.8" className="rope-light__bulb" style={{ fill: spec.light }} />
+                <line x1="0" y1="-4.5" x2="0" y2="0" className="rope-light__wire" />
+                <circle r="2.6" className="rope-light__halo" style={{ fill: spec.light }} />
+                <circle r="1.15" className="rope-light__bulb" style={{ fill: spec.light }} />
               </g>
             );
           })}
@@ -487,18 +518,18 @@ export function Rope({ width, sag, style, color, holiday = null }: RopeProps) {
             const { x, y } = holidayRopePoint(safeWidth, safeSag, ornament.t);
             const cx = round(x);
             const top = round(y);
-            const hang = (ornament.hang ?? 20 + (index % 3) * 4) + 4;
-            const value = (ornament.scale ?? 1) * 1.0;
+            const hang = Math.round((ornament.hang ?? 18) * 0.5);
+            const value = (ornament.scale ?? 1) * 0.78;
             return (
               <g
                 key={`ornament-${index}`}
                 className="rope-ornament"
                 style={{ animationDelay: `${index * 150}ms` }}
               >
-                <line x1={cx} y1={top} x2={cx} y2={top + hang} className="rope-ornament__string" />
-                <circle cx={cx} cy={top + hang} r="1.4" className="rope-ornament__knot" />
+                <line x1={cx} y1={top + 1} x2={cx} y2={top + hang} className="rope-ornament__string" />
+                <circle cx={cx} cy={top + 1.1} r="0.9" className="rope-ornament__knot" />
                 <g transform={`translate(${cx}, ${top + hang}) scale(${value})`}>
-                  <OrnamentShape ornament={{ ...ornament, color: spec.metal }} fillId={metalFill} />
+                  <OrnamentShape ornament={ornament} metal={spec.metal} />
                 </g>
               </g>
             );

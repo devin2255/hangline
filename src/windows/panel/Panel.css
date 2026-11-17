@@ -1073,27 +1073,27 @@
 
 .panel__rope[data-rope-holiday] .rope--holiday {
   fill: none;
-  stroke-width: 3;
+  stroke-width: 2.2;
   opacity: 1;
-  filter: drop-shadow(0 1.2px 1.4px rgba(0, 0, 0, 0.24));
+  filter: drop-shadow(0 0.8px 0.8px rgba(0, 0, 0, 0.28));
 }
 
 .panel__rope[data-rope-holiday] .rope--holiday-highlight {
   fill: none;
-  stroke-width: 0.7;
-  opacity: 0.32;
+  stroke-width: 0.45;
+  opacity: 0.42;
 }
 
 .panel__rope[data-rope-holiday] .rope--holiday-glow {
   fill: none;
-  stroke-width: 4.4;
-  opacity: 0.26;
+  stroke-width: 3.2;
+  opacity: 0.16;
 }
 
 .panel__rope[data-rope-holiday] .rope--holiday-thread {
   fill: none;
-  stroke-width: 0.85;
-  opacity: 0.82;
+  stroke-width: 0.4;
+  opacity: 0.55;
 }
 
 .rope-holiday-stop--a {
@@ -1117,19 +1117,19 @@
 }
 
 .rope-light__halo {
-  opacity: 0.12;
-  filter: blur(1.8px);
+  opacity: 0.22;
+  filter: blur(0.8px);
 }
 
 .rope-light__bulb {
-  filter: drop-shadow(0 0 3px rgba(255, 226, 168, 0.75));
+  filter: drop-shadow(0 0 1.4px rgba(255, 226, 168, 0.65));
 }
 
 .rope-ornament {
   animation: rope-sway 5.2s ease-in-out infinite;
   transform-box: fill-box;
   transform-origin: top center;
-  filter: drop-shadow(0 1.5px 1.5px rgba(0, 0, 0, 0.2));
+  filter: drop-shadow(0 0.7px 0.6px rgba(0, 0, 0, 0.28));
 }
 
 .rope-ornament__knot {
@@ -1138,7 +1138,7 @@
 }
 
 .rope-sprigs {
-  opacity: 0.78;
+  opacity: 0.62;
 }
 
 
@@ -1154,8 +1154,8 @@
 
 .rope-ornament__string {
   stroke: #b89a63;
-  stroke-width: 0.9;
-  opacity: 0.8;
+  stroke-width: 0.55;
+  opacity: 0.72;
 }
 
 .rope-ornament__cap {
