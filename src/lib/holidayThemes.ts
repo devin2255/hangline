@@ -1,4 +1,4 @@
-/** v1.6.0 holiday themes shared by the date windows and the rope renderer. */
+/** v1.6.2 holiday themes shared by the date windows and the rope renderer. */
 import type { HolidayThemeId } from "./types";
 
 export interface HolidayOrnament {
@@ -19,24 +19,46 @@ export interface HolidayOrnament {
     | "flag"
     | "moon";
   color: string;
-  /** Optional visual scale; the end ornaments use slightly larger copies. */
+  /** Optional visual scale; the longest ornaments use it to stay in proportion. */
   scale?: number;
+  /** Optional string length in px; defaults to a small variation by index. */
+  hang?: number;
+}
+
+/** A small motif woven into the cord itself (not hanging), used to give the garland texture. */
+export interface HolidayCordMotif {
+  t: number;
+  kind:
+    | "pine"
+    | "blossom"
+    | "leaf"
+    | "sparkle"
+    | "star"
+    | "petal"
+    | "bat"
+    | "pennant"
+    | "snow"
+    | "knot"
+    | "heart";
+  color: string;
+  scale?: number;
+  side?: "top" | "bottom" | "both";
 }
 
 export interface HolidayRopeSpec {
-  /** Two cord stops (left/right) and the thin thread colour. */
+  /** Two cord stops (left/right), the thin thread colour and the end-bow ribbon colour. */
   cord: readonly [string, string];
   thread: string;
+  ribbon: string;
   /** Fairy-light bulb colour. */
   light: string;
   /** Bulb positions along the rope. */
   lights: readonly number[];
   ornaments: readonly HolidayOrnament[];
-  /** The Christmas pine sprig + ribbon ends are a special case. */
-  pineBowEnds?: boolean;
+  motifs: readonly HolidayCordMotif[];
+  /** Sparse, slowly breathing atmosphere particles around the garland. */
+  ambient?: { kind: "snow" | "petal" | "heart" | "bat" | "sparkle"; color: string };
 }
-
-const BASE_LIGHTS = [0.1, 0.24, 0.38, 0.52, 0.66, 0.8, 0.93] as const;
 
 export const HOLIDAY_THEME_IDS: readonly HolidayThemeId[] = [
   "new-year",
@@ -48,119 +70,201 @@ export const HOLIDAY_THEME_IDS: readonly HolidayThemeId[] = [
   "christmas",
 ];
 
+const LIGHTS = [0.08, 0.21, 0.35, 0.52, 0.68, 0.82, 0.94] as const;
+
 export const HOLIDAY_ROPE_SPECS: Record<HolidayThemeId, HolidayRopeSpec> = {
   "new-year": {
-    cord: ["#7E1D26", "#C0392B"],
-    thread: "#E8C46A",
-    light: "#FFD98A",
-    lights: BASE_LIGHTS,
+    cord: ["#5E1622", "#B8323D"],
+    thread: "#E7C878",
+    ribbon: "#D8B467",
+    light: "#FFE3A3",
+    lights: LIGHTS,
+  ambient: { kind: "sparkle", color: "#E7C878" },
     ornaments: [
-      { t: 0.055, kind: "firework", color: "#E8C46A", scale: 1.25 },
-      { t: 0.16, kind: "star", color: "#F2C14E" },
-      { t: 0.31, kind: "bauble", color: "#C0392B" },
-      { t: 0.44, kind: "firework", color: "#F2C14E" },
-      { t: 0.58, kind: "bauble", color: "#E8C46A" },
-      { t: 0.70, kind: "star", color: "#F2C14E" },
-      { t: 0.85, kind: "firework", color: "#E8C46A" },
-      { t: 0.945, kind: "star", color: "#F2C14E", scale: 1.2 },
+      { t: 0.065, kind: "firework", color: "#E7C878", scale: 1.4, hang: 22 },
+      { t: 0.095, kind: "bauble", color: "#B8323D", scale: 1.1, hang: 30 },
+      { t: 0.18, kind: "star", color: "#E7C878", scale: 0.95, hang: 23 },
+      { t: 0.30, kind: "firework", color: "#D86A5A", scale: 1.15, hang: 27 },
+      { t: 0.70, kind: "bauble", color: "#D8B467", scale: 1.15, hang: 24 },
+      { t: 0.82, kind: "firework", color: "#E7C878", scale: 1.05, hang: 20 },
+      { t: 0.90, kind: "star", color: "#E7C878", scale: 1.0, hang: 28 },
+      { t: 0.955, kind: "bauble", color: "#B8323D", scale: 1.15, hang: 22 },
+    ],
+    motifs: [
+      { t: 0.03, kind: "sparkle", color: "#E7C878", scale: 0.8 },
+      { t: 0.13, kind: "sparkle", color: "#E7C878", scale: 0.55, side: "top" },
+      { t: 0.24, kind: "star", color: "#E7C878", scale: 0.55 },
+      { t: 0.38, kind: "sparkle", color: "#FFE3A3", scale: 0.6, side: "top" },
+      { t: 0.62, kind: "sparkle", color: "#FFE3A3", scale: 0.6, side: "top" },
+      { t: 0.76, kind: "star", color: "#E7C878", scale: 0.55 },
+      { t: 0.87, kind: "sparkle", color: "#E7C878", scale: 0.75 },
+      { t: 0.97, kind: "sparkle", color: "#E7C878", scale: 0.8 },
     ],
   },
   "spring-festival": {
-    cord: ["#8F171F", "#D33A2C"],
-    thread: "#F2C14E",
-    light: "#FFD27A",
-    lights: BASE_LIGHTS,
+    cord: ["#7C171F", "#B8272E"],
+    thread: "#EBC46A",
+    ribbon: "#C74532",
+    light: "#FFD99A",
+    lights: LIGHTS,
+  ambient: { kind: "petal", color: "#F3D6C2" },
     ornaments: [
-      { t: 0.055, kind: "lantern", color: "#C0392B", scale: 1.3 },
-      { t: 0.18, kind: "star", color: "#F2C14E" },
-      { t: 0.32, kind: "lantern", color: "#D33A2C" },
-      { t: 0.46, kind: "bauble", color: "#F2C14E" },
-      { t: 0.60, kind: "lantern", color: "#C0392B" },
-      { t: 0.73, kind: "star", color: "#F2C14E" },
-      { t: 0.86, kind: "lantern", color: "#D33A2C" },
-      { t: 0.945, kind: "lantern", color: "#C0392B", scale: 1.3 },
+      { t: 0.06, kind: "lantern", color: "#C0392B", scale: 1.4, hang: 22 },
+      { t: 0.105, kind: "star", color: "#EBC46A", scale: 0.9, hang: 30 },
+      { t: 0.17, kind: "lantern", color: "#A91F2A", scale: 1.05, hang: 24 },
+      { t: 0.72, kind: "lantern", color: "#C0392B", scale: 1.05, hang: 25 },
+      { t: 0.835, kind: "bauble", color: "#EBC46A", scale: 1.0, hang: 20 },
+      { t: 0.885, kind: "lantern", color: "#A91F2A", scale: 1.25, hang: 30 },
+      { t: 0.945, kind: "lantern", color: "#C0392B", scale: 1.4, hang: 21 },
+    ],
+    motifs: [
+      { t: 0.035, kind: "blossom", color: "#F3D6C2", scale: 0.85 },
+      { t: 0.14, kind: "blossom", color: "#F3D6C2", scale: 0.65, side: "top" },
+      { t: 0.23, kind: "knot", color: "#EBC46A", scale: 0.75 },
+      { t: 0.32, kind: "blossom", color: "#F0C9B4", scale: 0.55, side: "top" },
+      { t: 0.66, kind: "blossom", color: "#F0C9B4", scale: 0.55, side: "top" },
+      { t: 0.78, kind: "knot", color: "#EBC46A", scale: 0.7 },
+      { t: 0.90, kind: "blossom", color: "#F3D6C2", scale: 0.7, side: "top" },
+      { t: 0.965, kind: "blossom", color: "#F3D6C2", scale: 0.85 },
     ],
   },
   valentine: {
-    cord: ["#922C49", "#D77A8F"],
-    thread: "#F1D6C8",
-    light: "#FFD7E1",
-    lights: BASE_LIGHTS,
+    cord: ["#6E2439", "#B5526B"],
+    thread: "#EBC9B8",
+    ribbon: "#C9768B",
+    light: "#FFE1E7",
+    lights: LIGHTS,
+  ambient: { kind: "heart", color: "#EBC9B8" },
     ornaments: [
-      { t: 0.06, kind: "heart", color: "#C24D69", scale: 1.35 },
-      { t: 0.18, kind: "heart", color: "#E9A7B6" },
-      { t: 0.32, kind: "bauble", color: "#F1D6C8" },
-      { t: 0.46, kind: "heart", color: "#C24D69" },
-      { t: 0.60, kind: "star", color: "#E9A7B6" },
-      { t: 0.73, kind: "heart", color: "#D77A8F" },
-      { t: 0.86, kind: "bauble", color: "#F1D6C8" },
-      { t: 0.945, kind: "heart", color: "#C24D69", scale: 1.35 },
+      { t: 0.065, kind: "heart", color: "#B5526B", scale: 1.5, hang: 22 },
+      { t: 0.10, kind: "bauble", color: "#EBC9B8", scale: 0.95, hang: 30 },
+      { t: 0.19, kind: "heart", color: "#C9768B", scale: 1.0, hang: 23 },
+      { t: 0.30, kind: "heart", color: "#8B3249", scale: 0.8, hang: 28 },
+      { t: 0.70, kind: "heart", color: "#8B3249", scale: 0.8, hang: 24 },
+      { t: 0.82, kind: "heart", color: "#C9768B", scale: 1.05, hang: 20 },
+      { t: 0.90, kind: "bauble", color: "#EBC9B8", scale: 0.95, hang: 28 },
+      { t: 0.95, kind: "heart", color: "#B5526B", scale: 1.45, hang: 23 },
+    ],
+    motifs: [
+      { t: 0.04, kind: "blossom", color: "#EBC9B8", scale: 0.7 },
+      { t: 0.15, kind: "heart", color: "#C9768B", scale: 0.5, side: "top" },
+      { t: 0.25, kind: "leaf", color: "#9C7A62", scale: 0.7, side: "top" },
+      { t: 0.38, kind: "petal", color: "#EBC9B8", scale: 0.6 },
+      { t: 0.62, kind: "petal", color: "#EBC9B8", scale: 0.6 },
+      { t: 0.75, kind: "leaf", color: "#9C7A62", scale: 0.7, side: "top" },
+      { t: 0.86, kind: "heart", color: "#C9768B", scale: 0.5, side: "top" },
+      { t: 0.96, kind: "blossom", color: "#EBC9B8", scale: 0.7 },
     ],
   },
   "mid-autumn": {
-    cord: ["#27324C", "#3B4D6B"],
+    cord: ["#1D2943", "#3E5274"],
     thread: "#E8C46A",
-    light: "#FFE8A3",
-    lights: BASE_LIGHTS,
+    ribbon: "#C9A25A",
+    light: "#FFE9AE",
+    lights: LIGHTS,
+  ambient: { kind: "petal", color: "#E8C46A" },
     ornaments: [
-      { t: 0.055, kind: "moon", color: "#F4D98B", scale: 1.5 },
-      { t: 0.18, kind: "mooncake", color: "#C99A5B" },
-      { t: 0.32, kind: "lantern", color: "#D9A441" },
-      { t: 0.46, kind: "star", color: "#F4D98B" },
-      { t: 0.60, kind: "mooncake", color: "#C99A5B" },
-      { t: 0.73, kind: "lantern", color: "#D9A441" },
-      { t: 0.86, kind: "mooncake", color: "#C99A5B" },
-      { t: 0.945, kind: "moon", color: "#F4D98B", scale: 1.5 },
+      { t: 0.065, kind: "moon", color: "#F4D98B", scale: 1.5, hang: 18 },
+      { t: 0.10, kind: "mooncake", color: "#C99A5B", scale: 1.0, hang: 30 },
+      { t: 0.19, kind: "lantern", color: "#D9A441", scale: 1.0, hang: 24 },
+      { t: 0.30, kind: "star", color: "#F4D98B", scale: 0.8, hang: 20 },
+      { t: 0.70, kind: "mooncake", color: "#C99A5B", scale: 1.05, hang: 27 },
+      { t: 0.81, kind: "lantern", color: "#D9A441", scale: 1.0, hang: 22 },
+      { t: 0.90, kind: "mooncake", color: "#B8874D", scale: 0.95, hang: 28 },
+      { t: 0.95, kind: "moon", color: "#F4D98B", scale: 1.5, hang: 18 },
+    ],
+    motifs: [
+      { t: 0.04, kind: "petal", color: "#E8C46A", scale: 0.6 },
+      { t: 0.15, kind: "blossom", color: "#E8C46A", scale: 0.75, side: "top" },
+      { t: 0.25, kind: "petal", color: "#F4D98B", scale: 0.55 },
+      { t: 0.38, kind: "star", color: "#E8C46A", scale: 0.5 },
+      { t: 0.62, kind: "star", color: "#E8C46A", scale: 0.5 },
+      { t: 0.75, kind: "petal", color: "#F4D98B", scale: 0.55, side: "top" },
+      { t: 0.86, kind: "blossom", color: "#E8C46A", scale: 0.7, side: "top" },
+      { t: 0.96, kind: "petal", color: "#E8C46A", scale: 0.6 },
     ],
   },
   "national-day": {
-    cord: ["#8C171A", "#D23B2E"],
-    thread: "#F2C14E",
-    light: "#FFD27A",
-    lights: BASE_LIGHTS,
+    cord: ["#7D171B", "#C0302D"],
+    thread: "#F0C75E",
+    ribbon: "#D8A945",
+    light: "#FFD98F",
+    lights: LIGHTS,
+  ambient: { kind: "sparkle", color: "#F0C75E" },
     ornaments: [
-      { t: 0.055, kind: "flag", color: "#C0392B", scale: 1.25 },
-      { t: 0.18, kind: "star", color: "#F2C14E" },
-      { t: 0.32, kind: "firework", color: "#F2C14E" },
-      { t: 0.46, kind: "flag", color: "#D23B2E" },
-      { t: 0.60, kind: "star", color: "#F2C14E" },
-      { t: 0.73, kind: "firework", color: "#F2C14E" },
-      { t: 0.86, kind: "flag", color: "#C0392B" },
-      { t: 0.945, kind: "star", color: "#F2C14E", scale: 1.2 },
+      { t: 0.065, kind: "flag", color: "#C0302D", scale: 1.25, hang: 22 },
+      { t: 0.10, kind: "star", color: "#F0C75E", scale: 1.0, hang: 30 },
+      { t: 0.18, kind: "firework", color: "#F0C75E", scale: 1.2, hang: 24 },
+      { t: 0.29, kind: "flag", color: "#C0302D", scale: 0.9, hang: 24 },
+      { t: 0.70, kind: "star", color: "#F0C75E", scale: 0.9, hang: 20 },
+      { t: 0.81, kind: "firework", color: "#E9B94B", scale: 1.1, hang: 28 },
+      { t: 0.90, kind: "flag", color: "#C0302D", scale: 1.0, hang: 22 },
+      { t: 0.95, kind: "star", color: "#F0C75E", scale: 1.1, hang: 26 },
+    ],
+    motifs: [
+      { t: 0.095, kind: "pennant", color: "#C0302D", scale: 0.85 },
+      { t: 0.16, kind: "pennant", color: "#F0C75E", scale: 0.7 },
+      { t: 0.23, kind: "star", color: "#F0C75E", scale: 0.65, side: "top" },
+      { t: 0.34, kind: "pennant", color: "#C0302D", scale: 0.65 },
+      { t: 0.66, kind: "pennant", color: "#D23B2E", scale: 0.65 },
+      { t: 0.77, kind: "pennant", color: "#F0C75E", scale: 0.7 },
+      { t: 0.865, kind: "pennant", color: "#C0302D", scale: 0.85 },
+      { t: 0.97, kind: "star", color: "#F0C75E", scale: 0.65, side: "top" },
     ],
   },
   halloween: {
-    cord: ["#3B2342", "#5A2D5C"],
-    thread: "#F28C28",
-    light: "#FFB347",
-    lights: BASE_LIGHTS,
+    cord: ["#2E1E3A", "#54305C"],
+    thread: "#E28A37",
+    ribbon: "#C46A2B",
+    light: "#FFC46B",
+    lights: LIGHTS,
+  ambient: { kind: "bat", color: "#6B4B78" },
     ornaments: [
-      { t: 0.055, kind: "pumpkin", color: "#D2691E", scale: 1.35 },
-      { t: 0.18, kind: "bat", color: "#2A1B30" },
-      { t: 0.32, kind: "star", color: "#F28C28" },
-      { t: 0.46, kind: "pumpkin", color: "#E8892B" },
-      { t: 0.60, kind: "bat", color: "#2A1B30" },
-      { t: 0.73, kind: "pumpkin", color: "#D2691E" },
-      { t: 0.86, kind: "bat", color: "#2A1B30" },
-      { t: 0.945, kind: "pumpkin", color: "#E8892B", scale: 1.35 },
+      { t: 0.065, kind: "pumpkin", color: "#D2691E", scale: 1.5, hang: 20 },
+      { t: 0.105, kind: "bat", color: "#2A1B30", scale: 1.3, hang: 30 },
+      { t: 0.19, kind: "star", color: "#E28A37", scale: 0.8, hang: 24 },
+      { t: 0.30, kind: "pumpkin", color: "#E8892B", scale: 0.9, hang: 22 },
+      { t: 0.70, kind: "bat", color: "#2A1B30", scale: 1.0, hang: 28 },
+      { t: 0.82, kind: "pumpkin", color: "#D2691E", scale: 1.05, hang: 22 },
+      { t: 0.90, kind: "bat", color: "#2A1B30", scale: 1.15, hang: 25 },
+      { t: 0.95, kind: "pumpkin", color: "#E8892B", scale: 1.45, hang: 21 },
+    ],
+    motifs: [
+      { t: 0.13, kind: "bat", color: "#6B4B78", scale: 0.6, side: "top" },
+      { t: 0.24, kind: "leaf", color: "#8B5E3C", scale: 0.75, side: "top" },
+      { t: 0.36, kind: "star", color: "#E28A37", scale: 0.5 },
+      { t: 0.64, kind: "star", color: "#E28A37", scale: 0.5 },
+      { t: 0.76, kind: "leaf", color: "#8B5E3C", scale: 0.75, side: "top" },
+      { t: 0.87, kind: "bat", color: "#6B4B78", scale: 0.6, side: "top" },
     ],
   },
   christmas: {
-    cord: ["#1E3A2B", "#2F523C"],
-    thread: "#C9A05C",
+    cord: ["#142E22", "#2F5A3A"],
+    thread: "#D8B26A",
+    ribbon: "#A34B4E",
     light: "#FFE7B0",
-    lights: BASE_LIGHTS,
+    lights: LIGHTS,
+  ambient: { kind: "snow", color: "#DDE8E1" },
     ornaments: [
-      { t: 0.055, kind: "bauble", color: "#A34B4E" },
-      { t: 0.16, kind: "star", color: "#D9B45C" },
-      { t: 0.33, kind: "bell", color: "#C9A05C" },
-      { t: 0.44, kind: "snow", color: "#E8EEE7" },
-      { t: 0.58, kind: "bauble", color: "#3E6B4F" },
-      { t: 0.70, kind: "pinecone", color: "#8B5E3C" },
-      { t: 0.85, kind: "star", color: "#D9B45C" },
-      { t: 0.945, kind: "bauble", color: "#A34B4E" },
+      { t: 0.06, kind: "bauble", color: "#A34B4E", scale: 1.25, hang: 22 },
+      { t: 0.10, kind: "star", color: "#D9B45C", scale: 1.0, hang: 31 },
+      { t: 0.18, kind: "snow", color: "#E8EEE7", scale: 1.1, hang: 25 },
+      { t: 0.29, kind: "bell", color: "#C9A05C", scale: 1.1, hang: 22 },
+      { t: 0.70, kind: "pinecone", color: "#8B5E3C", scale: 1.2, hang: 27 },
+      { t: 0.81, kind: "bauble", color: "#3E6B4F", scale: 1.2, hang: 20 },
+      { t: 0.90, kind: "star", color: "#D9B45C", scale: 1.0, hang: 28 },
+      { t: 0.95, kind: "bauble", color: "#A34B4E", scale: 1.25, hang: 23 },
     ],
-    pineBowEnds: true,
+    motifs: [
+      { t: 0.035, kind: "pine", color: "#4F7A58", scale: 0.8 },
+      { t: 0.135, kind: "pine", color: "#3E6B4F", scale: 0.65, side: "top" },
+      { t: 0.23, kind: "snow", color: "#DDE8E1", scale: 0.6 },
+      { t: 0.34, kind: "pine", color: "#4F7A58", scale: 0.55, side: "top" },
+      { t: 0.66, kind: "pine", color: "#4F7A58", scale: 0.55, side: "top" },
+      { t: 0.77, kind: "snow", color: "#DDE8E1", scale: 0.6 },
+      { t: 0.87, kind: "pine", color: "#3E6B4F", scale: 0.65, side: "top" },
+      { t: 0.965, kind: "pine", color: "#4F7A58", scale: 0.8 },
+    ],
   },
 };
 
@@ -210,7 +314,6 @@ function dateKey(date: Date): number {
 
 function inWrappingRange(date: Date, startMonthDay: number, endMonthDay: number): boolean {
   const key = dateKey(date);
-  // A window such as New Year (12/30–01/02) wraps around the calendar year.
   return startMonthDay <= endMonthDay
     ? key >= startMonthDay && key <= endMonthDay
     : key >= startMonthDay || key <= endMonthDay;
