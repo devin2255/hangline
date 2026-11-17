@@ -4,8 +4,14 @@
  * Pure SVG generation (no DOM/canvas) so the panel can cache one data URL per card and the logic is
  * testable under Vitest. The frame overlays the card's outer edge; the screenshot is never resized
  * and the card's hit rect / rope geometry stay unchanged.
+ *
+ * The band is stockinette, not a flat print. Each stitch is two round yarn legs — a cast
+ * shadow, a darker rim, the yarn colour, and a same-hue highlight on the upper shoulder —
+ * sitting on a deeper wool ground. Colourwork only changes the yarn colour. A few loose
+ * fibres lie on top. Rows nest, and a stitch is a little wider than it is tall.
  */
 
+import { CARD_RADIUS } from "./layout";
 import type { SweaterPalette } from "./types";
 
 export type SweaterPattern = "chevron" | "checks" | "snowflake" | "stripe" | "fairisle";
@@ -15,7 +21,6 @@ export type SweaterWidth = "slim" | "classic" | "chunky";
 /** Default drawing viewBox used by tests; the panel passes the card's real CSS size. */
 export const SWEATER_VIEWBOX = { width: 300, height: 200 } as const;
 
-/** Frame thickness in CSS pixels for each setting (the SVG is generated at the card size). */
 /** Curated palettes for the "Sweater palette" tray submenu (order = main, contrast, neutral). */
 export const CURATED_SWEATER_PALETTES: Record<
   Exclude<SweaterPalette, "auto">,
@@ -34,11 +39,21 @@ export function curatedSweaterPalette(palette: unknown): string[] | null {
   return null;
 }
 
-/** Frame thickness in CSS pixels for each setting (the SVG is generated at the card size). */
+/**
+ * Nominal band thickness in CSS pixels. Wide enough for two or three stockinette rows;
+ * very short cards clamp it so the photograph keeps the middle of the frame.
+ */
 export const SWEATER_THICKNESS: Record<SweaterWidth, number> = {
-  slim: 6,
-  classic: 9,
-  chunky: 12,
+  slim: 12,
+  classic: 15,
+  chunky: 20,
+};
+
+/** Stitch rows across the band. Fewer, larger stitches read as yarn; more rows read as fabric. */
+const SWEATER_ROWS: Record<SweaterWidth, number> = {
+  slim: 2,
+  classic: 2,
+  chunky: 3,
 };
 
 export const SWEATER_PATTERNS: readonly SweaterPattern[] = [
@@ -94,52 +109,116 @@ function esc(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function cellPattern(pattern: SweaterPattern, main: string, contrast: string, neutral: string): string {
-  switch (pattern) {
-    case "checks":
-      return `
-        <rect width="28" height="24" fill="${neutral}"/>
-        <rect x="0" y="0" width="14" height="12" fill="${contrast}"/>
-        <rect x="14" y="12" width="14" height="12" fill="${main}"/>
-        <rect x="14" y="0" width="14" height="12" fill="${neutral}"/>
-        <rect x="0" y="12" width="14" height="12" fill="${neutral}"/>`;
-    case "snowflake":
-      return `
-        <rect width="32" height="32" fill="${neutral}"/>
-        <g stroke="${contrast}" stroke-width="2.2" stroke-linecap="round" fill="none">
-          <path d="M16 6 V26 M7 11 L25 21 M25 11 L7 21"/>
-          <path d="M16 10 L13 13 M16 10 L19 13 M16 22 L13 19 M16 22 L19 19" stroke="${main}"/>
-        </g>`;
-    case "stripe":
-      return `
-        <rect width="48" height="24" fill="${neutral}"/>
-        <rect y="0" width="48" height="8" fill="${contrast}"/>
-        <rect y="8" width="48" height="4" fill="${main}"/>
-        <rect y="12" width="48" height="6" fill="${contrast}" opacity="0.65"/>`;
-    case "fairisle":
-      return `
-        <rect width="40" height="28" fill="${neutral}"/>
-        <rect y="0" width="40" height="4" fill="${contrast}"/>
-        <rect y="24" width="40" height="4" fill="${contrast}"/>
-        <path d="M0 14 L10 6 L20 14 L30 6 L40 14" fill="none" stroke="${main}" stroke-width="3"/>
-        <circle cx="6" cy="20" r="2.6" fill="${contrast}"/>
-        <circle cx="20" cy="20" r="2.6" fill="${contrast}"/>
-        <circle cx="34" cy="20" r="2.6" fill="${contrast}"/>`;
-    case "chevron":
-    default:
-      return `
-        <rect width="36" height="24" fill="${neutral}"/>
-        <path d="M0 16 L9 6 L18 16 L27 6 L36 16" fill="none" stroke="${contrast}" stroke-width="8"/>
-        <path d="M0 21 L9 11 L18 21 L27 11 L36 21" fill="none" stroke="${main}" stroke-width="3" opacity="0.75"/>`;
-  }
+/**
+ * Colourwork charts. One cell is one stitch.
+ * 0 = neutral ground yarn, 1 = contrast, 2 = main. Every chart uses all three so a
+ * palette sampled from the screenshot stays visible on every edge.
+ */
+const KNIT_CHARTS: Record<SweaterPattern, readonly (readonly (0 | 1 | 2)[])[]> = {
+  checks: [
+    [1, 1, 0, 0],
+    [1, 1, 0, 0],
+    [2, 2, 1, 1],
+    [2, 2, 1, 1],
+  ],
+  stripe: [
+    [1, 1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 1, 1],
+    [2, 2, 2, 2, 2, 2],
+    [0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0],
+    [2, 2, 2, 2, 2, 2],
+  ],
+  chevron: [
+    [0, 0, 1, 2, 2, 1, 0, 0],
+    [0, 1, 2, 1, 1, 2, 1, 0],
+    [1, 2, 1, 0, 0, 1, 2, 1],
+    [2, 1, 0, 1, 1, 0, 1, 2],
+  ],
+  snowflake: [
+    [0, 0, 1, 0, 0, 1, 0, 0],
+    [0, 1, 2, 1, 1, 2, 1, 0],
+    [1, 2, 1, 0, 0, 1, 2, 1],
+    [0, 1, 0, 2, 2, 0, 1, 0],
+    [1, 2, 1, 0, 0, 1, 2, 1],
+    [0, 1, 2, 1, 1, 2, 1, 0],
+  ],
+  fairisle: [
+    [1, 1, 1, 1, 1, 1, 1, 1],
+    [2, 0, 2, 0, 2, 0, 2, 0],
+    [0, 1, 0, 2, 0, 1, 0, 2],
+    [0, 0, 1, 2, 2, 1, 0, 0],
+    [0, 1, 0, 2, 0, 1, 0, 2],
+    [2, 0, 2, 0, 2, 0, 2, 0],
+  ],
+};
+
+/** Deterministic wobble in [0, 1). Same inputs always return the same stitch. */
+function knitNoise(a: number, b: number): number {
+  const value = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453;
+  return value - Math.floor(value);
 }
 
-/** A tiny repeating stockinette texture (highlight + shadow + rib) laid over the chart. */
-const STITCH_TEXTURE = `
-  <rect width="16" height="12" fill="none"/>
-  <path d="M3 3 L8 9 L13 3" fill="none" stroke="#ffffff" stroke-opacity="0.22" stroke-width="2" stroke-linecap="round"/>
-  <path d="M3 5 L8 11 L13 5" fill="none" stroke="#000000" stroke-opacity="0.12" stroke-width="1.5" stroke-linecap="round"/>
-  <path d="M8 2 V10" stroke="#000000" stroke-opacity="0.08" stroke-width="1"/>`;
+function mod(value: number, size: number): number {
+  return ((value % size) + size) % size;
+}
+
+function round2(value: number): string {
+  return (Math.round(value * 100) / 100).toString();
+}
+
+/**
+ * Brightness of a yarn. `lighten` pushes toward a brighter version of the same hue
+ * and never toward white, so a solid patch stays one colour.
+ */
+function yarnShade(hex: string, shade: number, lighten = 0): string {
+  const parsed = Number.parseInt(hex.slice(1), 16);
+  const red = ((parsed >> 16) & 255) / 255;
+  const green = ((parsed >> 8) & 255) / 255;
+  const blue = (parsed & 255) / 255;
+  const cap = Math.max(red, green, blue, 0.05);
+  const factor = Math.min(shade * (1 + lighten), 1 / cap);
+  const channel = (value: number) => Math.min(255, Math.round(value * factor * 255));
+  return `#${((channel(red) << 16) | (channel(green) << 8) | channel(blue)).toString(16).padStart(6, "0")}`;
+}
+
+/**
+ * Two round yarn legs that lean into a V. A soft cast shadow sits under the pair,
+ * then each leg is a darker rim, the yarn colour, and a highlight on the upper shoulder.
+ */
+function stitchLegs(stw: number, sth: number, rim: string, body: string, shine: string): string {
+  const gap = stw * 0.22;
+  const tilt = 28;
+  const leg = (side: number, fillRim: string, fillBody: string, fillShine: string | null) => {
+    const shine =
+      fillShine === null
+        ? ""
+        : `<ellipse cx="${round2(side * stw * 0.04)}" cy="${round2(-sth * 0.34)}" rx="${round2(stw * 0.045)}" ry="${round2(sth * 0.13)}" fill="${fillShine}"/>`;
+    return `<g transform="translate(${round2(side * gap)} ${round2(sth * 0.02)}) rotate(${side * tilt})">
+      <ellipse cx="0" cy="0" rx="${round2(stw * 0.16)}" ry="${round2(sth * 0.58)}" fill="${fillRim}"/>
+      <ellipse cx="0" cy="${round2(-sth * 0.02)}" rx="${round2(stw * 0.105)}" ry="${round2(sth * 0.46)}" fill="${fillBody}"/>
+      ${shine}
+    </g>`;
+  };
+  const shadow = [-1, 1].map((side) => leg(side, "#1c140e", "#1c140e", null)).join("");
+  const yarn = [-1, 1].map((side) => leg(side, rim, body, shine)).join("");
+  return `<g transform="translate(${round2(stw * 0.035)} ${round2(sth * 0.1)})" opacity="0.38">${shadow}</g>${yarn}`;
+}
+
+function fibreMarkup(tileW: number, tileH: number, color: string): string {
+  const count = Math.max(5, Math.min(16, Math.round((tileW * tileH) / 70)));
+  const lines: string[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const x = knitNoise(index, 11) * tileW;
+    const y = knitNoise(index, 13) * tileH;
+    const direction = knitNoise(index, 17) * Math.PI * 2;
+    const length = 1.1 + knitNoise(index, 19) * 2.4;
+    lines.push(
+      `<line x1="${round2(x)}" y1="${round2(y)}" x2="${round2(x + Math.cos(direction) * length)}" y2="${round2(y + Math.sin(direction) * length)}"/>`,
+    );
+  }
+  return `<g stroke="${color}" stroke-opacity="0.55" stroke-width="0.45" stroke-linecap="round">${lines.join("")}</g>`;
+}
 
 /**
  * Builds the SVG frame for one card.
@@ -154,26 +233,68 @@ export function buildSweaterSvg(
   size: { width: number; height: number } = SWEATER_VIEWBOX,
 ): string {
   const [main, contrast, neutral] = normalizePalette(palette);
-  const thickness = SWEATER_THICKNESS[width] ?? SWEATER_THICKNESS.classic;
-  const vw = Math.max(thickness * 3, Math.round(size.width));
-  const vh = Math.max(thickness * 3, Math.round(size.height));
-  const radius = Math.max(thickness + 4, Math.min(18, Math.min(vw, vh) * 0.16));
+  const nominal = SWEATER_THICKNESS[width] ?? SWEATER_THICKNESS.classic;
+  const vw = Math.max(Math.round(nominal * 3), Math.round(size.width));
+  const vh = Math.max(Math.round(nominal * 3), Math.round(size.height));
+  const thickness = Math.min(nominal, Math.max(10, Math.min(vw, vh) * 0.24));
+  const radius = Math.min(CARD_RADIUS, Math.min(vw, vh) / 2 - 1);
   const inner = Math.max(2, radius - thickness);
   const outerPath = `M${radius},0 H${vw - radius} A${radius},${radius} 0 0 1 ${vw},${radius} V${vh - radius} A${radius},${radius} 0 0 1 ${vw - radius},${vh} H${radius} A${radius},${radius} 0 0 1 0,${vh - radius} V${radius} A${radius},${radius} 0 0 1 ${radius},0 Z`;
   const innerPath = `M${thickness + inner},${thickness} H${vw - thickness - inner} A${inner},${inner} 0 0 1 ${vw - thickness},${thickness + inner} V${vh - thickness - inner} A${inner},${inner} 0 0 1 ${vw - thickness - inner},${vh - thickness} H${thickness + inner} A${inner},${inner} 0 0 1 ${thickness},${vh - thickness - inner} V${thickness + inner} A${inner},${inner} 0 0 1 ${thickness + inner},${thickness} Z`;
-  const patternMarkup = cellPattern(pattern, main, contrast, neutral);
-  const id = `sweater-${stableHash(`${main}${contrast}${neutral}${pattern}${width}`).toString(36)}`;
+
+  const wantedRows = SWEATER_ROWS[width] ?? SWEATER_ROWS.classic;
+  const courses = thickness < 16 ? Math.min(2, wantedRows) : wantedRows;
+  const sth = thickness / courses;
+  const stw = sth * 1.32;
+  const chart = KNIT_CHARTS[pattern] ?? KNIT_CHARTS.chevron;
+  const cols = chart[0].length;
+  const rows = chart.length;
+  const tileW = cols * stw;
+  const tileH = rows * sth;
+  const yarns = [neutral, contrast, main];
+  const id = `sweater-${stableHash(`${main}${contrast}${neutral}${pattern}${width}${vw}x${vh}`).toString(36)}`;
+  const symbols = yarns
+    .map((color, index) => {
+      const rim = yarnShade(color, 0.68);
+      const shine = yarnShade(color, 1, 0.16);
+      return `<g id="${id}-y${index}">${stitchLegs(stw, sth, rim, esc(color), shine)}</g>`;
+    })
+    .join("");
+
+  const stitches: string[] = [];
+  for (let row = rows; row >= -1; row -= 1) {
+    for (let col = -1; col <= cols; col += 1) {
+      const wrappedCol = mod(col, cols);
+      const wrappedRow = mod(row, rows);
+      const yarn = chart[wrappedRow][wrappedCol];
+      const jx = (knitNoise(wrappedCol, wrappedRow) - 0.5) * stw * 0.05;
+      const jy = (knitNoise(wrappedCol + 3, wrappedRow + 1) - 0.5) * sth * 0.06;
+      const opacity = (0.92 + knitNoise(wrappedCol + 8, wrappedRow + 5) * 0.08).toFixed(2);
+      const cx = (col + 0.5) * stw + jx;
+      const cy = (row + 0.5) * sth + jy;
+      stitches.push(
+        `<use href="#${id}-y${yarn}" transform="translate(${round2(cx)} ${round2(cy)})" opacity="${opacity}"/>`,
+      );
+    }
+  }
+
+  const ground = yarnShade(neutral, 0.46);
+  const rimLight = yarnShade(neutral, 1, 0.12);
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${vw} ${vh}" preserveAspectRatio="none" role="presentation" focusable="false">
   <defs>
-    <pattern id="${id}-cells" patternUnits="userSpaceOnUse" width="36" height="32">${patternMarkup}</pattern>
-    <pattern id="${id}-stitch" patternUnits="userSpaceOnUse" width="16" height="12">${STITCH_TEXTURE}</pattern>
+    ${symbols}
+    <pattern id="${id}-knit" patternUnits="userSpaceOnUse" width="${round2(tileW)}" height="${round2(tileH)}">
+      <rect width="${round2(tileW)}" height="${round2(tileH)}" fill="${ground}"/>
+      ${stitches.join("")}
+      ${fibreMarkup(tileW, tileH, rimLight)}
+    </pattern>
   </defs>
-  <path fill-rule="evenodd" fill="${neutral}" fill-opacity="0.98" d="${outerPath} ${innerPath}"/>
-  <path fill-rule="evenodd" fill="url(#${id}-cells)" d="${outerPath} ${innerPath}"/>
-  <path fill-rule="evenodd" fill="url(#${id}-stitch)" d="${outerPath} ${innerPath}"/>
-  <path fill-rule="evenodd" fill="none" stroke="#2B2219" stroke-opacity="0.35" stroke-width="1.2" d="${outerPath} ${innerPath}"/>
-  <path fill="none" stroke="${esc(neutral)}" stroke-opacity="0.55" stroke-width="1.4" d="${innerPath}"/>
+  <path fill-rule="evenodd" fill="${ground}" d="${outerPath} ${innerPath}"/>
+  <path fill-rule="evenodd" fill="url(#${id}-knit)" d="${outerPath} ${innerPath}"/>
+  <path fill="none" stroke="#2B2219" stroke-opacity="0.42" stroke-width="1.2" d="${innerPath}"/>
+  <path fill="none" stroke="${rimLight}" stroke-opacity="0.75" stroke-width="1.05" d="${outerPath}"/>
+  <path fill="none" stroke="#2B2219" stroke-opacity="0.2" stroke-width="0.7" d="${outerPath}"/>
 </svg>`;
 }
 

@@ -126,12 +126,12 @@ pub enum SweaterPalette {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SweaterWidth {
-    /// A thin 6 dp frame.
+    /// A thin 12 dp frame.
     Slim,
-    /// The default 9 dp frame.
+    /// The default 15 dp frame.
     #[default]
     Classic,
-    /// A statement 12 dp frame.
+    /// A statement 20 dp frame.
     Chunky,
 }
 

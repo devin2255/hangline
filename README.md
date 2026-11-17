@@ -11,7 +11,7 @@ Tauri 2 (Rust) + React 19 + TypeScript + Vite. Windows x64.
 
 Repository: <https://github.com/devin2255/hangline>
 
-> **Status: Hangline 1.6.3 release (the quiet holiday garland — small brass / champagne / rose-gold / copper charms, a fine woven cord and restrained light points across the seven manually selectable themes — plus the 1.6.1 Border → Sweater setting, Wave 2 memory & search, 1.4.0 rope appearance, 1.4.1 mainland update channel, 1.5.0 drag-in drop, 1.5.1 tray version label and the 1.5.2 app icon).**
+> **Status: Hangline 1.6.4 release (stockinette sweater borders — round yarn stitches, cast shadow and a deeper wool ground, with the five charts knitted into the stitches — plus the 1.6.3 quiet holiday garland, the 1.6.1 Border → Sweater setting, Wave 2 memory & search, 1.4.0 rope appearance, 1.4.1 mainland update channel, 1.5.0 drag-in drop, 1.5.1 tray version label and the 1.5.2 app icon).**
 > The public source repository is <https://github.com/devin2255/hangline>; a GitHub Release is produced by the
 > `v*` tag workflow when signing secrets are configured, and the installer/portable ZIP can always be built locally.
 > The installer is currently unsigned (SmartScreen may warn); free code signing is being applied for
@@ -46,19 +46,19 @@ P4 multi-monitor placement under 100%/150% scaling (app UI only, neutral synthet
 More P4 evidence: [`docs/experiments/P4-multimon-settings.md`](docs/experiments/P4-multimon-settings.md),
 [`docs/acceptance/P4-core.md`](docs/acceptance/P4-core.md).
 
-## Install (1.6.3 release)
+## Install (1.6.4 release)
 
 Windows 10 22H2 or Windows 11, x64. Download the GitHub Release artifacts for the latest tag when available,
 or build the installer locally (see [Building](#building-from-source)) with
 `node scripts/release/build-release.mjs --sign`.
 
-- `Hangline_1.6.3_x64-setup.exe` — per-user install to `%LOCALAPPDATA%\Programs\Hangline` (no admin),
+- `Hangline_1.6.4_x64-setup.exe` — per-user install to `%LOCALAPPDATA%\Programs\Hangline` (no admin),
   Start-menu shortcut (desktop shortcut optional), HKCU uninstall entry, embedded WebView2
   bootstrapper (network needed only on a machine without WebView2). Uninstall asks whether to keep or delete your Hangline data
   (default: keep).
-- `Hangline_1.6.3_x64-portable.zip` — unpack anywhere and run `Hangline.exe`; data still lives in
+- `Hangline_1.6.4_x64-portable.zip` — unpack anywhere and run `Hangline.exe`; data still lives in
   `%LOCALAPPDATA%\Hangline` (a true portable mode is post-V1).
-- **Authenticode status:** releases up to v1.6.3 are **unsigned** — Windows SmartScreen shows an
+- **Authenticode status:** releases up to v1.6.4 are **unsigned** — Windows SmartScreen shows an
   unknown publisher. Hangline is applying for free code signing from SignPath Foundation; once the
   signing policy is enabled, releases will be Authenticode-signed. Until then, verify the SHA-256 in
   `SHA256SUMS.txt`. See the [Code signing policy](CODE_SIGNING_POLICY.md).
@@ -72,7 +72,7 @@ or build the installer locally (see [Building](#building-from-source)) with
   so install v1.4.1 once by hand. Accelerated download links are in the
   [v1.4.1 release notes](docs/release/notes-v1.4.1.md); after that, in-app updates work normally.
 
-- **What's new in 1.6.3:** [The quiet metal-charm garland](docs/release/notes-v1.6.3.md).
+- **What's new in 1.6.4:** [Stockinette sweater borders](docs/release/notes-v1.6.4.md).
 
 Release/update/signing/privacy runbook: [`docs/RELEASE.md`](docs/RELEASE.md).
 
@@ -129,7 +129,7 @@ artifact metadata, privacy policy, and how third-party components are handled) i
 - **Card border: None / Sweater (v1.6.1).** Tray → Appearance → **Border** picks the card edge
   style directly — no separate "Sweater Season" switch. **Sweater** wraps every card in a knitted
   frame generated from the screenshot itself: three yarn colours sampled locally from the
-  thumbnail, five original charts chosen stably from the card id, three frame widths (6/9/12 dp)
+  thumbnail, five original charts chosen stably from the card id, three frame widths (12/15/20 dp)
   and four palettes (auto / pine / frost / berry). Hover a card and click the yarn button for
   **shuffle / lock / take off** per card; those choices persist. The image file, card size, rope
   geometry and hit rects never change.
@@ -306,7 +306,7 @@ Data lives under `%LOCALAPPDATA%\Hangline\` (`settings.json`,
 - **The hover preview is capped by the panel height** (the panel window never grows), so it is a
   large thumbnail rather than a full-screen viewer; the editor remains the way to inspect details.
 
-Hangline 1.6.3 is a release build; the functional milestones P1–P5 are implemented and the
+Hangline 1.6.4 is a release build; the functional milestones P1–P5 are implemented and the
 remaining items are manual/deferred checks (the acceptance documents track them in detail):
 
 - **Manual acceptance is pending.** The following still need a real person on an
@@ -315,7 +315,7 @@ remaining items are manual/deferred checks (the acceptance documents track them 
   (WeChat/QQ/browser), real wheel/touchpad scrolling, real pointer cross-screen
   following, and the folder picker. They are marked `MANUAL-PENDING` — not
   "passed" — in [`docs/acceptance/P1-core.md`](docs/acceptance/P1-core.md).
-- **Unsigned (for now).** The 1.6.3 installer/portable ZIP are built by the tag workflow and published
+- **Unsigned (for now).** The 1.6.4 installer/portable ZIP are built by the tag workflow and published
   on GitHub Releases; there is no Authenticode signature yet (SmartScreen warns). From v1.1.x on, code
   signing is planned through SignPath Foundation — the current latest release may still be unsigned
   until the signing policy is enabled; see [Code signing policy](CODE_SIGNING_POLICY.md). Auto-update is

@@ -1030,6 +1030,8 @@
   background-repeat: no-repeat;
   background-size: 100% 100%;
   pointer-events: none;
+  /* The SVG centre is transparent, so the shadow traces the outer edge and the inner hole. */
+  filter: drop-shadow(0 0.7px 0.45px rgba(43, 34, 25, 0.32));
 }
 
 .glass-card__sweater--knit {

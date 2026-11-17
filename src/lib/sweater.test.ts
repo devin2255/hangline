@@ -66,7 +66,10 @@ describe("sweater frame generator", () => {
     expect(svg).toContain("#D9A55C");
     expect(svg).toContain("#E8DFCC");
     expect(svg).toContain("fill-rule=\"evenodd\"");
-    expect(svg).toContain("patterns".slice(0, 0) + "pattern");
+    expect(svg).toContain("pattern");
+    expect(svg).toContain("<ellipse");
+    expect(svg).toContain("stroke-linecap=\"round\"");
+    expect(buildSweaterSvg(palette, "chevron", "classic")).not.toBe(svg);
   });
 
   it("changes the frame thickness per width setting", () => {
