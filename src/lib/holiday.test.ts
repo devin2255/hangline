@@ -68,7 +68,9 @@ describe("holiday windows", () => {
     for (const id of HOLIDAY_THEME_IDS) {
       expect(activeHolidayTheme(id, summer)).toBe(id);
       expect(parseHolidayTheme(id)).toBe(id);
-      expect(HOLIDAY_ROPE_SPECS[id].ornaments.length).toBeGreaterThanOrEqual(6);
+      if (id !== "christmas") {
+        expect(HOLIDAY_ROPE_SPECS[id].ornaments.length).toBeGreaterThanOrEqual(6);
+      }
     }
     expect(parseHolidayTheme("spring")).toBe("off");
     expect(parseHolidayTheme("not-a-holiday")).toBe("off");

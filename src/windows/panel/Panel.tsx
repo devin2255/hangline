@@ -1670,6 +1670,8 @@ export function Panel() {
     if (revealed && pendingFlightRef.current) void startPendingFlight();
   }, [revealed, startPendingFlight]);
 
+  const [landing, setLanding] = useState(0);
+
   // Panel-side end of a flight: the overlay is gone, so the card becomes visible and lands.
   useEffect(() => {
     let disposed = false;
@@ -1677,6 +1679,7 @@ export function Panel() {
     void listen<FlyLandedEvent>("fly-landed", ({ payload }) => {
       if (disposed) return;
       if (!payload?.id || payload.id !== flyingIdRef.current) return;
+      setLanding((sequence) => sequence + 1);
       flyingIdRef.current = null;
       setFlyingId(null);
       if (flightWatchdogRef.current !== null) {
@@ -2816,7 +2819,7 @@ export function Panel() {
         onDragStart={(event) => event.preventDefault()}
       >
         <div className="panel__line" style={lineStyle}>
-          <Rope width={line} sag={sag} style={ropeStyle} color={ropeColor} holiday={holiday} />
+          <Rope width={line} sag={sag} style={ropeStyle} color={ropeColor} holiday={holiday} landing={landing} />
           {/*
             v1.5.0 drag-in drop feedback + the empty-line hint share this capsule slot (spec §8):
             the drop hint/toast replaces the idle hint instead of stacking. `pointer-events: none`

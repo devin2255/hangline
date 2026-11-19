@@ -15,6 +15,7 @@
  * hit rects and the click-through contract are untouched.
  */
 
+import { ChristmasGarland } from "./ChristmasGarland";
 import { useId } from "react";
 import { ROPE_TOP, ropePath } from "../lib/layout";
 import {
@@ -43,6 +44,7 @@ export interface RopeProps {
   color: RopeColor;
   /** v1.6.0 seasonal theme; renders decorations and a themed cord without changing geometry. */
   holiday?: RopeHoliday;
+  landing?: number;
 }
 
 function round(value: number): number {
@@ -351,11 +353,11 @@ function RibbonBow({
   );
 }
 
-export function Rope({ width, sag, style, color, holiday = null }: RopeProps) {
+export function Rope({ width, sag, style, color, holiday = null, landing = 0 }: RopeProps) {
   const safeWidth = Math.max(1, Math.round(width));
   const safeSag = Number.isFinite(sag) ? Math.max(0, sag) : 0;
-  const spec = holiday ? HOLIDAY_ROPE_SPECS[holiday] : null;
-  const height = Math.max(1, Math.ceil(ROPE_TOP + safeSag + (spec ? 84 : 8)));
+  const spec = holiday && holiday !== "christmas" ? HOLIDAY_ROPE_SPECS[holiday] : null;
+  const height = Math.max(1, Math.ceil(ROPE_TOP + safeSag + (holiday ? 84 : 8)));
   const path = ropePath(safeWidth, safeSag);
 
   // React ids contain ":" characters, which are awkward inside SVG url(#...) references.
@@ -432,6 +434,7 @@ export function Rope({ width, sag, style, color, holiday = null }: RopeProps) {
       {/* Shared top-light: the single light source above the rope. */}
       <path className="rope rope--highlight" d={path} />
 
+      {holiday === "christmas" && <ChristmasGarland width={safeWidth} sag={safeSag} landing={landing} />}
       {spec ? (
         <g className="rope-holiday" aria-hidden="true">
           {/* Ambient bokeh behind the cord: slow, low-opacity colour dust. */}

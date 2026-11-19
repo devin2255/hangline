@@ -74,7 +74,7 @@ export const HOLIDAY_THEME_IDS: readonly HolidayThemeId[] = [
 
 const LIGHTS = [0.08, 0.21, 0.35, 0.52, 0.68, 0.82, 0.94] as const;
 
-export const HOLIDAY_ROPE_SPECS: Record<HolidayThemeId, HolidayRopeSpec> = {
+export const HOLIDAY_ROPE_SPECS: Record<Exclude<HolidayThemeId, "christmas">, HolidayRopeSpec> = {
   "new-year": {
   metal: "#D8B467",
     cord: ["#5E1622", "#B8323D"],
@@ -246,35 +246,7 @@ export const HOLIDAY_ROPE_SPECS: Record<HolidayThemeId, HolidayRopeSpec> = {
       { t: 0.87, kind: "bat", color: "#6B4B78", scale: 0.6, side: "top" },
     ],
   },
-  christmas: {
-  metal: "#C9A05C",
-    cord: ["#142E22", "#2F5A3A"],
-    thread: "#D8B26A",
-    ribbon: "#A34B4E",
-    light: "#FFE7B0",
-    lights: LIGHTS,
-  ambient: { kind: "snow", color: "#DDE8E1" },
-    ornaments: [
-      { t: 0.06, kind: "bauble", color: "#A34B4E", scale: 1.25, hang: 22 },
-      { t: 0.10, kind: "star", color: "#D9B45C", scale: 1.0, hang: 31 },
-      { t: 0.18, kind: "snow", color: "#E8EEE7", scale: 1.1, hang: 25 },
-      { t: 0.29, kind: "bell", color: "#C9A05C", scale: 1.1, hang: 22 },
-      { t: 0.70, kind: "pinecone", color: "#8B5E3C", scale: 1.2, hang: 27 },
-      { t: 0.81, kind: "bauble", color: "#3E6B4F", scale: 1.2, hang: 20 },
-      { t: 0.90, kind: "star", color: "#D9B45C", scale: 1.0, hang: 28 },
-      { t: 0.95, kind: "bauble", color: "#A34B4E", scale: 1.25, hang: 23 },
-    ],
-    motifs: [
-      { t: 0.035, kind: "pine", color: "#4F7A58", scale: 0.8 },
-      { t: 0.135, kind: "pine", color: "#3E6B4F", scale: 0.65, side: "top" },
-      { t: 0.23, kind: "snow", color: "#DDE8E1", scale: 0.6 },
-      { t: 0.34, kind: "pine", color: "#4F7A58", scale: 0.55, side: "top" },
-      { t: 0.66, kind: "pine", color: "#4F7A58", scale: 0.55, side: "top" },
-      { t: 0.77, kind: "snow", color: "#DDE8E1", scale: 0.6 },
-      { t: 0.87, kind: "pine", color: "#3E6B4F", scale: 0.65, side: "top" },
-      { t: 0.965, kind: "pine", color: "#4F7A58", scale: 0.8 },
-    ],
-  },
+
 };
 
 /** Lunar festival dates (lunar new year and lunar 8/15) for the local-date windows. */
