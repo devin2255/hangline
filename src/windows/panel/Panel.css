@@ -1071,138 +1071,8 @@
   opacity: 0.3;
 }
 
-.panel__rope[data-rope-holiday] .rope--holiday {
-  fill: none;
-  stroke-width: 2.2;
-  opacity: 1;
-  filter: drop-shadow(0 0.8px 0.8px rgba(0, 0, 0, 0.28));
-}
-
-.panel__rope[data-rope-holiday] .rope--holiday-highlight {
-  fill: none;
-  stroke-width: 0.45;
-  opacity: 0.42;
-}
-
-.panel__rope[data-rope-holiday] .rope--holiday-glow {
-  fill: none;
-  stroke-width: 3.2;
-  opacity: 0.16;
-}
-
-.panel__rope[data-rope-holiday] .rope--holiday-thread {
-  fill: none;
-  stroke-width: 0.4;
-  opacity: 0.55;
-}
-
-.rope-holiday-stop--a {
-  stop-color: #1e3a2b;
-}
-
-.rope-holiday-stop--b {
-  stop-color: #2f523c;
-}
-
-.rope-light {
-  animation: rope-twinkle 4.2s ease-in-out infinite;
-  transform-box: fill-box;
-  transform-origin: top center;
-}
-
-.rope-light__wire {
-  stroke: #3a3a2e;
-  stroke-width: 0.6;
-  opacity: 0.55;
-}
-
-.rope-light__halo {
-  opacity: 0.22;
-  filter: blur(0.8px);
-}
-
-.rope-light__bulb {
-  filter: drop-shadow(0 0 1.4px rgba(255, 226, 168, 0.65));
-}
-
-.rope-ornament {
-  animation: rope-sway 5.2s ease-in-out infinite;
-  transform-box: fill-box;
-  transform-origin: top center;
-  filter: drop-shadow(0 0.7px 0.6px rgba(0, 0, 0, 0.28));
-}
-
-.rope-ornament__knot {
-  fill: #d8b26a;
-  opacity: 0.95;
-}
-
-.rope-sprigs {
-  opacity: 0.62;
-}
-
-
-
-
-.rope-end-bow {
-  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.28));
-}
-
-.panel__rope[data-rope-holiday] .rope-holiday {
-  filter: saturate(0.82) brightness(0.97);
-}
-
-.rope-ornament__string {
-  stroke: #b89a63;
-  stroke-width: 0.55;
-  opacity: 0.72;
-}
-
-.rope-ornament__cap {
-  fill: #c9a05c;
-}
-
-.rope-pine {
-  fill: none;
-  stroke: #3e6b4f;
-  stroke-width: 2;
-  stroke-linecap: round;
-}
-
-.rope-bow {
-  fill: #a34b4e;
-  fill-opacity: 0.18;
-  stroke: #a34b4e;
-  stroke-width: 2.4;
-}
-
-@keyframes rope-twinkle {
-  0%,
-  100% {
-    opacity: 0.72;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
-@keyframes rope-sway {
-  0%,
-  100% {
-    transform: rotate(-1.2deg);
-  }
-  50% {
-    transform: rotate(1.2deg);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .glass-card__sweater--knit,
-  .rope-light,
-  .rope-ornament,
-  .rope-particle {
-    animation: none;
-  }
+  .glass-card__sweater--knit { animation: none; }
 }
 
 /* v1.6.0: the Sweater Season yarn action adds a fourth capsule button; keep the capsule narrower
@@ -1221,11 +1091,11 @@
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .christmas-bell-swing {
-    animation: christmas-bell-settle 640ms ease-out 1;
+  .holiday-pendant-swing {
+    animation: holiday-pendant-settle 640ms ease-out 1;
   }
 }
-@keyframes christmas-bell-settle {
+@keyframes holiday-pendant-settle {
   0%, 100% { transform: rotate(0deg); }
   20% { transform: rotate(9deg); }
   52% { transform: rotate(-5deg); }

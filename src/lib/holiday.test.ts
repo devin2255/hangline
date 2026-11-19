@@ -6,11 +6,7 @@ import {
   isChristmasWindow,
   parseHolidayTheme,
 } from "./holiday";
-import {
-  HOLIDAY_ROPE_SPECS,
-  HOLIDAY_THEME_IDS,
-  holidayWindowIncludes,
-} from "./holidayThemes";
+import { HOLIDAY_THEME_IDS, holidayWindowIncludes } from "./holidayThemes";
 
 describe("holiday windows", () => {
   const at = (year: number, month: number, day: number) => new Date(year, month - 1, day, 12, 0, 0);
@@ -68,9 +64,6 @@ describe("holiday windows", () => {
     for (const id of HOLIDAY_THEME_IDS) {
       expect(activeHolidayTheme(id, summer)).toBe(id);
       expect(parseHolidayTheme(id)).toBe(id);
-      if (id !== "christmas") {
-        expect(HOLIDAY_ROPE_SPECS[id].ornaments.length).toBeGreaterThanOrEqual(6);
-      }
     }
     expect(parseHolidayTheme("spring")).toBe("off");
     expect(parseHolidayTheme("not-a-holiday")).toBe("off");

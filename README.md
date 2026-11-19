@@ -11,7 +11,7 @@ Tauri 2 (Rust) + React 19 + TypeScript + Vite. Windows x64.
 
 Repository: <https://github.com/devin2255/hangline>
 
-> **Hangline 1.6.7** adds a Christmas pine garland with red ribbon and paired brass bells.
+> **Hangline 1.6.8** adds distinct end decorations for all seven holiday ropes.
 > The public source repository is <https://github.com/devin2255/hangline>; a GitHub Release is produced by the
 > `v*` tag workflow when signing secrets are configured, and the installer/portable ZIP can always be built locally.
 > The installer is currently unsigned (SmartScreen may warn); free code signing is being applied for
@@ -46,19 +46,19 @@ P4 multi-monitor placement under 100%/150% scaling (app UI only, neutral synthet
 More P4 evidence: [`docs/experiments/P4-multimon-settings.md`](docs/experiments/P4-multimon-settings.md),
 [`docs/acceptance/P4-core.md`](docs/acceptance/P4-core.md).
 
-## Install (1.6.7 release)
+## Install (1.6.8 release)
 
 Windows 10 22H2 or Windows 11, x64. Download the GitHub Release artifacts for the latest tag when available,
 or build the installer locally (see [Building](#building-from-source)) with
 `node scripts/release/build-release.mjs --sign`.
 
-- `Hangline_1.6.7_x64-setup.exe` — per-user install to `%LOCALAPPDATA%\Programs\Hangline` (no admin),
+- `Hangline_1.6.8_x64-setup.exe` — per-user install to `%LOCALAPPDATA%\Programs\Hangline` (no admin),
   Start-menu shortcut (desktop shortcut optional), HKCU uninstall entry, embedded WebView2
   bootstrapper (network needed only on a machine without WebView2). Uninstall asks whether to keep or delete your Hangline data
   (default: keep).
-- `Hangline_1.6.7_x64-portable.zip` — unpack anywhere and run `Hangline.exe`; data still lives in
+- `Hangline_1.6.8_x64-portable.zip` — unpack anywhere and run `Hangline.exe`; data still lives in
   `%LOCALAPPDATA%\Hangline` (a true portable mode is post-V1).
-- **Authenticode status:** releases up to v1.6.7 are **unsigned** — Windows SmartScreen shows an
+- **Authenticode status:** releases up to v1.6.8 are **unsigned** — Windows SmartScreen shows an
   unknown publisher. Hangline is applying for free code signing from SignPath Foundation; once the
   signing policy is enabled, releases will be Authenticode-signed. Until then, verify the SHA-256 in
   `SHA256SUMS.txt`. See the [Code signing policy](CODE_SIGNING_POLICY.md).
@@ -72,7 +72,7 @@ or build the installer locally (see [Building](#building-from-source)) with
   so install v1.4.1 once by hand. Accelerated download links are in the
   [v1.4.1 release notes](docs/release/notes-v1.4.1.md); after that, in-app updates work normally.
 
-- **What's new in 1.6.7:** [Christmas pine garland and twin bells](docs/release/notes-v1.6.7.md).
+- **What's new in 1.6.8:** [Seven seasonal garlands](docs/release/notes-v1.6.8.md).
 
 Release/update/signing/privacy runbook: [`docs/RELEASE.md`](docs/RELEASE.md).
 
@@ -139,8 +139,8 @@ artifact metadata, privacy policy, and how third-party components are handled) i
   Christmas**. A chosen theme stays on; **auto** follows the local date (Spring Festival and
   Mid-Autumn use a built-in lunar table, the others use fixed windows). Each theme has its own
   cord. For Christmas, pine, berries and red bows flank four warm lights. Brass bells swing once
-  when a screenshot lands. The other themes hang lanterns, hearts, moons, flags, pumpkins or
-  fireworks from short threads. When the window ends, the saved rope comes back. Reduced motion keeps the
+  when a screenshot lands. Other themes pair fireworks with a midnight clock, a red knot with lanterns, roses with a letter,
+  osmanthus with a crescent, pennants with a folding fan, and a cobweb with a jack-o’-lantern. When the window ends, the saved rope comes back. Reduced motion keeps the
   decorations still, and a passive once-per-holiday hint points at the tray. Nothing is uploaded.
 - **Drag a picture onto the line.** Drag images from Explorer, WeChat/QQ chats, a browser or a
   screenshot tool to the screen's top edge: the line slides in, accepts the drop and hangs the
@@ -304,7 +304,7 @@ Data lives under `%LOCALAPPDATA%\Hangline\` (`settings.json`,
 - **The hover preview is capped by the panel height** (the panel window never grows), so it is a
   large thumbnail rather than a full-screen viewer; the editor remains the way to inspect details.
 
-Hangline 1.6.7 is a release build; the functional milestones P1–P5 are implemented and the
+Hangline 1.6.8 is a release build; the functional milestones P1–P5 are implemented and the
 remaining items are manual/deferred checks (the acceptance documents track them in detail):
 
 - **Manual acceptance is pending.** The following still need a real person on an
@@ -313,7 +313,7 @@ remaining items are manual/deferred checks (the acceptance documents track them 
   (WeChat/QQ/browser), real wheel/touchpad scrolling, real pointer cross-screen
   following, and the folder picker. They are marked `MANUAL-PENDING` — not
   "passed" — in [`docs/acceptance/P1-core.md`](docs/acceptance/P1-core.md).
-- **Unsigned (for now).** The 1.6.7 installer/portable ZIP are built by the tag workflow and published
+- **Unsigned (for now).** The 1.6.8 installer/portable ZIP are built by the tag workflow and published
   on GitHub Releases; there is no Authenticode signature yet (SmartScreen warns). From v1.1.x on, code
   signing is planned through SignPath Foundation — the current latest release may still be unsigned
   until the signing policy is enabled; see [Code signing policy](CODE_SIGNING_POLICY.md). Auto-update is

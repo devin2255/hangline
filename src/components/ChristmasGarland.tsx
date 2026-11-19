@@ -106,7 +106,7 @@ export function ChristmasGarland({ width, sag, landing }: Props) {
                 <g key={side} transform={`rotate(${side * -17})`}>
                   <g
                     key={landing}
-                    className={landing ? "christmas-bell-swing" : undefined}
+                    className={landing ? "holiday-pendant-swing" : undefined}
                     style={{ animationDelay: side === 1 ? "75ms" : "0ms" }}
                   >
                     <path
